@@ -1,3 +1,77 @@
+server:
+  port: ${SERVER_PORT:9999}
+
 spring:
   application:
-    name: smart-bin
+    name: smart-bin-server
+
+  datasource:
+    # URL động: thay đổi host và port tùy môi trường
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
+    username: ${SPRING_DATASOURCE_USERNAME:admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    driver-class-name: org.mariadb.jdbc.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      connection-timeout: 20000
+      maximum-pool-size: 10
+      minimum-idle: 5
+      max-lifetime: 1200000
+      idle-timeout: 300000
+      leak-detection-threshold: 60000
+  jpa:
+    database-platform: org.hibernate.dialect.MariaDBDialect
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SHOW_SQL:true}
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MariaDBDialect
+        format_sql: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Keycloak Host phải dynamic
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8080/realms/smart-bin}
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8080/realms/smart-bin/protocol/openid-connect/certs}
+
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:465}
+    username: ${SPRING_MAIL_USERNAME:kieubao2k4@gmail.com}
+    password: ${SPRING_MAIL_PASSWORD:zwac yohn qmho pdyr}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          trust: ${SPRING_MAIL_HOST:smtp.gmail.com}
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+
+app:
+  secret-key: ${SECRET_KEY:MY_SUPER_SECRET_KEY_1234}
+  email:
+    from: ${APP_EMAIL_FROM:kieubao2k4@gmail.com}
+    verification:
+      # Domain trả về cho user click cần đúng với domain thực tế (kvbhust.site)
+      url: ${APP_EMAIL_VERIFICATION_URL:http://localhost:8888/api/v1/auth/verify-email}
+
+keycloak:
+  server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8080}
+  realm: ${KEYCLOAK_REALM:smart-bin-client}
+  client-id: ${KEYCLOAK_CLIENT_ID:smart-bin-client}
+  client-secret: ${KEYCLOAK_CLIENT_SECRET:wYhiGkc0Pgw1vrS6HRcuZ6ChzH9GmT3Y} # Ẩn secret
+  admin-username: ${KEYCLOAK_ADMIN_USERNAME:admin}
+  admin-password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
+
+minio:
+  url: ${MINIO_SERVER_URL:http://localhost:9000}
+  bucket: ${MINIO_BUCKET:smart-bin}
+  access_key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret_key: ${MINIO_SECRET_KEY:minioadmin}
