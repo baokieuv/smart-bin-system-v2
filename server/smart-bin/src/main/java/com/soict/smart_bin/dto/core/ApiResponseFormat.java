@@ -1,8 +1,6 @@
-package com.soict.smart_bin.dto;
+package com.soict.smart_bin.dto.core;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-
-import java.util.List;
 
 /**
  * A standardized, generic wrapper for all API responses.

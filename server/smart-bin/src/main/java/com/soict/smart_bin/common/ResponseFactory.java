@@ -2,7 +2,7 @@ package com.soict.smart_bin.common;
 
 
 import org.springframework.context.MessageSource;
-import com.soict.smart_bin.dto.ApiResponseFormat;
+import com.soict.smart_bin.dto.core.ApiResponseFormat;
 import com.soict.smart_bin.exception.ApiResponseCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.i18n.LocaleContextHolder;
