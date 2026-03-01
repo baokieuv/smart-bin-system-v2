@@ -15,8 +15,11 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.security.SecureRandom;
+import java.io.IOException;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -88,6 +91,7 @@ public class UserService {
         user.setEmailVerified(true);
         user.setActionToken(null);
         user.setActionTokenExpiry(null);
+        user.setState(UserState.ACTIVE);
 
         userRepository.save(user);
         keycloakService.enableUser(user.getId());
@@ -131,5 +135,41 @@ public class UserService {
                 user.getFirstName(),
                 user.getActionToken()
         );
+    }
+
+    public String validateAndUploadImage(MultipartFile file, String phoneNumber)
+            throws IOException {
+        return "";
+
+        // 1. Validation Logic (using your custom ApiException)
+//        validateImageMetadata(file);
+
+//        // 2. Identify Old File (suffix already extracted by userService)
+//        Optional<String> oldFileKey = userService.getImageUrlFilename(phoneNumber);
+//
+//        // 3. Generate New Filename for this update
+//        String newFilename = generateUniqueFilename(Objects.requireNonNull(file.getContentType()));
+//
+//        // 4. Upload New File
+//        String newImageUrl = uploadFile(
+//                file.getBytes(),
+//                newFilename,
+//                file.getContentType()
+//        );
+//
+//        // 5. Update Database with new URL
+//        userService.updateImageUrl(phoneNumber, newImageUrl);
+//
+//        // 6. Cleanup: Delete old image if it existed
+//        oldFileKey.ifPresent(key -> {
+//            try {
+//                this.deleteFile(key);
+//            } catch (Exception e) {
+//                // We log but don't crash; the primary goal (uploading new) succeeded.
+//                log.error("Post-upload cleanup failed for key: {}. Reason: {}", key, e.getMessage());
+//            }
+//        });
+
+//        return newImageUrl;
     }
 }

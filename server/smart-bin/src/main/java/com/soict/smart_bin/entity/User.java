@@ -34,4 +34,6 @@ public class User extends BaseEntity {
 
     @Enumerated(EnumType.STRING) // Store as a readable string (e.g., "ACTIVE")
     private UserState state;
+
+    private String avatarUrl;
 }

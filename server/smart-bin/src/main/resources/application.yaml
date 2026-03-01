@@ -64,7 +64,7 @@ app:
 
 keycloak:
   server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8080}
-  realm: ${KEYCLOAK_REALM:smart-bin-client}
+  realm: ${KEYCLOAK_REALM:smart-bin-realm}
   client-id: ${KEYCLOAK_CLIENT_ID:smart-bin-client}
   client-secret: ${KEYCLOAK_CLIENT_SECRET:cst5nPXZXHl33B4XvoP9WvXJIK5YmShJ} # Ẩn secret
   admin-username: ${KEYCLOAK_ADMIN_USERNAME:admin}

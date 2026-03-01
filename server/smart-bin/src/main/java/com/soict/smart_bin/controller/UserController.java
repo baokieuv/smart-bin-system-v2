@@ -5,10 +5,14 @@ import com.soict.smart_bin.common.SuccessCode;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;
 import com.soict.smart_bin.dto.user.CreateUserRequest;
 import com.soict.smart_bin.service.UserService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -32,6 +36,17 @@ public class UserController {
     @PutMapping("/{userId}")
     public ResponseEntity<ApiResponseFormat<Object>> updateUserById(@PathVariable String userId){
         return responseFactory.response(SuccessCode.OK, "");
+    }
+
+    @PostMapping("/upload-image")
+    public ResponseEntity<ApiResponseFormat<Object>> uploadImage(
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String userId = jwt.getSubject();
+
+
+        return responseFactory.response(SuccessCode.OK, "User deleted successfully");
     }
 
     @DeleteMapping("/{userId}")
