@@ -26,3 +26,5 @@ replay_pid*
 /docker/*
 
 !/docker/docker-compose.yml
+
+.env
