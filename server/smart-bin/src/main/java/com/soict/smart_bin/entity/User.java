@@ -1,11 +1,11 @@
 package com.soict.smart_bin.entity;
 
+import com.soict.smart_bin.common.TokenType;
+import com.soict.smart_bin.common.UserState;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
 @Table(name = "users")
@@ -18,18 +18,20 @@ public class User extends BaseEntity {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
     private String firstName;
 
-    @Column(nullable = false)
     private String lastName;
 
     @Column(nullable = false)
     private boolean emailVerified = false;
 
-    @Column
-    private String verificationToken;
+    private String actionToken;
 
-    @Column
-    private Long verificationTokenExpiry;
+    private Long actionTokenExpiry;
+
+    @Enumerated(EnumType.STRING)
+    private TokenType tokenType;
+
+    @Enumerated(EnumType.STRING) // Store as a readable string (e.g., "ACTIVE")
+    private UserState state;
 }
