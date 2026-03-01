@@ -61,8 +61,10 @@ public class KeycloakService {
             if (response.getStatus() == 201) {
                 String locationHeader = response.getHeaderString("Location");
                 return locationHeader.substring(locationHeader.lastIndexOf('/') + 1);
+            } else if (response.getStatus() == 409) {
+                throw new RuntimeException("Email already exists in Keycloak");
             } else {
-                throw new RuntimeException("Failed to create user in Keycloak");
+                throw new RuntimeException("Failed to create user in Keycloak. Status: " + response.getStatus());
             }
         } catch (Exception e) {
             throw new RuntimeException("Error creating user in Keycloak: " + e.getMessage());
@@ -114,6 +116,45 @@ public class KeycloakService {
             }
         } catch (IOException e) {
             throw new RuntimeException("Error during login: " + e.getMessage());
+        }
+    }
+
+    public TokenResponse exchangeGoogleToken(String googleToken) {
+        try {
+            RequestBody body = new FormBody.Builder()
+                    .add("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+                    .add("client_id", clientId)
+                    .add("client_secret", clientSecret)
+                    .add("subject_token", googleToken)
+                    .add("subject_issuer", "google") // Alias của Google Identity Provider trong Keycloak
+                    .add("subject_token_type", "urn:ietf:params:oauth:token-type:access_token")
+                    // Ghi chú: Nếu Frontend truyền lên id_token, hãy đổi dòng trên thành "urn:ietf:params:oauth:token-type:id_token"
+                    .build();
+
+            Request req = new Request.Builder()
+                    .url(serverUrl + "/realms/" + realm + "/protocol/openid-connect/token")
+                    .post(body)
+                    .build();
+
+            try (Response response = client.newCall(req).execute()) {
+                String responseBody = Objects.requireNonNull(response.body()).string();
+
+                if (!response.isSuccessful()) {
+                    throw new RuntimeException("Failed to exchange Google token: " + responseBody);
+                }
+
+                JsonObject json = new Gson().fromJson(responseBody, JsonObject.class);
+
+                return new TokenResponse(
+                        json.get("access_token").getAsString(),
+                        json.get("refresh_token").getAsString(),
+                        json.get("expires_in").getAsInt(),
+                        json.get("refresh_expires_in").getAsInt(),
+                        json.get("token_type").getAsString()
+                );
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Error during Google token exchange: " + e.getMessage());
         }
     }
 

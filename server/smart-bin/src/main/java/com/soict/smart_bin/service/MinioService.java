@@ -1,6 +1,7 @@
 package com.soict.smart_bin.service;
 
-
+import com.soict.smart_bin.exception.ApiException;
+import com.soict.smart_bin.exception.CoreErrorCode;
 import io.minio.ListObjectsArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -86,30 +87,34 @@ public class MinioService {
     private void validateFileUpload(MultipartFile file) {
         try {
             if (file == null || file.isEmpty()) {
-                throw new RuntimeException("File empty");
+                throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
             }
 
             String originalFileName = StringUtils.cleanPath(Objects.requireNonNull(file.getOriginalFilename()));
             if (originalFileName.contains("..")) {
-                throw new RuntimeException("File not valid");
+                throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
             }
 
             try (InputStream inputStream = file.getInputStream()) {
                 String mimeType = tika.detect(inputStream);
 
                 if (!ALLOWED_MIME_TYPES.contains(mimeType)) {
-                    throw new RuntimeException("Content is not allowed");
+                    throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
                 }
             }
             String fileExtension = getFileExtension(originalFileName);
             if (!ALLOWED_EXTENSIONS.contains(fileExtension.toLowerCase())) {
-                throw new RuntimeException("Extension is not allowed");
+                throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
             }
 
             if (file.getSize() > IMAGE_TARGET_SIZE) {
-                throw new RuntimeException("File too large");
+                throw new ApiException(CoreErrorCode.FILE_TOO_LARGE);
             }
-        } catch (Exception e) {
+        }
+        catch (ApiException ex){
+            throw ex;
+        }
+        catch (Exception e) {
             logger.error("Error: {}", e.getMessage(), e);
         }
     }

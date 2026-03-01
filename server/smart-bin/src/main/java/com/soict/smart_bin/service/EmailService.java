@@ -1,11 +1,11 @@
 package com.soict.smart_bin.service;
 
-
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -22,6 +22,7 @@ public class EmailService {
         this.mailSender = mailSender;
     }
 
+    @Async("emailExecutor")
     public void sendVerificationEmail(String toEmail, String firstName, String token){
         try{
             MimeMessage message = mailSender.createMimeMessage();
@@ -29,7 +30,7 @@ public class EmailService {
 
             helper.setFrom(fromEmail);
             helper.setTo(toEmail);
-            helper.setSubject("Smart Bin - Verify Email");
+            helper.setSubject("Smart Bin - Verify Your Email");
 
             String htmlContent = buildVerificationEmailHtml(firstName, token);
             helper.setText(htmlContent, true);
@@ -40,7 +41,6 @@ public class EmailService {
         }
     }
 
-
     private String buildVerificationEmailHtml(String firstName, String token){
         String verifyLink = verificationUrl + "?token=" + token;
 
@@ -48,14 +48,18 @@ public class EmailService {
             <!DOCTYPE html>
             <html>
             <head>
+                <meta charset="utf-8">
                 <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
-                    .content { background-color: #f9f9f9; padding: 20px; }
-                    .button { display: inline-block; padding: 12px 24px; background-color: #4CAF50;\s
-                             color: white; text-decoration: none; border-radius: 4px; margin: 20px 0; }
-                    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #374151; background-color: #F3F4F6; margin: 0; padding: 40px 20px; }
+                    .container { max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #E5E7EB; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+                    .header { padding: 32px 32px 0 32px; }
+                    .header h1 { margin: 0; font-size: 22px; color: #111827; font-weight: 600; }
+                    .content { padding: 32px; }
+                    .content h2 { font-size: 18px; color: #111827; margin-top: 0; font-weight: 500; }
+                    .button { display: inline-block; padding: 12px 28px; background-color: #10B981; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; margin: 24px 0; }
+                    .text-muted { color: #6B7280; font-size: 14px; }
+                    .link-box { background-color: #F9FAFB; border-radius: 6px; padding: 12px; margin-top: 12px; word-break: break-all; font-size: 13px; color: #10B981; }
+                    .footer { padding: 24px 32px; text-align: center; color: #9CA3AF; font-size: 13px; border-top: 1px solid #F3F4F6; background-color: #ffffff; }
                 </style>
             </head>
             <body>
@@ -65,18 +69,19 @@ public class EmailService {
                     </div>
                     <div class="content">
                         <h2>Hello %s,</h2>
-                        <p>Thank you for registering with Smart Bin System!</p>
-                        <p>Please verify your email address by clicking the button below:</p>
-                        <center>
-                            <a href="%s" class="button">Verify Email</a>
-                        </center>
-                        <p>Or copy and paste this link into your browser:</p>
-                        <p style="word-break: break-all; color: #4CAF50;">%s</p>
-                        <p>This link will expire in 24 hours.</p>
-                        <p>If you didn't create this account, please ignore this email.</p>
+                        <p>Thank you for registering. To complete your setup, please verify your email address by clicking the button below.</p>
+                       \s
+                        <a href="%s" class="button">Verify Email Address</a>
+                       \s
+                        <p class="text-muted">If the button doesn't work, copy and paste this link into your browser:</p>
+                        <div class="link-box">
+                            %s
+                        </div>
+                       \s
+                        <p class="text-muted" style="margin-top: 32px; font-size: 13px;">This link will expire in 24 hours. If you didn't create an account, you can safely ignore this email.</p>
                     </div>
                     <div class="footer">
-                        <p>&copy; 2026 Smart Bin System. All rights reserved.</p>
+                        &copy; 2026 Smart Bin System. All rights reserved.
                     </div>
                 </div>
             </body>
@@ -84,6 +89,7 @@ public class EmailService {
            \s""".formatted(firstName, verifyLink, verifyLink);
     }
 
+    @Async("emailExecutor")
     public void sendWelcomeEmail(String toEmail, String firstName) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -91,7 +97,7 @@ public class EmailService {
 
             helper.setFrom(fromEmail);
             helper.setTo(toEmail);
-            helper.setSubject("Welcome to Smart Bin System");
+            helper.setSubject("Welcome to Smart Bin System 🎉");
 
             String htmlContent = buildWelcomeEmailHtml(firstName);
             helper.setText(htmlContent, true);
@@ -107,41 +113,48 @@ public class EmailService {
             <!DOCTYPE html>
             <html>
             <head>
+                <meta charset="utf-8">
                 <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
-                    .content { background-color: #f9f9f9; padding: 20px; }
-                    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #374151; background-color: #F3F4F6; margin: 0; padding: 40px 20px; }
+                    .container { max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #E5E7EB; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+                    .header { padding: 32px 32px 0 32px; }
+                    .header h1 { margin: 0; font-size: 22px; color: #111827; font-weight: 600; }
+                    .content { padding: 32px; }
+                    .content h2 { font-size: 18px; color: #111827; margin-top: 0; font-weight: 500; }
+                    .feature-list { padding-left: 20px; margin-top: 16px; color: #4B5563; }
+                    .feature-list li { margin-bottom: 8px; }
+                    .footer { padding: 24px 32px; text-align: center; color: #9CA3AF; font-size: 13px; border-top: 1px solid #F3F4F6; background-color: #ffffff; }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <div class="header">
-                        <h1>Welcome to Smart Bin System! 🎉</h1>
+                        <h1>Smart Bin System</h1>
                     </div>
                     <div class="content">
-                        <h2>Hello %s,</h2>
-                        <p>Your email has been successfully verified!</p>
-                        <p>You can now start using Smart Bin System to manage your smart waste bins.</p>
-                        <h3>Getting Started:</h3>
-                        <ul>
-                            <li>Add your first device</li>
-                            <li>Monitor waste levels in real-time</li>
-                            <li>Track recycling statistics</li>
-                            <li>Receive notifications when bins are full</li>
+                        <h2>Welcome aboard, %s! 🎉</h2>
+                        <p>Your email has been successfully verified. We're thrilled to have you join us in building a smarter, cleaner environment.</p>
+                       \s
+                        <h3 style="font-size: 15px; color: #111827; margin-top: 28px;">Here's what you can do next:</h3>
+                        <ul class="feature-list">
+                            <li>Add and configure your first smart bin device</li>
+                            <li>Monitor waste levels and status in real-time</li>
+                            <li>Track recycling and collection statistics</li>
+                            <li>Set up automated notifications for full bins</li>
                         </ul>
-                        <p>If you have any questions, feel free to contact our support team.</p>
+                       \s
+                        <p style="margin-top: 28px; font-size: 14px; color: #6B7280;">If you have any questions or need assistance, our support team is always here to help.</p>
                     </div>
                     <div class="footer">
-                        <p>&copy; 2026 Smart Bin System. All rights reserved.</p>
+                        &copy; 2026 Smart Bin System. All rights reserved.
                     </div>
                 </div>
             </body>
             </html>
-            """.formatted(firstName);
+           \s""".formatted(firstName);
     }
 
+    @Async("emailExecutor")
     public void sendPasswordResetEmail(String toEmail, String firstName, String newPassword){
         try{
             MimeMessage message = mailSender.createMimeMessage();
@@ -149,7 +162,7 @@ public class EmailService {
 
             helper.setFrom(fromEmail);
             helper.setTo(toEmail);
-            helper.setSubject("Smart Bin - Password Reset");
+            helper.setSubject("Smart Bin - Password Reset Request");
 
             String htmlContent = buildPasswordResetEmailHtml(firstName, newPassword, toEmail);
             helper.setText(htmlContent, true);
@@ -160,87 +173,69 @@ public class EmailService {
         }
     }
 
-
     private String buildPasswordResetEmailHtml(String firstName, String newPassword, String toEmail) {
         return """
                 <!DOCTYPE html>
                 <html>
                 <head>
+                    <meta charset="utf-8">
                     <style>
-                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                        .header { background-color: #EF4444; color: white; padding: 20px; text-align: center; }
-                        .content { background-color: #f9f9f9; padding: 20px; }
-                        .password-box {\s
-                            background-color: #FEF2F2;\s
-                            border: 2px solid #EF4444;\s
-                            border-radius: 8px;
-                            padding: 20px;\s
-                            text-align: center;
-                            margin: 20px 0;
-                        }
-                        .password-text {\s
-                            font-size: 24px;\s
-                            font-weight: bold;\s
-                            color: #EF4444;
-                            letter-spacing: 2px;
-                            font-family: 'Courier New', monospace;
-                        }
-                        .warning {\s
-                            background-color: #FEF3C7;\s
-                            border-left: 4px solid #F59E0B;
-                            padding: 12px;
-                            margin: 20px 0;
-                        }
-                        .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+                        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #374151; background-color: #F3F4F6; margin: 0; padding: 40px 20px; }
+                        .container { max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #E5E7EB; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+                        .header { padding: 32px 32px 0 32px; }
+                        .header h1 { margin: 0; font-size: 22px; color: #111827; font-weight: 600; }
+                        .content { padding: 32px; }
+                        .content h2 { font-size: 18px; color: #111827; margin-top: 0; font-weight: 500; }
+                       \s
+                        .password-box { background-color: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 20px; text-align: center; margin: 24px 0; }
+                        .password-text { font-size: 26px; font-weight: 700; color: #111827; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; letter-spacing: 4px; margin: 0; }
+                       \s
+                        .warning-box { border-left: 3px solid #EF4444; padding-left: 16px; margin: 24px 0; font-size: 14px; color: #4B5563; }
+                        .warning-title { font-weight: 600; color: #111827; margin-bottom: 8px; display: block; }
+                       \s
+                        .steps { padding-left: 20px; margin-top: 16px; color: #4B5563; font-size: 14px; }
+                        .steps li { margin-bottom: 6px; }
+                        .footer { padding: 24px 32px; text-align: center; color: #9CA3AF; font-size: 13px; border-top: 1px solid #F3F4F6; background-color: #ffffff; }
                     </style>
                 </head>
                 <body>
                     <div class="container">
                         <div class="header">
-                            <h1>🔐 Password Reset</h1>
+                            <h1>Smart Bin System</h1>
                         </div>
                         <div class="content">
                             <h2>Hello %s,</h2>
-                            <p>You requested to reset your password for your Smart Bin account.</p>
-                           \s
+                            <p>We received a request to reset the password for your account associated with <strong>%s</strong>.</p>
+                          \s
                             <p>Your new temporary password is:</p>
-                           \s
+                          \s
                             <div class="password-box">
                                 <p class="password-text">%s</p>
                             </div>
-                           \s
-                            <div class="warning">
-                                <strong>⚠️ Important Security Notice:</strong>
-                                <ul style="margin: 10px 0; padding-left: 20px;">
-                                    <li>Please login with this temporary password immediately</li>
-                                    <li>Change your password after logging in for security</li>
-                                    <li>Do not share this password with anyone</li>
-                                    <li>This password was generated automatically</li>
-                                </ul>
+                          \s
+                            <div class="warning-box">
+                                <span class="warning-title">Security Notice:</span>
+                                For your security, please log in immediately and change this temporary password. Do not share it with anyone.
                             </div>
-                           \s
-                            <p><strong>Steps to login:</strong></p>
-                            <ol>
-                                <li>Go to the Smart Bin login page</li>
-                                <li>Enter your email: <strong>%s</strong></li>
-                                <li>Enter the temporary password above</li>
-                                <li>Go to Settings → Change Password</li>
-                                <li>Set a new secure password</li>
+                          \s
+                            <p style="font-size: 15px; font-weight: 500; color: #111827; margin-top: 24px;">Next steps:</p>
+                            <ol class="steps">
+                                <li>Return to the login page</li>
+                                <li>Sign in using the temporary password</li>
+                                <li>Navigate to your profile settings to set a new password</li>
                             </ol>
-                           \s
-                            <p style="color: #EF4444; font-weight: bold;">
-                                If you didn't request this password reset, please contact us immediately.
+                          \s
+                            <p style="margin-top: 32px; font-size: 13px; color: #6B7280;">
+                                If you did not request a password reset, please contact our support team immediately to secure your account.
                             </p>
                         </div>
                         <div class="footer">
-                            <p>&copy; 2026 Smart Bin System. All rights reserved.</p>
-                            <p>This is an automated email, please do not reply.</p>
+                            &copy; 2026 Smart Bin System. All rights reserved.<br>
+                            This is an automated message, please do not reply.
                         </div>
                     </div>
                 </body>
                 </html>
-               \s""".formatted(firstName, newPassword, toEmail);
+              \s""".formatted(firstName, toEmail, newPassword);
     }
-
 }
