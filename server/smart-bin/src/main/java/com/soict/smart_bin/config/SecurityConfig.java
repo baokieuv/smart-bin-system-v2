@@ -23,20 +23,14 @@ import java.util.List;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) {
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
                         .requestMatchers("/api/v1/auth/**").permitAll()
-                        .requestMatchers("/api/v1/classify-image/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/devices/*/data").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/devices/*/nonce").permitAll()
-
-                        // Protected endpoints - require authentication
-                        .requestMatchers("/api/v1/devices/**").authenticated()
-                        .requestMatchers("/api/v1/notifications/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/users/").permitAll()
                         .requestMatchers("/api/v1/users/**").authenticated()
 
                         .anyRequest().authenticated()

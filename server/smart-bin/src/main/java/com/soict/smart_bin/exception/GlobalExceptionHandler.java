@@ -22,11 +22,11 @@ import java.util.Map;
 class GlobalExceptionHandler {
 
     private final ResponseFactory responseFactory;
-    private final MessageSource messageSource;
+//    private final MessageSource messageSource;
 
-    GlobalExceptionHandler(ResponseFactory responseFactory, MessageSource messageSource) {
+    public GlobalExceptionHandler(ResponseFactory responseFactory) {
         this.responseFactory = responseFactory;
-        this.messageSource = messageSource;
+//        this.messageSource = messageSource;
     }
 
     @ExceptionHandler(ApiException.class)

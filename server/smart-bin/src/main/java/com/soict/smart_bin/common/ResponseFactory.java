@@ -1,6 +1,5 @@
 package com.soict.smart_bin.common;
 
-
 import org.springframework.context.MessageSource;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;
 import com.soict.smart_bin.exception.ApiResponseCode;
@@ -8,10 +7,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.ResponseEntity;
 import io.micrometer.tracing.*;
+import org.springframework.stereotype.Component;
 
 import java.util.Locale;
 import java.util.Optional;
 
+@Component
+@SuppressWarnings("rawtypes")
 @Slf4j
 public class ResponseFactory {
 
@@ -58,7 +60,7 @@ public class ResponseFactory {
         Locale locale = LocaleContextHolder.getLocale();
         String resolvedMessage = this.messageSource.getMessage(
                 data.message(),
-                (Object[]) null,
+                null,
                 data.message(), // <-- Default message if code not found
                 locale
         );

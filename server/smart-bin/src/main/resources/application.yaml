@@ -34,8 +34,8 @@ spring:
       resourceserver:
         jwt:
           # Keycloak Host phải dynamic
-          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8080/realms/smart-bin}
-          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8080/realms/smart-bin/protocol/openid-connect/certs}
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8080/realms/smart-bin-realm}
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8080/realms/smart-bin-realm/protocol/openid-connect/certs}
 
   mail:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
@@ -66,7 +66,7 @@ keycloak:
   server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8080}
   realm: ${KEYCLOAK_REALM:smart-bin-client}
   client-id: ${KEYCLOAK_CLIENT_ID:smart-bin-client}
-  client-secret: ${KEYCLOAK_CLIENT_SECRET:wYhiGkc0Pgw1vrS6HRcuZ6ChzH9GmT3Y} # Ẩn secret
+  client-secret: ${KEYCLOAK_CLIENT_SECRET:cst5nPXZXHl33B4XvoP9WvXJIK5YmShJ} # Ẩn secret
   admin-username: ${KEYCLOAK_ADMIN_USERNAME:admin}
   admin-password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
 
