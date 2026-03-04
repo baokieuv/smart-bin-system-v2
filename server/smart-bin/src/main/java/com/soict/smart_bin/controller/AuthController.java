@@ -30,9 +30,8 @@ public class AuthController {
     }
 
     @PostMapping("/login-google")
-    public ResponseEntity<ApiResponseFormat<Object>> loginGoogle(@RequestBody Map<String, String> body) {
-        String googleToken = body.get("token");
-        var keycloakToken = authService.loginGoogle(googleToken);
+    public ResponseEntity<ApiResponseFormat<Object>> loginGoogle(@Valid @RequestBody LoginGoogleRequest request) {
+        var keycloakToken = authService.loginGoogle(request.token());
         // Lưu ý: Nếu user.state là PENDING, Frontend sẽ nhận token này nhưng tự điều hướng ra trang "Set Password"
         return responseFactory.response(SuccessCode.OK, keycloakToken);
     }
@@ -85,7 +84,6 @@ public class AuthController {
 
     @GetMapping("/me")
     public ResponseEntity<ApiResponseFormat<Object>> getCurrentUser(@AuthenticationPrincipal Jwt jwt) {
-        // Lấy thông tin user hiện tại đang gọi API
         String userId = jwt.getSubject();
         var user = userService.getUserById(userId);
         return responseFactory.response(SuccessCode.OK, user);
