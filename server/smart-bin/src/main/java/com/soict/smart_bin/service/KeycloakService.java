@@ -120,15 +120,17 @@ public class KeycloakService {
     }
 
     public TokenResponse exchangeGoogleToken(String googleToken) {
+        System.out.println(googleToken);
         try {
             RequestBody body = new FormBody.Builder()
                     .add("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
                     .add("client_id", clientId)
                     .add("client_secret", clientSecret)
                     .add("subject_token", googleToken)
-                    .add("subject_issuer", "google") // Alias của Google Identity Provider trong Keycloak
+                    .add("subject_issuer", "google")
                     .add("subject_token_type", "urn:ietf:params:oauth:token-type:access_token")
-                    // Ghi chú: Nếu Frontend truyền lên id_token, hãy đổi dòng trên thành "urn:ietf:params:oauth:token-type:id_token"
+                    .add("requested_token_type", "urn:ietf:params:oauth:token-type:refresh_token") // ← thêm
+                    .add("scope", "openid email profile offline_access") // ← thêm offline_access
                     .build();
 
             Request req = new Request.Builder()
@@ -144,6 +146,8 @@ public class KeycloakService {
                 }
 
                 JsonObject json = new Gson().fromJson(responseBody, JsonObject.class);
+
+                System.out.println(json);
 
                 return new TokenResponse(
                         json.get("access_token").getAsString(),
