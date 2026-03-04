@@ -43,15 +43,23 @@ public class UserController {
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        String userId = jwt.getSubject();
+        String keycloakId = jwt.getSubject();
 
+        String url = userService.validateAndUploadImage(file, keycloakId);
 
-        return responseFactory.response(SuccessCode.OK, "User deleted successfully");
+        return responseFactory.response(SuccessCode.OK, url);
     }
 
     @DeleteMapping("/{userId}")
     public ResponseEntity<ApiResponseFormat<Object>> deleteUserById(@PathVariable String userId){
         userService.deleteUserById(userId);
         return responseFactory.response(SuccessCode.OK, "User deleted successfully");
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponseFormat<Object>> getCurrentUser(@AuthenticationPrincipal Jwt jwt) {
+        String keycloakId = jwt.getSubject();
+        var user = userService.getUserByKeycloakId(keycloakId);
+        return responseFactory.response(SuccessCode.OK, user);
     }
 }

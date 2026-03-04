@@ -14,6 +14,7 @@ import com.soict.smart_bin.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -30,6 +31,12 @@ public class UserService {
     private final KeycloakService keycloakService;
     private final UserMapper mapper;
     private final EmailService emailService;
+    private final MinioService minioService;
+
+    private static final String FILE_PREFIX = "avatar/image_";
+
+    @Value("${minio.url}")
+    private String minioUrl;
 
     @Transactional
     public UserDto createUser(CreateUserRequest request) {
@@ -48,7 +55,7 @@ public class UserService {
             String keycloakUserId = keycloakService.createUser(request);
 
             user = new User();
-            user.setId(keycloakUserId);
+            user.setKeycloakId(keycloakUserId);
             user.setEmail(request.email());
             user.setFirstName(request.firstName());
             user.setLastName(request.lastName());
@@ -77,7 +84,7 @@ public class UserService {
 
     @Transactional
     public String verifyEmail(String token) {
-        User user = userRepository.findByActionToken(token)
+        User user = userRepository.findByActionTokenAndActiveTrue(token)
                 .orElseThrow(() -> new ApiException(CoreErrorCode.INVALID_TOKEN));
 
         if (user.isEmailVerified()) {
@@ -94,21 +101,32 @@ public class UserService {
         user.setState(UserState.ACTIVE);
 
         userRepository.save(user);
-        keycloakService.enableUser(user.getId());
+        keycloakService.enableUser(user.getKeycloakId());
         emailService.sendWelcomeEmail(user.getEmail(), user.getFirstName());
 
         return "Email verified successfully";
     }
 
     public UserDto getUserById(String userId) {
-        User user = userRepository.findByIdAndActiveTrue(userId)
+        UUID uuid = UUID.fromString(userId);
+
+        User user = userRepository.findByIdAndActiveTrue(uuid)
+                .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
+
+        return mapper.toDto(user);
+    }
+
+    public UserDto getUserByKeycloakId(String keycloakId){
+        User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
                 .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
 
         return mapper.toDto(user);
     }
 
     public void deleteUserById(String userId) {
-        User user = userRepository.findByIdAndActiveTrue(userId)
+        UUID uuid = UUID.fromString(userId);
+
+        User user = userRepository.findByIdAndActiveTrue(uuid)
                 .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
 
         user.setActive(false);
@@ -137,39 +155,35 @@ public class UserService {
         );
     }
 
-    public String validateAndUploadImage(MultipartFile file, String phoneNumber)
-            throws IOException {
-        return "";
+    public String validateAndUploadImage(MultipartFile file, String keycloakId) {
 
-        // 1. Validation Logic (using your custom ApiException)
-//        validateImageMetadata(file);
+        User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
+                .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
 
-//        // 2. Identify Old File (suffix already extracted by userService)
-//        Optional<String> oldFileKey = userService.getImageUrlFilename(phoneNumber);
-//
-//        // 3. Generate New Filename for this update
-//        String newFilename = generateUniqueFilename(Objects.requireNonNull(file.getContentType()));
-//
-//        // 4. Upload New File
-//        String newImageUrl = uploadFile(
-//                file.getBytes(),
-//                newFilename,
-//                file.getContentType()
-//        );
-//
-//        // 5. Update Database with new URL
-//        userService.updateImageUrl(phoneNumber, newImageUrl);
-//
-//        // 6. Cleanup: Delete old image if it existed
-//        oldFileKey.ifPresent(key -> {
-//            try {
-//                this.deleteFile(key);
-//            } catch (Exception e) {
-//                // We log but don't crash; the primary goal (uploading new) succeeded.
-//                log.error("Post-upload cleanup failed for key: {}. Reason: {}", key, e.getMessage());
-//            }
-//        });
+        try {
+            String avatarUrl = user.getAvatarUrl();
+            String filename;
 
-//        return newImageUrl;
+            if (avatarUrl != null && avatarUrl.startsWith(minioUrl)) {
+                filename = avatarUrl.substring(avatarUrl.lastIndexOf("/") + 1);
+            }
+            else {
+                filename = generateFileName(Objects.requireNonNull(file.getContentType()));
+            }
+
+            String imageUrl = minioService.uploadFile(file, filename);
+            user.setAvatarUrl(imageUrl);
+            userRepository.save(user);
+
+            return imageUrl;
+        }catch (Exception e){
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, e.getMessage());
+        }
+    }
+
+    private String generateFileName(String contentType){
+        String uniqueId = UUID.randomUUID().toString().substring(0, 12);
+
+        return FILE_PREFIX + uniqueId + "." + contentType.substring(contentType.indexOf("/") + 1);
     }
 }

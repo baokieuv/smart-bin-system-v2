@@ -120,7 +120,6 @@ public class KeycloakService {
     }
 
     public TokenResponse exchangeGoogleToken(String googleToken) {
-        System.out.println(googleToken);
         try {
             RequestBody body = new FormBody.Builder()
                     .add("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
@@ -146,8 +145,6 @@ public class KeycloakService {
                 }
 
                 JsonObject json = new Gson().fromJson(responseBody, JsonObject.class);
-
-                System.out.println(json);
 
                 return new TokenResponse(
                         json.get("access_token").getAsString(),

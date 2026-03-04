@@ -72,6 +72,6 @@ keycloak:
 
 minio:
   url: ${MINIO_SERVER_URL:http://localhost:9000}
-  bucket: ${MINIO_BUCKET:smart-bin}
+  bucket: ${MINIO_BUCKET:smart-bin-system}
   access_key: ${MINIO_ACCESS_KEY:minioadmin}
   secret_key: ${MINIO_SECRET_KEY:minioadmin}

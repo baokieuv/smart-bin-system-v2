@@ -53,17 +53,19 @@ public class AuthService {
         String email = jwt.getClaim("email").asString();
         String firstName = jwt.getClaim("given_name").asString();
         String lastName = jwt.getClaim("family_name").asString();
+        String avatarUrl = jwt.getClaim("picture").asString();
 
         // 3. Kiểm tra user trong Database nội bộ
-        Optional<User> existingUser = userRepository.findById(keycloakId);
+        Optional<User> existingUser = userRepository.findByKeycloakIdAndActiveTrue(keycloakId);
 
         if (existingUser.isEmpty()) {
             // Lần đầu đăng nhập bằng Google -> Tạo mới user trong DB nội bộ
             User newUser = new User();
-            newUser.setId(keycloakId);
+            newUser.setKeycloakId(keycloakId);
             newUser.setEmail(email);
             newUser.setFirstName(firstName);
             newUser.setLastName(lastName);
+            newUser.setAvatarUrl(avatarUrl);
             newUser.setEmailVerified(true); // Google đã verify
             newUser.setState(UserState.PENDING); // Đánh dấu PENDING chờ nhập Password
             userRepository.save(newUser);
@@ -74,7 +76,7 @@ public class AuthService {
 
     @Transactional
     public void completeProfile(String userId, String newPassword) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByKeycloakIdAndActiveTrue(userId)
                 .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
 
         // Cập nhật mật khẩu lên Keycloak
@@ -83,6 +85,8 @@ public class AuthService {
         // Cập nhật trạng thái DB thành ACTIVE
         user.setState(UserState.ACTIVE);
         userRepository.save(user);
+
+        emailService.sendWelcomeEmail(user.getEmail(), user.getFirstName());
     }
 
     public TokenResponse refreshToken(RefreshTokenRequest request){
@@ -118,7 +122,7 @@ public class AuthService {
 
         String newPassword = generateRandomPassword();
 
-        keycloakService.updatePassword(user.getId(), newPassword);
+        keycloakService.updatePassword(user.getKeycloakId(), newPassword);
 
         emailService.sendPasswordResetEmail(
                 user.getEmail(),

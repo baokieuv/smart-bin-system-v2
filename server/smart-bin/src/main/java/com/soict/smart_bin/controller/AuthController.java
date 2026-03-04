@@ -81,11 +81,4 @@ public class AuthController {
         userService.resendVerificationEmail(request);
         return responseFactory.response(SuccessCode.OK, "Verification email sent successfully");
     }
-
-    @GetMapping("/me")
-    public ResponseEntity<ApiResponseFormat<Object>> getCurrentUser(@AuthenticationPrincipal Jwt jwt) {
-        String userId = jwt.getSubject();
-        var user = userService.getUserById(userId);
-        return responseFactory.response(SuccessCode.OK, user);
-    }
 }

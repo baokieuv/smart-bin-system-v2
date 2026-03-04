@@ -3,8 +3,12 @@ package com.soict.smart_bin.entity;
 import com.soict.smart_bin.common.TokenType;
 import com.soict.smart_bin.common.UserState;
 import jakarta.persistence.*;
+import lombok.Generated;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.GenericGenerator;
+
+import java.util.UUID;
 
 
 @Entity
@@ -13,7 +17,11 @@ import lombok.Setter;
 @Setter
 public class User extends BaseEntity {
     @Id
-    private String id; // Keycloak user ID
+    @GeneratedValue(generator = "uuid-v7-generator")
+    private UUID id;
+
+    @Column(nullable = false)
+    private String keycloakId; // Keycloak user ID
 
     @Column(unique = true, nullable = false)
     private String email;

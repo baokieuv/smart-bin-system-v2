@@ -49,22 +49,6 @@ public class MinioService {
         this.minioClient = minioClient;
     }
 
-    public String uploadFile(MultipartFile file) throws Exception{
-        validateFileUpload(file);
-
-        String fileName = generateFileName(Objects.requireNonNull(file.getContentType()));
-        minioClient.putObject(
-                PutObjectArgs.builder()
-                        .bucket(bucketName)
-                        .object(fileName)
-                        .stream(file.getInputStream(), file.getSize(), -1)
-                        .contentType(file.getContentType())
-                        .build()
-        );
-
-        return String.format("%s/%s/%s", minioUrl, bucketName, fileName);
-    }
-
     public List<String> getFileList() throws Exception {
         logger.debug("Fetching file list from bucket: {}", bucketName);
 
@@ -82,6 +66,22 @@ public class MinioService {
 
         logger.info("Found {} files in bucket: {}", fileNames.size(), bucketName);
         return fileNames;
+    }
+
+    public String uploadFile(MultipartFile file, String filename) throws Exception{
+        validateFileUpload(file);
+
+//        String fileName = generateFileName(Objects.requireNonNull(file.getContentType()));
+        minioClient.putObject(
+                PutObjectArgs.builder()
+                        .bucket(bucketName)
+                        .object(filename)
+                        .stream(file.getInputStream(), file.getSize(), -1)
+                        .contentType(file.getContentType())
+                        .build()
+        );
+
+        return String.format("%s/%s/%s", minioUrl, bucketName, filename);
     }
 
     private void validateFileUpload(MultipartFile file) {

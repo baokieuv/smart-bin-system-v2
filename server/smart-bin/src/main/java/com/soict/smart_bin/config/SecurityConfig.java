@@ -29,6 +29,8 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/change-password").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/complete-profile").authenticated()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/users/").permitAll()
                         .requestMatchers("/api/v1/users/**").authenticated()
