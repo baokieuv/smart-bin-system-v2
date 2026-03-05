@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGoogleLogin } from '@react-oauth/google';
+import { authApi } from '@/services/api/auth';
+import { LoginRequest } from '@/types/auth';
+import { usersApi } from '@/services/api/users';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -18,12 +21,7 @@ export default function LoginPage() {
         setError('');
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login-password`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            });
-            const data = await res.json();
+            const data = await authApi.loginPassword({ email, password })
 
             if (data.success) {
                 localStorage.setItem('access_token', data.data.access_token);
@@ -41,28 +39,20 @@ export default function LoginPage() {
         onSuccess: async (tokenResponse) => {
             setError('');
             try {
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login-google`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: tokenResponse.access_token }),
-                });
-                const data = await res.json();
+                const dataLogin = await authApi.loginGoogle({token: tokenResponse.access_token});
 
-                if (data.success) {
-                    localStorage.setItem('access_token', data.data.access_token);
+                if (dataLogin.success) {
+                    localStorage.setItem('access_token', dataLogin.data.access_token);
 
-                    const meRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/me`, {
-                        headers: { 'Authorization': `Bearer ${data.data.access_token}` }
-                    });
-                    const meData = await meRes.json();
+                    const userData = await usersApi.me(dataLogin.data.access_token);
 
-                    if (meData.data.state === 'PENDING') {
+                    if (userData.data.state === 'PENDING') {
                         router.push('/auth/complete-profile');
                     } else {
                         router.push('/dashboard');
                     }
                 } else {
-                    setError(data.message || 'Đăng nhập Google thất bại');
+                    setError(dataLogin.message || 'Đăng nhập Google thất bại');
                 }
             } catch (err) {
                 setError('Đăng nhập Google thất bại');
@@ -91,8 +81,17 @@ export default function LoginPage() {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Password</label>
-                        <div className="relative mt-1">
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-sm font-medium text-gray-700">Password</label>
+                            {/* ← THÊM LINK QUÊN MẬT KHẨU */}
+                            <a
+                                href="/auth/reset-password"
+                                className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                            >
+                                Quên mật khẩu?
+                            </a>
+                        </div>
+                        <div className="relative">
                             <input
                                 type={showPassword ? 'text' : 'password'}
                                 value={password}

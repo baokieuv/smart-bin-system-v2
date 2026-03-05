@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { authApi } from '@/services/api/auth';
 
 export default function CompleteProfilePage() {
     const router = useRouter();
@@ -33,16 +34,15 @@ export default function CompleteProfilePage() {
         setIsLoading(true);
         const token = localStorage.getItem('access_token');
 
+        if (!token) {
+            setError('No access token found. Please log in again.');
+            setIsLoading(false);
+            router.push('/auth/login');
+            return;
+        }
+
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/complete-profile`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ password }),
-            });
-            const data = await res.json();
+            const data = await authApi.completeProfile(password, token);
 
             if (data.success) {
                 router.push('/dashboard');
