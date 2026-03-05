@@ -136,7 +136,7 @@ public class UserService {
     }
 
     public void resendVerificationEmail(ResendVerificationRequest request) {
-        User user = userRepository.findByEmail(request.email())
+        User user = userRepository.findByEmailAndActiveTrue(request.email())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         if (user.isEmailVerified()) {
@@ -144,6 +144,7 @@ public class UserService {
         }
 
         user.setActionToken(UUID.randomUUID().toString());
+        user.setTokenType(TokenType.VERIFY_EMAIL);
         user.setActionTokenExpiry(System.currentTimeMillis() + Constants.VERIFICATION_TOKEN_EXPIRY);
 
         userRepository.save(user);

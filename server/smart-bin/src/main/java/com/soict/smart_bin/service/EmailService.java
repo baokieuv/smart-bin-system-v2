@@ -15,8 +15,8 @@ public class EmailService {
     @Value("${app.email.from}")
     private String fromEmail;
 
-    @Value("${app.email.verification.url}")
-    private String verificationUrl;
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
 
     public EmailService(JavaMailSender mailSender){
         this.mailSender = mailSender;
@@ -42,7 +42,7 @@ public class EmailService {
     }
 
     private String buildVerificationEmailHtml(String firstName, String token){
-        String verifyLink = verificationUrl + "?token=" + token;
+        String verifyLink = frontendUrl + "/auth/verify-email" + "?token=" + token;
 
         return """
             <!DOCTYPE html>
@@ -155,7 +155,7 @@ public class EmailService {
     }
 
     @Async("emailExecutor")
-    public void sendPasswordResetEmail(String toEmail, String firstName, String newPassword){
+    public void sendPasswordResetEmail(String toEmail, String firstName, String resetToken){
         try{
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -164,7 +164,8 @@ public class EmailService {
             helper.setTo(toEmail);
             helper.setSubject("Smart Bin - Password Reset Request");
 
-            String htmlContent = buildPasswordResetEmailHtml(firstName, newPassword, toEmail);
+            // Truyền resetToken thay vì newPassword
+            String htmlContent = buildPasswordResetEmailHtml(firstName, resetToken);
             helper.setText(htmlContent, true);
 
             mailSender.send(message);
@@ -173,7 +174,10 @@ public class EmailService {
         }
     }
 
-    private String buildPasswordResetEmailHtml(String firstName, String newPassword, String toEmail) {
+    private String buildPasswordResetEmailHtml(String firstName, String resetToken) {
+        // Tạo link trỏ về Frontend kèm token
+        String resetLink = frontendUrl + "/auth/confirm-reset" + "?token=" + resetToken;
+
         return """
                 <!DOCTYPE html>
                 <html>
@@ -186,15 +190,11 @@ public class EmailService {
                         .header h1 { margin: 0; font-size: 22px; color: #111827; font-weight: 600; }
                         .content { padding: 32px; }
                         .content h2 { font-size: 18px; color: #111827; margin-top: 0; font-weight: 500; }
-                       \s
-                        .password-box { background-color: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 20px; text-align: center; margin: 24px 0; }
-                        .password-text { font-size: 26px; font-weight: 700; color: #111827; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; letter-spacing: 4px; margin: 0; }
-                       \s
+                        .button { display: inline-block; padding: 12px 28px; background-color: #10B981; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; margin: 24px 0; }
+                        .text-muted { color: #6B7280; font-size: 14px; }
+                        .link-box { background-color: #F9FAFB; border-radius: 6px; padding: 12px; margin-top: 12px; word-break: break-all; font-size: 13px; color: #10B981; }
                         .warning-box { border-left: 3px solid #EF4444; padding-left: 16px; margin: 24px 0; font-size: 14px; color: #4B5563; }
                         .warning-title { font-weight: 600; color: #111827; margin-bottom: 8px; display: block; }
-                       \s
-                        .steps { padding-left: 20px; margin-top: 16px; color: #4B5563; font-size: 14px; }
-                        .steps li { margin-bottom: 6px; }
                         .footer { padding: 24px 32px; text-align: center; color: #9CA3AF; font-size: 13px; border-top: 1px solid #F3F4F6; background-color: #ffffff; }
                     </style>
                 </head>
@@ -205,29 +205,20 @@ public class EmailService {
                         </div>
                         <div class="content">
                             <h2>Hello %s,</h2>
-                            <p>We received a request to reset the password for your account associated with <strong>%s</strong>.</p>
+                            <p>We received a request to reset the password for your Smart Bin System account.</p>
+                            <p>Click the button below to securely set a new password:</p>
                           \s
-                            <p>Your new temporary password is:</p>
+                            <a href="%s" class="button">Reset Password</a>
                           \s
-                            <div class="password-box">
-                                <p class="password-text">%s</p>
+                            <p class="text-muted">If the button doesn't work, copy and paste this link into your browser:</p>
+                            <div class="link-box">
+                                %s
                             </div>
                           \s
                             <div class="warning-box">
                                 <span class="warning-title">Security Notice:</span>
-                                For your security, please log in immediately and change this temporary password. Do not share it with anyone.
+                                This link will expire in 15 minutes. If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
                             </div>
-                          \s
-                            <p style="font-size: 15px; font-weight: 500; color: #111827; margin-top: 24px;">Next steps:</p>
-                            <ol class="steps">
-                                <li>Return to the login page</li>
-                                <li>Sign in using the temporary password</li>
-                                <li>Navigate to your profile settings to set a new password</li>
-                            </ol>
-                          \s
-                            <p style="margin-top: 32px; font-size: 13px; color: #6B7280;">
-                                If you did not request a password reset, please contact our support team immediately to secure your account.
-                            </p>
                         </div>
                         <div class="footer">
                             &copy; 2026 Smart Bin System. All rights reserved.<br>
@@ -236,6 +227,6 @@ public class EmailService {
                     </div>
                 </body>
                 </html>
-              \s""".formatted(firstName, toEmail, newPassword);
+              \s""".formatted(firstName, resetLink, resetLink);
     }
 }

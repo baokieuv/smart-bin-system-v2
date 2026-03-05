@@ -3,10 +3,9 @@ package com.soict.smart_bin.service;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.soict.smart_bin.common.Constants;
+import com.soict.smart_bin.common.TokenType;
 import com.soict.smart_bin.common.UserState;
-import com.soict.smart_bin.dto.auth.LoginRequest;
-import com.soict.smart_bin.dto.auth.RefreshTokenRequest;
-import com.soict.smart_bin.dto.auth.TokenResponse;
+import com.soict.smart_bin.dto.auth.*;
 import com.soict.smart_bin.entity.User;
 import com.soict.smart_bin.exception.ApiException;
 import com.soict.smart_bin.exception.CoreErrorCode;
@@ -17,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -94,46 +94,80 @@ public class AuthService {
     }
 
     @Transactional
-    public void changePassword(String userId, String oldPassword, String newPassword) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+    public String changePassword(String keycloakId, ChangePasswordRequest request) {
+        // 1. Lấy thông tin user
+        User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
+                .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
 
-        // Verify old password by attempting login
-        try {
-            LoginRequest loginRequest = new LoginRequest(user.getEmail(), oldPassword);
-            keycloakService.login(loginRequest);
-        } catch (Exception e) {
-            throw new RuntimeException("Current password is incorrect");
+        // 2. Validate đầu vào
+        if (request.currentPassword().equals(request.newPassword())) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Mật khẩu mới không được trùng với mật khẩu hiện tại.");
         }
 
-        // Update password in Keycloak
-        keycloakService.updatePassword(userId, newPassword);
+        if (!request.newPassword().equals(request.confirmPassword())) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Mật khẩu xác nhận không khớp.");
+        }
 
-        userRepository.save(user);
+        // 3. Xác thực mật khẩu cũ
+        try {
+            LoginRequest loginRequest = new LoginRequest(user.getEmail(), request.currentPassword());
+            keycloakService.login(loginRequest);
+        } catch (Exception e) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Mật khẩu hiện tại không chính xác.");
+        }
+
+        // 4. Cập nhật mật khẩu mới lên Keycloak
+        keycloakService.updatePassword(keycloakId, request.newPassword());
+
+        return "Change password successfully.";
+    }
+
+    public String requestPasswordReset(ResetPasswordRequest request){
+        User user = userRepository.findByEmailAndActiveTrue(request.email()).orElse(null);
+
+        if (user != null){
+            String resetToken = UUID.randomUUID().toString();
+
+            user.setActionToken(resetToken);
+            user.setActionTokenExpiry(System.currentTimeMillis() + (15 * 60 * 1000));
+            user.setTokenType(TokenType.RESET_PASSWORD);
+
+            userRepository.save(user);
+
+            emailService.sendPasswordResetEmail(
+                    user.getEmail(),
+                    user.getFirstName(),
+                    resetToken
+            );
+        }
+
+        return "Nếu email hợp lệ và đã được xác thực, một hướng dẫn đặt lại mật khẩu đã được gửi đến bạn.";
     }
 
     @Transactional
-    public String resetPassword(String email){
-        User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found with email: " + email));
+    public String confirmPasswordReset(ConfirmPasswordReset request){
+        User user = userRepository.findByActionTokenAndActiveTrue(request.token())
+                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Token không hợp lệ hoặc không tồn tại."));
+
+        // 2. Kiểm tra token hết hạn chưa
+        if (System.currentTimeMillis() > user.getActionTokenExpiry()) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Token đã hết hạn. Vui lòng yêu cầu lại.");
+        }
 
         if(!user.isEmailVerified()){
             throw new RuntimeException("Email not verified. Please verify your email first.");
         }
 
-        String newPassword = generateRandomPassword();
+        // 3. Cập nhật mật khẩu mới lên Keycloak
+        keycloakService.updatePassword(user.getKeycloakId(), request.newPassword());
 
-        keycloakService.updatePassword(user.getKeycloakId(), newPassword);
-
-        emailService.sendPasswordResetEmail(
-                user.getEmail(),
-                user.getFirstName(),
-                newPassword
-        );
-
+        // 4. Hủy token để chống Replay Attack
+        user.setActionToken(null);
+        user.setActionTokenExpiry(null);
+        user.setTokenType(null);
         userRepository.save(user);
 
-        return "Password reset successful. Please check your email for the new password.";
-
+        return "Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.";
     }
 
     private String generateRandomPassword(){

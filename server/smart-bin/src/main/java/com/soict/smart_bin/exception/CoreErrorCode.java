@@ -17,6 +17,7 @@ public enum CoreErrorCode implements ApiResponseCode {
     VALIDATION_ERROR(false,"AVT0007", "error.input_validation_failed", HttpStatus.OK),
     MALFORMED_REQUEST_BODY(false,"AVT0008", "error.invalid_input", HttpStatus.OK),
     MISSING_REQUEST_PARAMETER(false,"AVT0009", "error.required_parameter", HttpStatus.OK),
+    BAD_REQUEST(false, "AVT0010", "error.bad_request", HttpStatus.BAD_REQUEST)
     ;
     private final boolean success;
     private final String code;

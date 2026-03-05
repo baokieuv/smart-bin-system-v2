@@ -60,14 +60,21 @@ public class AuthController {
 
     @PostMapping("/change-password")
     public ResponseEntity<ApiResponseFormat<Object>> changePassword(
-            @Valid @RequestBody ChangePasswordRequest request
+            @Valid @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal Jwt jwt
     ){
-        return responseFactory.response(SuccessCode.OK, "");
+        String keycloakId = jwt.getSubject();
+        return responseFactory.response(SuccessCode.OK, authService.changePassword(keycloakId, request));
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<ApiResponseFormat<Object>> resetPassword(){
-        return responseFactory.response(SuccessCode.OK, "");
+    public ResponseEntity<ApiResponseFormat<Object>> requestPasswordReset(@Valid @RequestBody ResetPasswordRequest request){
+        return responseFactory.response(SuccessCode.OK, authService.requestPasswordReset(request));
+    }
+
+    @PostMapping("/confirm-reset")
+    public ResponseEntity<ApiResponseFormat<Object>> confirmPasswordReset(@Valid @RequestBody ConfirmPasswordReset request){
+        return responseFactory.response(SuccessCode.OK, authService.confirmPasswordReset(request));
     }
 
     @GetMapping("/verify-email")
