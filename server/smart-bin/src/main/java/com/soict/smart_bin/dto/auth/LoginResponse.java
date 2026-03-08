@@ -1,4 +1,7 @@
 package com.soict.smart_bin.dto.auth;
 
-public class LoginResponse {
+public record LoginResponse (
+        String token,
+        String refreshToken
+){
 }

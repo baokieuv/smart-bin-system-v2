@@ -3,11 +3,11 @@ package com.soict.smart_bin.entity;
 import com.soict.smart_bin.common.TokenType;
 import com.soict.smart_bin.common.UserState;
 import jakarta.persistence.*;
-import lombok.Generated;
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.annotations.GenericGenerator;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 
@@ -44,4 +44,18 @@ public class User extends BaseEntity {
     private UserState state;
 
     private String avatarUrl;
+
+    @OneToMany(mappedBy = "user", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
+    private List<Device> devices = new ArrayList<>();
+
+    // --- Helper methods để quản lý quan hệ 2 chiều ---
+    public void addDevice(Device device) {
+        devices.add(device);
+        device.setUser(this);
+    }
+
+    public void removeDevice(Device device) {
+        devices.remove(device);
+        device.setUser(null);
+    }
 }
