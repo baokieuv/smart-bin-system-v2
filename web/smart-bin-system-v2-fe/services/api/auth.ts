@@ -1,183 +1,81 @@
 import { ChangePasswordRequest, ConfirmResetPassword, LoginGoogleRequest, LoginRequest } from "@/types/auth";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9999/api/v1';
+import { api } from "@/lib/api-client";
 
 export const authApi = {
+    // Login không cần auth, skip refresh token mechanism
     loginPassword: async (request: LoginRequest) => {
-        const response = await fetch(`${API_BASE_URL}/auth/login-password`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: request.email, password: request.password })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
+        return api.post('/auth/login-password', 
+            { email: request.email, password: request.password },
+            { skipAuthRefresh: true }
+        );
     },
 
+    // Login Google không cần auth, skip refresh token mechanism
     loginGoogle: async (request: LoginGoogleRequest) => {
-        const response = await fetch(`${API_BASE_URL}/auth/login-google`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: request.token }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
+        return api.post('/auth/login-google',
+            { token: request.token },
+            { skipAuthRefresh: true }
+        );
     },
 
-    completeProfile: async (password: string, access_token: string) => {
-
-        const response = await fetch(`${API_BASE_URL}/auth/complete-profile`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${access_token}`
-            },
-            body: JSON.stringify({ password }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
+    // Complete profile cần auth, sử dụng auto refresh
+    completeProfile: async (password: string) => {
+        return api.post('/auth/complete-profile', { password });
     },
 
+    // Refresh token không cần auth, skip refresh token mechanism
     refresh: async (refresh_token: string) => {
-        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ refreshToken: refresh_token }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
+        return api.post('/auth/refresh',
+            { refreshToken: refresh_token },
+            { skipAuthRefresh: true }
+        );
     },
 
+    // Logout không cần auth refresh vì đang logout
     logout: async (refresh_token: string) => {
-        const response = await fetch(`${API_BASE_URL}/auth/logout`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ refreshToken: refresh_token }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
+        return api.post('/auth/logout',
+            { refreshToken: refresh_token },
+            { skipAuthRefresh: true }
+        );
     },
 
-    changePassword: async (request: ChangePasswordRequest, access_token: string) => {
-        const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${access_token}`
-            },
-            body: JSON.stringify({ currentPassword: request.currentPassword, newPassword: request.newPassword, confirmPassword: request.confirmPassword }),
+    // Change password cần auth, sử dụng auto refresh
+    changePassword: async (request: ChangePasswordRequest) => {
+        return api.post('/auth/change-password', {
+            currentPassword: request.currentPassword,
+            newPassword: request.newPassword,
+            confirmPassword: request.confirmPassword
         });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
     },
 
+    // Reset password không cần auth, skip refresh token mechanism
     resetPassword: async (email: string) => {
-        const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
+        return api.post('/auth/reset-password',
+            { email },
+            { skipAuthRefresh: true }
+        );
     },
 
+    // Confirm reset password không cần auth, skip refresh token mechanism
     confirmResetPassword: async(request: ConfirmResetPassword) => {
-        const response = await fetch(`${API_BASE_URL}/auth/confirm-reset`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ token: request.token, newPassword: request.newPassword }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
+        return api.post('/auth/confirm-reset',
+            { token: request.token, newPassword: request.newPassword },
+            { skipAuthRefresh: true }
+        );
     },
 
+    // Verify email không cần auth, skip refresh token mechanism
     verifyEmail: async (token: string) => {
-        const response = await fetch(`${API_BASE_URL}/auth/verify-email?token=${token}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
+        return api.get(`/auth/verify-email?token=${token}`,
+            { skipAuthRefresh: true }
+        );
     },
 
+    // Resend verification không cần auth, skip refresh token mechanism
     resendVerification: async (email: string) => {
-        const response = await fetch(`${API_BASE_URL}/auth/resend-verification`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error('Có lỗi xảy ra, vui lòng thử lại sau.');
-        }
-
-        return data;
+        return api.post('/auth/resend-verification',
+            { email },
+            { skipAuthRefresh: true }
+        );
     }
 }

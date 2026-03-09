@@ -25,6 +25,7 @@ export default function LoginPage() {
 
             if (data.success) {
                 localStorage.setItem('access_token', data.data.access_token);
+                localStorage.setItem('refresh_token', data.data.refresh_token);
                 router.push('/dashboard');
             } else {
                 setError(data.message || 'Sai email hoặc mật khẩu');
@@ -43,8 +44,9 @@ export default function LoginPage() {
 
                 if (dataLogin.success) {
                     localStorage.setItem('access_token', dataLogin.data.access_token);
+                    localStorage.setItem('refresh_token', dataLogin.data.refresh_token);
 
-                    const userData = await usersApi.me(dataLogin.data.access_token);
+                    const userData = await usersApi.me();
 
                     if (userData.data.state === 'PENDING') {
                         router.push('/auth/complete-profile');

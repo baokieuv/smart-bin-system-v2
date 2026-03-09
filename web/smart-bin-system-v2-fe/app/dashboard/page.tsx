@@ -30,16 +30,20 @@ export default function DashboardPage() {
             }
 
             try {
-                const data = await usersApi.me(token);
+                const data = await usersApi.me();
 
                 if (data.success) {
                     setUserInfo(data.data);
                 } else {
                     localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
                     router.push('/auth/login');
                 }
             } catch (error) {
                 console.error('Lỗi khi lấy thông tin user:', error);
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+                router.push('/auth/login');
             } finally {
                 setIsLoading(false);
             }
@@ -74,15 +78,10 @@ export default function DashboardPage() {
 
             const croppedFile = new File([croppedBlob], "avatar.jpg", { type: "image/jpeg" });
 
-            const token = localStorage.getItem('access_token');
-            if (!token) {
-                alert('Token không tồn tại. Vui lòng đăng nhập lại.');
-                return;
-            }
             const formData = new FormData();
             formData.append('file', croppedFile);
 
-            const data = await usersApi.uploadImage(formData, token);
+            const data = await usersApi.uploadImage(formData);
 
             if (data.success) {
                 const newAvatarUrl = data.data.replace(/^"|"$/g, '');
@@ -179,6 +178,7 @@ export default function DashboardPage() {
                         <button
                             onClick={() => {
                                 localStorage.removeItem('access_token');
+                                localStorage.removeItem('refresh_token');
                                 router.push('/auth/login');
                             }}
                             title="Đăng xuất"

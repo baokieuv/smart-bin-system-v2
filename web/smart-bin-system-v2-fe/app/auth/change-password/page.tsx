@@ -46,14 +46,9 @@ export default function ChangePasswordPage() {
         }
 
         setStatus('loading');
-        const access_token = localStorage.getItem('access_token');
-        if (!access_token) {
-            router.push('/auth/login');
-            return;
-        }
 
         try {
-            await authApi.changePassword({ currentPassword, newPassword, confirmPassword }, access_token);
+            await authApi.changePassword({ currentPassword, newPassword, confirmPassword });
             setStatus('success');
         } catch (err: any) {
             setStatus('error');

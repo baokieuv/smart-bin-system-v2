@@ -32,17 +32,9 @@ export default function CompleteProfilePage() {
         }
 
         setIsLoading(true);
-        const token = localStorage.getItem('access_token');
-
-        if (!token) {
-            setError('No access token found. Please log in again.');
-            setIsLoading(false);
-            router.push('/auth/login');
-            return;
-        }
 
         try {
-            const data = await authApi.completeProfile(password, token);
+            const data = await authApi.completeProfile(password);
 
             if (data.success) {
                 router.push('/dashboard');
