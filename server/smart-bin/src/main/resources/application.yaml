@@ -68,7 +68,7 @@ keycloak:
   server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8180}
   realm: ${KEYCLOAK_REALM:smart-bin-realm}
   client-id: ${KEYCLOAK_CLIENT_ID:smart-bin-client}
-  client-secret: ${KEYCLOAK_CLIENT_SECRET:cst5nPXZXHl33B4XvoP9WvXJIK5YmShJ} # Ẩn secret
+  client-secret: ${KEYCLOAK_CLIENT_SECRET:yzWEJ5qP2brO2MZuvMQRgSJhTNFnKe1v} # Ẩn secret
   admin-username: ${KEYCLOAK_ADMIN_USERNAME:admin}
   admin-password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
 
@@ -80,5 +80,5 @@ minio:
 
 things-board:
   base-url: ${THINGS_BOARD_URL:http://localhost:8080}
-  email: ${THINGS_BOARD_EMAIL:tenant@thingsboard.org.com}
+  email: ${THINGS_BOARD_EMAIL:tenant@thingsboard.org}
   password: ${THINGS_BOARD_PASS:tenant}

@@ -18,7 +18,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./redis-data:/data
+      - ./redis_data:/data
     networks:
       - smart_bin_network
 
@@ -28,11 +28,12 @@ services:
     env_file:
       - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres} 
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
+      - ./init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
     networks:
       - smart_bin_network
 
@@ -43,20 +44,20 @@ services:
       - .env
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_HOSTNAME: localhost 
-      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_PORT: 8180
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_HTTP_ENABLED: "true"
       KC_PROXY: edge
     command: start-dev --features=token-exchange,admin-fine-grained-authz
     ports:
-      - "8080:8080"
+      - "8180:8080"
     depends_on:
       - postgres
     networks:
@@ -79,6 +80,32 @@ services:
       - ./mariadb_data:/var/lib/mysql
     networks:
       - smart_bin_network
+
+  thingsboard-ce:
+    restart: always
+    image: "thingsboard/tb-node:4.2.0"
+    ports:
+      - "8080:8080"
+      - "7070:7070"
+      - "1883:1883"
+      - "8883:8883"
+      - "5683-5688:5683-5688/udp"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+    environment:
+      TB_SERVICE_ID: tb-ce-node
+      DATABASE_TS_TYPE: sql 
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thingsboard
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER} 
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD} 
+    depends_on:
+      - postgres
+    networks:
+      - smart_bin_network
+
 networks:
   smart_bin_network:
     driver: bridge
