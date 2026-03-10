@@ -23,8 +23,23 @@ public class ThingsBoardService {
         this.repository = repository;
     }
 
-    public void addDevice(){
+    public JsonNode addDevice(String name, String type) {
+        var tbRequest = new java.util.HashMap<String, String>();
+        tbRequest.put("name", name);
+        tbRequest.put("type", type);
 
+        return restClient.post()
+                .uri("/api/device")
+                .body(tbRequest)
+                .retrieve()
+                .body(JsonNode.class);
+    }
+
+    public JsonNode getDeviceCredentials(String tbDeviceId) {
+        return restClient.get()
+                .uri("/api/device/{deviceId}/credentials", tbDeviceId)
+                .retrieve()
+                .body(JsonNode.class);
     }
 
     public JsonNode getTelemetries(String deviceId, String keys, long startTs, long endTs){

@@ -79,6 +79,6 @@ minio:
   secret_key: ${MINIO_SECRET_KEY:minioadmin}
 
 things-board:
-  base-url: ${THINGS_BOARD_URL:http://localhost:8080}
+  url: ${THINGS_BOARD_URL:http://localhost:8080}
   email: ${THINGS_BOARD_EMAIL:tenant@thingsboard.org}
   password: ${THINGS_BOARD_PASS:tenant}

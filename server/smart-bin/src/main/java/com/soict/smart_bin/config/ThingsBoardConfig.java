@@ -17,7 +17,7 @@ public class ThingsBoardConfig {
         var requestFactory = new BufferingClientHttpRequestFactory(new SimpleClientHttpRequestFactory());
 
         return RestClient.builder()
-                .baseUrl("")
+                .baseUrl("http://localhost:8080")
                 .requestFactory(requestFactory)
                 .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)

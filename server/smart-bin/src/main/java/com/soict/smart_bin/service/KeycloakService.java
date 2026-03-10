@@ -88,7 +88,7 @@ public class KeycloakService {
                     .add("grant_type", "password")
                     .add("client_id", clientId)
                     .add("client_secret", clientSecret)
-                    .add("username", request.email())
+                    .add("username", request.username())
                     .add("password", request.password())
                     .build();
 

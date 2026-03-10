@@ -1,7 +1,6 @@
 package com.soict.smart_bin.service;
 
 import com.auth0.jwt.JWT;
-import com.auth0.jwt.interfaces.DecodedJWT;
 import com.soict.smart_bin.common.Constants;
 import com.soict.smart_bin.common.TokenType;
 import com.soict.smart_bin.common.UserState;
@@ -28,7 +27,7 @@ public class AuthService {
     private static final SecureRandom random = new SecureRandom();
 
     public TokenResponse loginPassword(LoginRequest request) {
-        User user = userRepository.findByEmailAndActiveTrue(request.email())
+        User user = userRepository.findByEmailAndActiveTrue(request.username())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         if (!user.isEmailVerified()) {
