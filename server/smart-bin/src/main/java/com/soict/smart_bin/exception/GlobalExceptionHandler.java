@@ -29,19 +29,19 @@ class GlobalExceptionHandler {
 //        this.messageSource = messageSource;
     }
 
-    @ExceptionHandler(ApiException.class)
-    public ResponseEntity<ApiResponseFormat<Object>> handleApiException(ApiException ex, Locale locale) {
-        ApiResponseCode errorCode = ex.getErrorCode();
-        log.info("ApiException occurred: code={}, message='{}'", errorCode.getCode(), errorCode.getMessage());
-
-        ApiResponseFormat.ApiData<Object> errorResponse = new ApiResponseFormat.ApiData<>(
-                false,
-                errorCode.getCode(),
-                errorCode.getMessage(),
-                ex.getData() // Include optional data (e.g., validation error details)
-        );
-        return new ResponseEntity<>(responseFactory.response(errorResponse, ex.getMessageArguments()), errorCode.getHttpStatus());
-    }
+//    @ExceptionHandler(ApiException.class)
+//    public ResponseEntity<ApiResponseFormat<Object>> handleApiException(ApiException ex, Locale locale) {
+//        ApiResponseCode errorCode = ex.getErrorCode();
+//        log.info("ApiException occurred: code={}, message='{}'", errorCode.getCode(), errorCode.getMessage());
+//
+//        ApiResponseFormat.ApiData<Object> errorResponse = new ApiResponseFormat.ApiData<>(
+//                false,
+//                errorCode.getCode(),
+//                errorCode.getMessage(),
+//                ex.getData() // Include optional data (e.g., validation error details)
+//        );
+//        return new ResponseEntity<>(responseFactory.response(errorResponse, ex.getMessageArguments()), errorCode.getHttpStatus());
+//    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponseFormat<Object>> handleValidationExceptions(MethodArgumentNotValidException ex) {
@@ -92,6 +92,7 @@ class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseFormat<Object>> handleGenericException(Exception ex) {
         log.error("An unexpected error occurred: ", ex);
         CoreErrorCode errorCode = CoreErrorCode.INTERNAL_SERVER_ERROR;
+        ex.printStackTrace();
 
         ApiResponseFormat.ApiData<Object> errorResponse = new ApiResponseFormat.ApiData<>(
                 false,

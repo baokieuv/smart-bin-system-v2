@@ -12,23 +12,25 @@ import org.springframework.web.client.RestClientResponseException;
 @Configuration
 public class ThingsBoardTokenManager {
 
-    @Value("${things-board.url}")
-    private String baseUrl;
+    private final String email;
 
-    @Value("${things-board.email}")
-    private String email;
-
-    @Value("${things-board.password}")
-    private String password;
+    private final String password;
 
     private final RestClient authClient;
 
     private String jwtToken;
     private String refreshToken;
 
-    public ThingsBoardTokenManager() {
+    public ThingsBoardTokenManager(
+            @Value("${things-board.url}") String baseUrl,
+            @Value("${things-board.email}") String email,
+            @Value("${things-board.password}") String password)
+    {
+        this.email = email;
+        this.password = password;
+
         this.authClient = RestClient.builder()
-                .baseUrl("http://localhost:8080")
+                .baseUrl(baseUrl)
                 .defaultHeader("Accept", "application/json")
                 .defaultHeader("Content-Type", "application/json")
                 .build();
