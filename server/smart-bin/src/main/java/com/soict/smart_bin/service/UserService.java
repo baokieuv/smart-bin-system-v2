@@ -8,7 +8,9 @@ import com.soict.smart_bin.dto.user.CreateUserRequest;
 import com.soict.smart_bin.dto.user.UserDto;
 import com.soict.smart_bin.entity.User;
 import com.soict.smart_bin.exception.ApiException;
+import com.soict.smart_bin.exception.AuthErrorCode;
 import com.soict.smart_bin.exception.CoreErrorCode;
+import com.soict.smart_bin.exception.UserErrorCode;
 import com.soict.smart_bin.mapper.UserMapper;
 import com.soict.smart_bin.repository.UserRepository;
 import jakarta.transaction.Transactional;
@@ -46,7 +48,7 @@ public class UserService {
         if (user != null) {
             // Nếu user đã tồn tại và đang active -> Báo lỗi
             if (user.isActive()) {
-                throw new ApiException(CoreErrorCode.USER_ALREADY_EXISTED);
+                throw new ApiException(UserErrorCode.USER_ALREADY_EXISTED);
             }
             // Nếu user tồn tại nhưng inactive -> Kích hoạt lại
             user.setActive(true);
@@ -85,14 +87,14 @@ public class UserService {
     @Transactional
     public String verifyEmail(String token) {
         User user = userRepository.findByActionTokenAndActiveTrue(token)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.INVALID_TOKEN));
+                .orElseThrow(() -> new ApiException(AuthErrorCode.INVALID_TOKEN));
 
         if (user.isEmailVerified()) {
             throw new RuntimeException("Email already verified");
         }
 
         if (System.currentTimeMillis() > user.getActionTokenExpiry()) {
-            throw new ApiException(CoreErrorCode.INVALID_TOKEN);
+            throw new ApiException(AuthErrorCode.INVALID_TOKEN);
         }
 
         user.setEmailVerified(true);
@@ -111,14 +113,14 @@ public class UserService {
         UUID uuid = UUID.fromString(userId);
 
         User user = userRepository.findByIdAndActiveTrue(uuid)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         return mapper.toDto(user);
     }
 
     public UserDto getUserByKeycloakId(String keycloakId){
         User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         return mapper.toDto(user);
     }
@@ -127,7 +129,7 @@ public class UserService {
         UUID uuid = UUID.fromString(userId);
 
         User user = userRepository.findByIdAndActiveTrue(uuid)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         user.setActive(false);
         user.setState(UserState.DELETED);
@@ -159,7 +161,7 @@ public class UserService {
     public String validateAndUploadImage(MultipartFile file, String keycloakId) {
 
         User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         try {
             String avatarUrl = user.getAvatarUrl();

@@ -8,6 +8,7 @@ import com.soict.smart_bin.dto.auth.*;
 import com.soict.smart_bin.entity.User;
 import com.soict.smart_bin.exception.ApiException;
 import com.soict.smart_bin.exception.CoreErrorCode;
+import com.soict.smart_bin.exception.UserErrorCode;
 import com.soict.smart_bin.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -76,7 +77,7 @@ public class AuthService {
     @Transactional
     public void completeProfile(String userId, String newPassword) {
         User user = userRepository.findByKeycloakIdAndActiveTrue(userId)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         // Cập nhật mật khẩu lên Keycloak
         keycloakService.updatePassword(userId, newPassword);
@@ -96,7 +97,7 @@ public class AuthService {
     public String changePassword(String keycloakId, ChangePasswordRequest request) {
         // 1. Lấy thông tin user
         User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         // 2. Validate đầu vào
         if (request.currentPassword().equals(request.newPassword())) {

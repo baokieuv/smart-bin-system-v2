@@ -1,6 +1,7 @@
 package com.soict.smart_bin.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.soict.smart_bin.dto.auth.LoginRequest;
 import com.soict.smart_bin.dto.auth.LoginResponse;
 import com.soict.smart_bin.dto.auth.RefreshTokenRequest;
@@ -8,15 +9,19 @@ import com.soict.smart_bin.entity.Device;
 import com.soict.smart_bin.exception.ApiException;
 import com.soict.smart_bin.exception.CoreErrorCode;
 import com.soict.smart_bin.repository.DeviceRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.http.HttpStatusCode;
 
 @Service
+@Slf4j
 public class ThingsBoardService {
     private final RestClient restClient;
     private final DeviceRepository repository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ThingsBoardService(@Qualifier("tbRestClient") RestClient restClient, DeviceRepository repository) {
         this.restClient = restClient;

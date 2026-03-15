@@ -1,6 +1,11 @@
 package com.soict.smart_bin.interceptor;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.soict.smart_bin.common.ThingsBoardTokenManager;
+import com.soict.smart_bin.exception.ApiException;
+import com.soict.smart_bin.exception.CoreErrorCode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
@@ -13,11 +18,14 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 
 @Component
+@Slf4j
 public class ThingsBoardInterceptor implements ClientHttpRequestInterceptor {
     private final ThingsBoardTokenManager tokenManager;
+    private final ObjectMapper objectMapper;
 
-    public ThingsBoardInterceptor(ThingsBoardTokenManager tokenManager) {
+    public ThingsBoardInterceptor(ThingsBoardTokenManager tokenManager, ObjectMapper objectMapper) {
         this.tokenManager = tokenManager;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -38,10 +46,40 @@ public class ThingsBoardInterceptor implements ClientHttpRequestInterceptor {
             // Lấy token mới và thử gọi lại (Retry)
             String newToken = tokenManager.getJwtToken();
             HttpRequest retryRequest = withBearerToken(request, newToken);
-            return execution.execute(retryRequest, body);
+            response = execution.execute(retryRequest, body);
+        }
+
+        // 3. Xử lý tập trung các mã lỗi HTTP (4xx, 5xx) từ ThingsBoard
+        if (response.getStatusCode().is4xxClientError() || response.getStatusCode().is5xxServerError()) {
+            handleThingsBoardError(response);
         }
 
         return response;
+    }
+
+    private void handleThingsBoardError(ClientHttpResponse response) throws IOException {
+        byte[] errorBytes = response.getBody().readAllBytes();
+        String errorString = new String(errorBytes);
+
+        log.error("ThingsBoard API Error: Status={}, Body={}", response.getStatusCode(), errorString);
+
+        JsonNode errorJson = null;
+        String errorMessage = "Lỗi hệ thống khi giao tiếp với ThingsBoard";
+
+        try {
+            // Parse String thành JSON
+            errorJson = objectMapper.readTree(errorBytes);
+
+            // Lấy field "message" do ThingsBoard trả về (ví dụ: "Device with such name already exists!")
+            if (errorJson != null && errorJson.has("message")) {
+                errorMessage = errorJson.get("message").asText();
+            }
+        } catch (Exception e) {
+            log.warn("Không thể parse error response từ ThingsBoard sang JSON", e);
+        }
+
+        // Ném lỗi ra để GlobalExceptionHandler bắt lấy và trả về client
+        throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, errorJson);
     }
 
     private HttpRequest withBearerToken(HttpRequest request, String token) {

@@ -6,6 +6,7 @@ import com.soict.smart_bin.dto.device.DeviceDto;
 import com.soict.smart_bin.entity.Device;
 import com.soict.smart_bin.exception.ApiException;
 import com.soict.smart_bin.exception.CoreErrorCode;
+import com.soict.smart_bin.exception.DeviceErrorCode;
 import com.soict.smart_bin.mapper.DeviceMapper;
 import com.soict.smart_bin.repository.DeviceRepository;
 import jakarta.transaction.Transactional;
@@ -23,7 +24,7 @@ public class DeviceService {
     @Transactional
     public DeviceDto addDevice(CreateDeviceRequest request){
         if (repository.findByMacAndActiveTrue(request.mac()).isPresent()){
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR);
+            throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_EXISTED);
         }
 
         String deviceName = request.name();
