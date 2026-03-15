@@ -24,7 +24,9 @@ public enum CoreErrorCode implements ApiResponseCode {
     FILE_TOO_LARGE(false, "AVT0009", "error.file_too_large", HttpStatus.PAYLOAD_TOO_LARGE),
 
     // --- External Integrations ---
-    EXTERNAL_API_ERROR(false, "AVT0010", "error.external_api_error", HttpStatus.BAD_GATEWAY);
+    EXTERNAL_API_ERROR(false, "AVT0010", "error.external_api_error", HttpStatus.BAD_GATEWAY),
+    FORBIDDEN_ACCESS(false, "AVT0011", "error.forbidden_access", HttpStatus.BAD_REQUEST),
+    ;
 
     private final boolean success;
     private final String code;

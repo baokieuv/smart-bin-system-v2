@@ -34,24 +34,67 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
-    @PostMapping("/{deviceId}")
-    public ResponseEntity<ApiResponseFormat<Object>> updateDevice(
-            @Valid @RequestBody UpdateDeviceRequest request,
-            @PathVariable String deviceId
+    @GetMapping("/")
+    public ResponseEntity<ApiResponseFormat<Object>> getListDevices(
+            @AuthenticationPrincipal Jwt jwt
     ){
-        var response = deviceService.updateDevice(deviceId, request);
+        String keycloakId = jwt.getSubject();
+        var response = deviceService.getListDevices(keycloakId);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
-    public ResponseEntity<ApiResponseFormat<Object>> deleteDevice(){
-        return responseFactory.response(SuccessCode.OK, "");
+    @GetMapping("/{deviceId}")
+    public ResponseEntity<ApiResponseFormat<Object>> getDeviceDetail(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String deviceId
+    ){
+        String keycloakId = jwt.getSubject();
+        var response = deviceService.getDeviceDetail(keycloakId, deviceId);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
-    public ResponseEntity<ApiResponseFormat<Object>> getTelemetries(){
-        return responseFactory.response(SuccessCode.OK, "");
+    @PostMapping("/{deviceId}")
+    public ResponseEntity<ApiResponseFormat<Object>> updateDevice(
+            @Valid @RequestBody UpdateDeviceRequest request,
+            @PathVariable String deviceId,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String keycloakId = jwt.getSubject();
+        var response = deviceService.updateDevice(deviceId, request, keycloakId);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
-    public ResponseEntity<ApiResponseFormat<Object>> getAttributes(){
-        return responseFactory.response(SuccessCode.OK, "");
+    @DeleteMapping("/{deviceId}")
+    public ResponseEntity<ApiResponseFormat<Object>> deleteDevice(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String deviceId
+    ){
+        String keycloakId = jwt.getSubject();
+        deviceService.deleteDevice(deviceId, keycloakId);
+        return responseFactory.response(SuccessCode.OK, "Deleted device successfully!");
+    }
+
+    @GetMapping("/{deviceId}/telemetries")
+    public ResponseEntity<ApiResponseFormat<Object>> getTelemetries(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String deviceId,
+            @RequestParam String keys,
+            @RequestParam long startTs,
+            @RequestParam long endTs
+    ){
+        String keycloakId = jwt.getSubject();
+        var response = deviceService.getTelemetries(deviceId, keycloakId, keys, startTs, endTs);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @GetMapping("/{deviceId}/attributes")
+    public ResponseEntity<ApiResponseFormat<Object>> getAttributes(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String deviceId,
+            @RequestParam(required = false, defaultValue = "") String keys
+    ){
+        String keycloakId = jwt.getSubject();
+        var response = deviceService.getAttributes(deviceId, keycloakId, keys);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 }

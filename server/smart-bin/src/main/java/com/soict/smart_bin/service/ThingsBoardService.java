@@ -85,4 +85,13 @@ public class ThingsBoardService {
                 .retrieve()
                 .body(JsonNode.class);
     }
+
+    public void deleteDevice(String tbDeviceId){
+        restClient.delete()
+                .uri("/api/device/{deviceId}", tbDeviceId)
+                .retrieve()
+                .toBodilessEntity();
+
+        log.info("Delete device on ThingsBoard successfully!");
+    }
 }

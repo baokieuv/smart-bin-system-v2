@@ -16,13 +16,15 @@ import com.soict.smart_bin.repository.DeviceRepository;
 import com.soict.smart_bin.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DeviceService {
 
     private final DeviceRepository repository;
@@ -36,40 +38,48 @@ public class DeviceService {
         User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
-        // 1. Check if the device already exists in the database
-        if (repository.findByMacAndActiveTrue(request.mac()).isPresent()) {
-            throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_EXISTED);
+        Optional<Device> existingDeviceOpt = repository.findByMac(request.mac());
+        Device device;
+
+        if (existingDeviceOpt.isPresent()) {
+            device = existingDeviceOpt.get();
+            if (device.isActive()) {
+                throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_EXISTED);
+            }
+            // Restore soft-deleted device
+            log.info("Restoring soft-deleted device with MAC: {}", request.mac());
+            device.setActive(true);
+        } else {
+            // Initialize new device
+            device = new Device();
+            device.setMac(request.mac());
         }
 
-        // 2. The device entity name on ThingsBoard follow the format: SmartBin-<macaddress>
+        // ThingsBoard device name MUST strictly follow: SmartBin-<macaddress>
         String tbDeviceName = "SmartBin-" + request.mac().replace(":", "").replace("-", "");
 
-        // 3. Create the device entity on ThingsBoard
         JsonNode tbResponse = thingsBoardService.addDevice(tbDeviceName, "SmartBin");
         String tbDeviceId = tbResponse.get("id").get("id").asText();
 
-        // 4. Determine the display name
+        // Prioritize client-provided name, fallback to ThingsBoard device name
         String displayName = (request.name() != null && !request.name().isBlank())
                 ? request.name()
                 : tbDeviceName;
 
-        // 5. Prepare attributes to update
         Map<String, Object> attributes = new HashMap<>();
         attributes.put("macAddress", request.mac());
         attributes.put("longitude", request.longitude());
         attributes.put("latitude", request.latitude());
         attributes.put("name", displayName);
 
-        // 6. Update attributes on ThingsBoard
+        // Update ThingsBoard attributes
         thingsBoardService.updateAttributes(tbDeviceId, Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
 
-        // 7. Retrieve device credentials (access token) from ThingsBoard
+        // Fetch new device credentials
         JsonNode credentialResponse = thingsBoardService.getDeviceCredentials(tbDeviceId);
         String accessToken = credentialResponse.get("credentialsId").asText();
 
-        // 8. Save the device to the local database
-        Device device = new Device();
-        device.setMac(request.mac());
+        // Update local database entity
         device.setName(displayName);
         device.setLongitude(request.longitude());
         device.setLatitude(request.latitude());
@@ -82,12 +92,24 @@ public class DeviceService {
         return mapper.toDto(savedDevice);
     }
 
+    public List<DeviceDto> getListDevices(String keycloakId){
+        User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
+
+        List<Device> devices = repository.findByUserAndActiveTrue(user);
+        return devices.stream().map(mapper::toDto).collect(Collectors.toList());
+    }
+
+    public DeviceDto getDeviceDetail(String keycloakId, String deviceId){
+        Device device = getDeviceAndVerifyOwnership(deviceId, keycloakId);
+        return mapper.toDto(device);
+    }
+
     @Transactional
-    public DeviceDto updateDevice(String id, UpdateDeviceRequest request) {
+    public DeviceDto updateDevice(String id, UpdateDeviceRequest request, String keycloakId) {
 
         // 1. Fetch the existing device from the database
-        Device device = repository.findByIdAndActiveTrue(id)
-                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+        Device device = getDeviceAndVerifyOwnership(id, keycloakId);
 
         Map<String, Object> tbAttributes = new HashMap<>();
         boolean isDbUpdated = false; // Flag to track DB changes
@@ -142,15 +164,45 @@ public class DeviceService {
         return mapper.toDto(device);
     }
 
-    public void deleteDevice(String id){
+    @Transactional
+    public void deleteDevice(String id, String keycloakId){
+        Device device = getDeviceAndVerifyOwnership(id, keycloakId);
 
+        // 1. Delete device on ThingsBoard (Hard delete)
+        if (device.getDeviceId() != null) {
+            thingsBoardService.deleteDevice(device.getDeviceId());
+        }
+
+        // 2. Delete device on DB (Soft delete)
+         device.setActive(false);
+         repository.save(device);
     }
 
-    public void getTelemetries(String id){
-
+    public JsonNode getTelemetries(String id, String keycloakId, String keys, long startTs, long endTs) {
+        Device device = getDeviceAndVerifyOwnership(id, keycloakId);
+        return thingsBoardService.getTelemetries(device.getDeviceId(), keys, startTs, endTs);
     }
 
-    public void getAttributes(String id){
+    public JsonNode getAttributes(String id, String keycloakId, String keys) {
+        Device device = getDeviceAndVerifyOwnership(id, keycloakId);
+        return thingsBoardService.getAttributes(device.getDeviceId(), keys);
+    }
 
+    private Device getDeviceAndVerifyOwnership(String deviceIdStr, String keycloakId) {
+        UUID deviceId;
+        try {
+            deviceId = UUID.fromString(deviceIdStr);
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST);
+        }
+
+        Device device = repository.findByIdAndActiveTrue(deviceId)
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        // Check permission
+        if (device.getUser() == null || !device.getUser().getKeycloakId().equals(keycloakId)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
+        }
+        return device;
     }
 }
