@@ -62,7 +62,7 @@ class GlobalExceptionHandler {
         log.error("Message    : {}", ex.getMessage());
         log.error("Root Cause : {}", rootCause.toString());
         log.error("Location   : {}", location);
-        log.error("Stack Trace: ", ex);
+//        log.error("Stack Trace: ", ex);
         log.error("===================================");
     }
 

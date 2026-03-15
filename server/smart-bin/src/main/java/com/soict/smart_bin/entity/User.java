@@ -45,7 +45,7 @@ public class User extends BaseEntity {
 
     private String avatarUrl;
 
-    @OneToMany(mappedBy = "user", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Device> devices = new ArrayList<>();
 
     // --- Helper methods để quản lý quan hệ 2 chiều ---

@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.http.HttpStatusCode;
 
+import java.util.Map;
+
 @Service
 @Slf4j
 public class ThingsBoardService {
@@ -48,29 +50,38 @@ public class ThingsBoardService {
     }
 
     public JsonNode getTelemetries(String deviceId, String keys, long startTs, long endTs){
-        Device device = repository.findByIdAndActiveTrue(deviceId).orElseThrow(() ->
-                new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR));
-
         return restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/api/plugins/telemetry/DEVICE/{deviceId}/values/timeseries")
                         .queryParam("keys", keys)
                         .queryParam("startTs", startTs)
                         .queryParam("endTs", endTs)
-                        .build(device.getDeviceId()))
+                        .build(deviceId))
                 .retrieve()
                 .body(JsonNode.class);
     }
 
-    public JsonNode getAttributes(String deviceId, String keys){
-        Device device = repository.findByIdAndActiveTrue(deviceId).orElseThrow(() ->
-                new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR));
+    public void updateAttributes(String deviceId, String scope, Map<String, Object> attributes){
+        if (attributes == null || attributes.isEmpty()){
+            log.info("Không có attributes nào để cập nhật cho thiết bị {}", deviceId);
+            return;
+        }
 
+        restClient.post()
+                .uri("/api/plugins/telemetry/DEVICE/{deviceId}/attributes/{scope}", deviceId, scope)
+                .body(attributes)
+                .retrieve()
+                .toBodilessEntity();
+
+        log.info("Cập nhật thuộc tính thành công cho thiết bị {}!", deviceId);
+    }
+
+    public JsonNode getAttributes(String deviceId, String keys){
         return restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/api/plugins/telemetry/DEVICE/{deviceId}/values/attributes")
                         .queryParam("keys", keys)
-                        .build(device.getDeviceId()))
+                        .build(deviceId))
                 .retrieve()
                 .body(JsonNode.class);
     }

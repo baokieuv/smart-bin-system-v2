@@ -5,16 +5,16 @@ import com.soict.smart_bin.common.ResponseFactory;
 import com.soict.smart_bin.common.SuccessCode;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;
 import com.soict.smart_bin.dto.device.CreateDeviceRequest;
+import com.soict.smart_bin.dto.device.UpdateDeviceRequest;
 import com.soict.smart_bin.service.AuthService;
 import com.soict.smart_bin.service.DeviceService;
 import com.soict.smart_bin.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/devices")
@@ -26,14 +26,21 @@ public class DeviceController {
 
     @PostMapping("/")
     public ResponseEntity<ApiResponseFormat<Object>> addDevice(
-            @Valid @RequestBody CreateDeviceRequest request
+            @Valid @RequestBody CreateDeviceRequest request,
+            @AuthenticationPrincipal Jwt jwt
     ){
-        var response = deviceService.addDevice(request);
+        String keycloakId = jwt.getSubject();
+        var response = deviceService.addDevice(request, keycloakId);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
-    public ResponseEntity<ApiResponseFormat<Object>> updateDevice(){
-        return responseFactory.response(SuccessCode.OK, "");
+    @PostMapping("/{deviceId}")
+    public ResponseEntity<ApiResponseFormat<Object>> updateDevice(
+            @Valid @RequestBody UpdateDeviceRequest request,
+            @PathVariable String deviceId
+    ){
+        var response = deviceService.updateDevice(deviceId, request);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
     public ResponseEntity<ApiResponseFormat<Object>> deleteDevice(){
