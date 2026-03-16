@@ -1,0 +1,61 @@
+package com.soict.smart_bin.controller;
+
+import com.soict.smart_bin.common.ResponseFactory;
+import com.soict.smart_bin.common.SuccessCode;
+import com.soict.smart_bin.dto.core.ApiResponseFormat;
+import com.soict.smart_bin.dto.device.CreateDeviceRequest;
+import com.soict.smart_bin.service.DeviceService;
+import com.soict.smart_bin.service.NotificationService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/v1/notifications")
+@RequiredArgsConstructor
+public class NotificationController {
+
+    private final ResponseFactory responseFactory;
+    private final NotificationService notificationService;
+
+    @GetMapping("/")
+    public ResponseEntity<ApiResponseFormat<Object>> getNotifications(
+            @RequestParam Long page,
+            @RequestParam Long size,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String keycloakId = jwt.getSubject();
+
+        return responseFactory.response(SuccessCode.OK, "");
+    }
+
+    @GetMapping("/get-unread-count")
+    public ResponseEntity<ApiResponseFormat<Object>> getUnreadCount(
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String keycloakId = jwt.getSubject();
+        return responseFactory.response(SuccessCode.OK, "");
+    }
+
+    @PutMapping("/{id}/read")
+    public ResponseEntity<ApiResponseFormat<Object>> markAsRead(
+            @PathVariable String id,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String keycloakId = jwt.getSubject();
+        return responseFactory.response(SuccessCode.OK, "");
+    }
+
+    @PutMapping("/read-all")
+    public ResponseEntity<ApiResponseFormat<Object>> readAllNotifications(
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String keycloakId = jwt.getSubject();
+        return responseFactory.response(SuccessCode.OK, "");
+    }
+
+
+}
