@@ -2,7 +2,7 @@ package com.soict.smart_bin.interceptor;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.soict.smart_bin.common.ThingsBoardTokenManager;
+import com.soict.smart_bin.utils.ThingsBoardTokenManager;
 import com.soict.smart_bin.exception.ApiException;
 import com.soict.smart_bin.exception.CoreErrorCode;
 import lombok.extern.slf4j.Slf4j;

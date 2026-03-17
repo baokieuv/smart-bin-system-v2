@@ -1,5 +1,6 @@
 package com.soict.smart_bin.entity;
 
+import com.soict.smart_bin.common.DeviceState;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -27,6 +28,9 @@ public class Device extends BaseEntity {
     private Double longitude;
 
     private Double latitude;
+
+    @Enumerated(EnumType.STRING)
+    private DeviceState state;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")

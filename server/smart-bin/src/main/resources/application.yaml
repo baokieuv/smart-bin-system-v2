@@ -42,6 +42,7 @@ spring:
     port: ${SPRING_MAIL_PORT:465}
     username: ${SPRING_MAIL_USERNAME:kieubao2k4@gmail.com}
     password: ${SPRING_MAIL_PASSWORD:zwac yohn qmho pdyr}
+    protocol: smtps
     properties:
       mail:
         smtp:
@@ -51,8 +52,9 @@ spring:
           trust: ${SPRING_MAIL_HOST:smtp.gmail.com}
   data:
     redis:
-      host: ${REDIS_HOST:redis}
+      host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redisadmin}
 
 app:
   secret-key: ${SECRET_KEY:MY_SUPER_SECRET_KEY_1234}

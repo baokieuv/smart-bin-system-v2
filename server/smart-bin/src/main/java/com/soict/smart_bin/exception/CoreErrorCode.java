@@ -26,6 +26,7 @@ public enum CoreErrorCode implements ApiResponseCode {
     // --- External Integrations ---
     EXTERNAL_API_ERROR(false, "AVT0010", "error.external_api_error", HttpStatus.BAD_GATEWAY),
     FORBIDDEN_ACCESS(false, "AVT0011", "error.forbidden_access", HttpStatus.BAD_REQUEST),
+    VALIDATION_SIGNATURE_ERROR(false, "AVT0012", "error.signaure_validation_failed", HttpStatus.BAD_REQUEST),
     ;
 
     private final boolean success;

@@ -1,6 +1,6 @@
 package com.soict.smart_bin.controller;
 
-import com.soict.smart_bin.common.ResponseFactory;
+import com.soict.smart_bin.utils.ResponseFactory;
 import com.soict.smart_bin.common.SuccessCode;
 import com.soict.smart_bin.dto.auth.*;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;

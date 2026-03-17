@@ -6,6 +6,8 @@ public class Constants {
     public static final String CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
     public static final int PASSWORD_LENGTH = 12;
 
+    public static final String PENDING_DEVICE_PREFIX = "pending_device:";
+
     public enum THINGSBOARD_SCOPE {
         SERVER_SCOPE,
         SHARED_SCOPE,

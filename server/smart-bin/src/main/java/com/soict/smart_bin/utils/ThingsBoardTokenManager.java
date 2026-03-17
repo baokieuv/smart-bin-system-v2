@@ -1,4 +1,4 @@
-package com.soict.smart_bin.common;
+package com.soict.smart_bin.utils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.soict.smart_bin.dto.auth.LoginRequest;

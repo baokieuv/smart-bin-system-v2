@@ -1,6 +1,6 @@
 package com.soict.smart_bin.exception;
 
-import com.soict.smart_bin.common.ResponseFactory;
+import com.soict.smart_bin.utils.ResponseFactory;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;
 import com.soict.smart_bin.dto.core.FieldErrorDetail;
 import lombok.extern.slf4j.Slf4j;

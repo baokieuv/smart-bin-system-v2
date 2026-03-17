@@ -1,4 +1,4 @@
-package com.soict.smart_bin.common;
+package com.soict.smart_bin.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;

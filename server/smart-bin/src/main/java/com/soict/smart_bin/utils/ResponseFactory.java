@@ -1,4 +1,4 @@
-package com.soict.smart_bin.common;
+package com.soict.smart_bin.utils;
 
 import org.springframework.context.MessageSource;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;

@@ -1,15 +1,14 @@
 package com.soict.smart_bin.controller;
 
 
-import com.soict.smart_bin.common.ResponseFactory;
+import com.soict.smart_bin.utils.ResponseFactory;
 import com.soict.smart_bin.common.SuccessCode;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;
 import com.soict.smart_bin.dto.device.CreateDeviceRequest;
 import com.soict.smart_bin.dto.device.UpdateDeviceRequest;
-import com.soict.smart_bin.service.AuthService;
 import com.soict.smart_bin.service.DeviceService;
-import com.soict.smart_bin.service.UserService;
 import jakarta.validation.Valid;
+import jakarta.ws.rs.HeaderParam;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -72,6 +71,15 @@ public class DeviceController {
         String keycloakId = jwt.getSubject();
         deviceService.deleteDevice(deviceId, keycloakId);
         return responseFactory.response(SuccessCode.OK, "Deleted device successfully!");
+    }
+
+    @PostMapping("/activate")
+    public ResponseEntity<ApiResponseFormat<Object>> activateDevice(
+            @RequestBody String payload,
+            @HeaderParam("signature") String signature
+    ){
+        var response = deviceService.activateDevice(payload, signature);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
     @GetMapping("/{deviceId}/telemetries")

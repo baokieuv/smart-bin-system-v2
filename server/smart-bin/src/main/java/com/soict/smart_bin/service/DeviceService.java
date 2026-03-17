@@ -1,7 +1,10 @@
 package com.soict.smart_bin.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.core.io.Resource;
 import com.soict.smart_bin.common.Constants;
+import com.soict.smart_bin.common.DeviceState;
+import com.soict.smart_bin.utils.PemUtils;
 import com.soict.smart_bin.dto.device.CreateDeviceRequest;
 import com.soict.smart_bin.dto.device.DeviceDto;
 import com.soict.smart_bin.dto.device.UpdateDeviceRequest;
@@ -14,11 +17,16 @@ import com.soict.smart_bin.exception.UserErrorCode;
 import com.soict.smart_bin.mapper.DeviceMapper;
 import com.soict.smart_bin.repository.DeviceRepository;
 import com.soict.smart_bin.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.security.PublicKey;
+import java.security.Signature;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,6 +39,23 @@ public class DeviceService {
     private final DeviceMapper mapper;
     private final ThingsBoardService thingsBoardService;
     private final UserRepository userRepository;
+    private final RedisTemplate<String, String> redisTemplate;
+
+    @Value("classpath:public_key.pem")
+    private Resource publicKeyResource;
+    private PublicKey serverPublicKey;
+
+    @PostConstruct
+    public void init() {
+        try {
+            // Read the key once when the application starts
+            String path = publicKeyResource.getFile().getAbsolutePath();
+            this.serverPublicKey = PemUtils.readPublicKey(path);
+            System.out.println("RSA Public Key loaded successfully.");
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load Public Key", e);
+        }
+    }
 
     @Transactional
     public DeviceDto addDevice(CreateDeviceRequest request, String keycloakId) {
@@ -86,8 +111,13 @@ public class DeviceService {
         device.setDeviceId(tbDeviceId);
         device.setAccessToken(accessToken);
         device.setUser(user);
+        device.setState(DeviceState.PENDING);
 
         Device savedDevice = repository.save(device);
+
+        String key = Constants.PENDING_DEVICE_PREFIX + keycloakId + ":" + savedDevice.getId();
+
+        redisTemplate.opsForValue().set(key, "pending");
 
         return mapper.toDto(savedDevice);
     }
@@ -176,6 +206,46 @@ public class DeviceService {
         // 2. Delete device on DB (Soft delete)
          device.setActive(false);
          repository.save(device);
+    }
+
+    public DeviceDto activateDevice(String payload, String signature){
+        try {
+            // 1. Decode the signature from Base64 back to bytes
+            byte[] digitalSignature = Base64.getDecoder().decode(signature);
+
+            // 2. Initialize the Signature object with the Public Key
+            Signature verify = Signature.getInstance("SHA256withRSA");
+            verify.initVerify(serverPublicKey);
+
+            // 3. Input the raw payload
+            verify.update(payload.getBytes("UTF-8"));
+
+            // 4. Verify
+            if (verify.verify(digitalSignature)) {
+                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
+            }
+
+        }
+        catch (ApiException ex){
+            throw ex;
+        }
+        catch (Exception e) {
+            System.err.println("Verification error: " + e.getMessage());
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, e.getMessage());
+        }
+
+        Device device = repository.findByMacAndActiveTrue(payload).orElseThrow(() ->
+                new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        device.setState(DeviceState.ACTIVE);
+
+        Device savedDevice = repository.save(device);
+
+        String key = Constants.PENDING_DEVICE_PREFIX + savedDevice.getUser().getKeycloakId() + ":" + savedDevice.getId();
+
+        redisTemplate.delete(key);
+
+        return mapper.toDto(savedDevice);
     }
 
     public JsonNode getTelemetries(String id, String keycloakId, String keys, long startTs, long endTs) {
