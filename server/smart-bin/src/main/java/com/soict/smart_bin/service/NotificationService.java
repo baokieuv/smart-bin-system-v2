@@ -21,7 +21,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Slf4j
 public class NotificationService {
-    private NotificationRepository repository;
+    private final NotificationRepository repository;
     private final SimpMessagingTemplate messagingTemplate;
     private final UserRepository userRepository;
     private final NotificationMapper mapper;
