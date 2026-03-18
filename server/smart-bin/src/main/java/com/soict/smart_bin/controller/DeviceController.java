@@ -52,7 +52,7 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
-    @PostMapping("/{deviceId}")
+    @PutMapping("/{deviceId}")
     public ResponseEntity<ApiResponseFormat<Object>> updateDevice(
             @Valid @RequestBody UpdateDeviceRequest request,
             @PathVariable String deviceId,
@@ -76,7 +76,7 @@ public class DeviceController {
     @PostMapping("/activate")
     public ResponseEntity<ApiResponseFormat<Object>> activateDevice(
             @RequestBody String payload,
-            @HeaderParam("signature") String signature
+            @RequestHeader("signature") String signature
     ){
         var response = deviceService.activateDevice(payload, signature);
         return responseFactory.response(SuccessCode.OK, response);

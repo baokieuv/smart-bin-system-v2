@@ -2,15 +2,13 @@ package com.soict.smart_bin.common;
 
 import java.util.stream.Stream;
 
-public enum DeviceState {
-    PENDING(0),
-    ACTIVE(1),
-    SUSPENDED(2),
-    DELETED(3);
+public enum DeviceStatus {
+    ONLINE(0),
+    OFFLINE(1);
 
     private final int value;
 
-    DeviceState(int value) {
+    DeviceStatus(int value) {
         this.value = value;
     }
 
@@ -18,10 +16,10 @@ public enum DeviceState {
         return value;
     }
 
-    public static DeviceState fromValue(int value) {
+    public static DeviceStatus fromValue(int value) {
         return Stream.of(values())
                 .filter(state -> state.value == value)
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Unknown DeviceState value: " + value));
+                .orElseThrow(() -> new IllegalArgumentException("Unknown DeviceStatus value: " + value));
     }
 }

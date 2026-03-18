@@ -15,7 +15,10 @@ public enum NotificationType {
     FIRMWARE_UPDATE_SUCCESS(9),
     FIRMWARE_UPDATE_FAILED(10),
     MAINTENANCE_REQUIRED(11),
-    SYSTEM_INFO(12);
+    SYSTEM_INFO(12),
+    DEVICE_CREATED(13),
+    DEVICE_DELETED(14),
+    ;
 
     private final int value;
 

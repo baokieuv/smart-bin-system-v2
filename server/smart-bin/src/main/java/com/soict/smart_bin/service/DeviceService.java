@@ -1,6 +1,7 @@
 package com.soict.smart_bin.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.soict.smart_bin.common.NotificationType;
 import org.springframework.core.io.Resource;
 import com.soict.smart_bin.common.Constants;
 import com.soict.smart_bin.common.DeviceState;
@@ -39,6 +40,7 @@ public class DeviceService {
     private final DeviceMapper mapper;
     private final ThingsBoardService thingsBoardService;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
     private final RedisTemplate<String, String> redisTemplate;
 
     @Value("classpath:public_key.pem")
@@ -205,6 +207,13 @@ public class DeviceService {
 
         // 2. Delete device on DB (Soft delete)
          device.setActive(false);
+
+        notificationService.createAndSendNotification(
+                device.getUser(),
+                "Device Deleted",
+                "The device has been successfully removed from the network.",
+                NotificationType.DEVICE_DELETED
+        );
          repository.save(device);
     }
 
@@ -221,7 +230,7 @@ public class DeviceService {
             verify.update(payload.getBytes("UTF-8"));
 
             // 4. Verify
-            if (verify.verify(digitalSignature)) {
+            if (!verify.verify(digitalSignature)) {
                 throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
             }
 
@@ -244,6 +253,13 @@ public class DeviceService {
         String key = Constants.PENDING_DEVICE_PREFIX + savedDevice.getUser().getKeycloakId() + ":" + savedDevice.getId();
 
         redisTemplate.delete(key);
+
+        notificationService.createAndSendNotification(
+                device.getUser(),
+                "Device Created",
+                "Successfully provisioned new smart bin: " + device.getName(),
+                NotificationType.DEVICE_CREATED
+        );
 
         return mapper.toDto(savedDevice);
     }

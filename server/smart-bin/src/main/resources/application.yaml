@@ -84,3 +84,4 @@ things-board:
   url: ${THINGS_BOARD_URL:http://localhost:8080}
   email: ${THINGS_BOARD_EMAIL:tenant@thingsboard.org}
   password: ${THINGS_BOARD_PASS:tenant}
+  key: ${THINGS_BOARD_SECRET_KEY:MY_SUPPER_SECRET_KEY}

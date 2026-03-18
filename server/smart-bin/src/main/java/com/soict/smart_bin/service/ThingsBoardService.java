@@ -1,33 +1,47 @@
 package com.soict.smart_bin.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.soict.smart_bin.dto.auth.LoginRequest;
-import com.soict.smart_bin.dto.auth.LoginResponse;
-import com.soict.smart_bin.dto.auth.RefreshTokenRequest;
+import com.soict.smart_bin.common.DeviceStatus;
+import com.soict.smart_bin.common.NotificationType;
+import com.soict.smart_bin.dto.device.DeviceDto;
 import com.soict.smart_bin.entity.Device;
+import com.soict.smart_bin.entity.User;
 import com.soict.smart_bin.exception.ApiException;
 import com.soict.smart_bin.exception.CoreErrorCode;
+import com.soict.smart_bin.exception.DeviceErrorCode;
 import com.soict.smart_bin.repository.DeviceRepository;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.HmacUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import org.springframework.http.HttpStatusCode;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @Slf4j
 public class ThingsBoardService {
     private final RestClient restClient;
     private final DeviceRepository repository;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ThingsBoardService(@Qualifier("tbRestClient") RestClient restClient, DeviceRepository repository) {
+    @Value("${things-board.key}")
+    private String secretKey;
+
+    public ThingsBoardService(
+            @Qualifier("tbRestClient") RestClient restClient,
+            DeviceRepository repository,
+            NotificationService notificationService
+    ) {
         this.restClient = restClient;
         this.repository = repository;
+        this.notificationService = notificationService;
     }
 
     public JsonNode addDevice(String name, String type) {
@@ -93,5 +107,107 @@ public class ThingsBoardService {
                 .toBodilessEntity();
 
         log.info("Delete device on ThingsBoard successfully!");
+    }
+
+    public String updateDeviceStatus(String signature, String payload) {
+        String serverSignature = new HmacUtils("HmacSHA256", secretKey).hmacHex(payload);
+
+        if(!serverSignature.equalsIgnoreCase(signature)){
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR);
+        }
+
+        try {
+
+            DeviceDto deviceDto = objectMapper.readValue(payload, DeviceDto.class);
+
+            Device device = repository.findByIdAndActiveTrue(deviceDto.id()).orElseThrow(() ->
+                    new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+            User owner = device.getUser();
+
+            if (deviceDto.status() == DeviceStatus.ONLINE && device.getStatus() == DeviceStatus.OFFLINE) {
+
+                device.setStatus(DeviceStatus.ONLINE);
+                repository.save(device);
+                notificationService.createAndSendNotification(
+                        owner,
+                        "Device Online",
+                        "Smart bin " + device.getName() + " is now back online.",
+                        NotificationType.DEVICE_ONLINE
+                );
+            } else if (deviceDto.status() == DeviceStatus.OFFLINE && device.getStatus() == DeviceStatus.ONLINE) {
+                device.setStatus(DeviceStatus.OFFLINE);
+                repository.save(device);
+                notificationService.createAndSendNotification(
+                        owner,
+                        "Device Offline",
+                        "Warning: Smart bin " + device.getName() + " has lost connection.",
+                        NotificationType.DEVICE_OFFLINE
+                );
+            }
+        } catch (JsonProcessingException ex){
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR);
+        }
+        return "Status Processed";
+    }
+
+    // Add this method to your ThingsBoardService.java
+
+    @Transactional
+    public String processDeviceAlarm(String signature, String payload) {
+        // 1. Verify the webhook signature to ensure it's actually from ThingsBoard
+        String serverSignature = new HmacUtils("HmacSHA256", secretKey).hmacHex(payload);
+
+        if(!serverSignature.equalsIgnoreCase(signature)){
+            log.warn("Invalid signature for alarm webhook");
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR);
+        }
+
+        try {
+            // 2. Parse the ThingsBoard payload dynamically using JsonNode
+            JsonNode alarmNode = objectMapper.readTree(payload);
+
+            // Adjust these keys based on your exact ThingsBoard Rule Chain mapping
+            String deviceIdStr = alarmNode.path("deviceId").asText();
+
+            UUID deviceId;
+            try {
+                deviceId = UUID.fromString(deviceIdStr);
+            } catch (IllegalArgumentException e) {
+                throw new ApiException(CoreErrorCode.BAD_REQUEST);
+            }
+
+            String alarmType = alarmNode.path("alarmType").asText(); // e.g., "High Temperature", "Bin Full"
+            String severity = alarmNode.path("severity").asText();   // e.g., "CRITICAL", "MAJOR", "WARNING"
+            String status = alarmNode.path("status").asText();       // e.g., "ACTIVE_UNACK", "CLEARED_UNACK"
+
+            // 3. Find the device and its owner
+            Device device = repository.findByIdAndActiveTrue(deviceId).orElseThrow(() ->
+                    new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+            User owner = device.getUser();
+
+            if (status.startsWith("ACTIVE")) {
+                String title = "Smart Bin Alarm: " + severity;
+                String message = "Alarm '" + alarmType + "' was triggered for your bin: " + device.getName();
+
+                // Send the real-time notification
+                notificationService.createAndSendNotification(
+                        owner,
+                        title,
+                        message,
+                        NotificationType.SYSTEM_INFO
+                );
+                log.info("Processed active alarm for device {}: {}", deviceId, alarmType);
+            } else if (status.startsWith("CLEARED")) {
+                log.info("Alarm cleared for device {}: {}", deviceId, alarmType);
+            }
+
+            return "Alarm Processed Successfully";
+
+        } catch (JsonProcessingException ex){
+            log.error("Failed to parse ThingsBoard alarm payload: {}", payload, ex);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR);
+        }
     }
 }

@@ -1,29 +1,29 @@
 package com.soict.smart_bin.service;
 
-
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.soict.smart_bin.dto.auth.LoginRequest;
 import com.soict.smart_bin.dto.auth.TokenResponse;
 import com.soict.smart_bin.dto.user.CreateUserRequest;
-import okhttp3.*;
 import org.keycloak.admin.client.Keycloak;
-import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 @Service
 public class KeycloakService {
 
     private final Keycloak keycloak;
     private final String realm;
-    private final OkHttpClient client = new OkHttpClient();
+    private final RestClient restClient;
 
     @Value("${keycloak.server-url}")
     private String serverUrl;
@@ -37,6 +37,7 @@ public class KeycloakService {
     public KeycloakService(Keycloak keycloak, String keycloakRealm) {
         this.keycloak = keycloak;
         this.realm = keycloakRealm;
+        this.restClient = RestClient.create();
     }
 
     public String createUser(CreateUserRequest request) {
@@ -84,112 +85,52 @@ public class KeycloakService {
 
     public TokenResponse login(LoginRequest request) {
         try {
-            RequestBody body = new FormBody.Builder()
-                    .add("grant_type", "password")
-                    .add("client_id", clientId)
-                    .add("client_secret", clientSecret)
-                    .add("username", request.username())
-                    .add("password", request.password())
-                    .build();
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("grant_type", "password");
+            body.add("client_id", clientId);
+            body.add("client_secret", clientSecret);
+            body.add("username", request.username());
+            body.add("password", request.password());
 
-            Request req = new Request.Builder()
-                    .url(serverUrl + "/realms/" + realm + "/protocol/openid-connect/token")
-                    .post(body)
-                    .build();
-
-            try (Response response = client.newCall(req).execute()) {
-                String responseBody = Objects.requireNonNull(response.body()).string();
-
-                if (!response.isSuccessful()) {
-                    throw new RuntimeException("Invalid credentials");
-                }
-
-                JsonObject json = new Gson().fromJson(responseBody, JsonObject.class);
-
-                return new TokenResponse(
-                        json.get("access_token").getAsString(),
-                        json.get("refresh_token").getAsString(),
-                        json.get("expires_in").getAsInt(),
-                        json.get("refresh_expires_in").getAsInt(),
-                        json.get("token_type").getAsString()
-                );
-            }
-        } catch (IOException e) {
+            return fetchToken(body);
+        } catch (RestClientResponseException e) {
+            throw new RuntimeException("Invalid credentials: " + e.getResponseBodyAsString());
+        } catch (Exception e) {
             throw new RuntimeException("Error during login: " + e.getMessage());
         }
     }
 
     public TokenResponse exchangeGoogleToken(String googleToken) {
         try {
-            RequestBody body = new FormBody.Builder()
-                    .add("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
-                    .add("client_id", clientId)
-                    .add("client_secret", clientSecret)
-                    .add("subject_token", googleToken)
-                    .add("subject_issuer", "google")
-                    .add("subject_token_type", "urn:ietf:params:oauth:token-type:access_token")
-                    .add("requested_token_type", "urn:ietf:params:oauth:token-type:refresh_token") // ← thêm
-                    .add("scope", "openid email profile offline_access") // ← thêm offline_access
-                    .build();
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange");
+            body.add("client_id", clientId);
+            body.add("client_secret", clientSecret);
+            body.add("subject_token", googleToken);
+            body.add("subject_issuer", "google");
+            body.add("subject_token_type", "urn:ietf:params:oauth:token-type:access_token");
+            body.add("requested_token_type", "urn:ietf:params:oauth:token-type:refresh_token");
+            body.add("scope", "openid email profile offline_access");
 
-            Request req = new Request.Builder()
-                    .url(serverUrl + "/realms/" + realm + "/protocol/openid-connect/token")
-                    .post(body)
-                    .build();
-
-            try (Response response = client.newCall(req).execute()) {
-                String responseBody = Objects.requireNonNull(response.body()).string();
-
-                if (!response.isSuccessful()) {
-                    throw new RuntimeException("Failed to exchange Google token: " + responseBody);
-                }
-
-                JsonObject json = new Gson().fromJson(responseBody, JsonObject.class);
-
-                return new TokenResponse(
-                        json.get("access_token").getAsString(),
-                        json.get("refresh_token").getAsString(),
-                        json.get("expires_in").getAsInt(),
-                        json.get("refresh_expires_in").getAsInt(),
-                        json.get("token_type").getAsString()
-                );
-            }
-        } catch (IOException e) {
+            return fetchToken(body);
+        } catch (RestClientResponseException e) {
+            throw new RuntimeException("Failed to exchange Google token: " + e.getResponseBodyAsString());
+        } catch (Exception e) {
             throw new RuntimeException("Error during Google token exchange: " + e.getMessage());
         }
     }
 
     public TokenResponse refreshAccessToken(String refreshToken) {
         try {
-            RequestBody body = new FormBody.Builder()
-                    .add("grant_type", "refresh_token")
-                    .add("client_id", clientId)
-                    .add("client_secret", clientSecret)
-                    .add("refresh_token", refreshToken)
-                    .build();
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("grant_type", "refresh_token");
+            body.add("client_id", clientId);
+            body.add("client_secret", clientSecret);
+            body.add("refresh_token", refreshToken);
 
-            Request req = new Request.Builder()
-                    .url(serverUrl + "/realms/" + realm + "/protocol/openid-connect/token")
-                    .post(body)
-                    .build();
-
-            try (Response response = client.newCall(req).execute()) {
-                String responseBody = Objects.requireNonNull(response.body()).string();
-
-                if (!response.isSuccessful()) {
-                    throw new RuntimeException("Invalid or expired refresh token");
-                }
-
-                JsonObject json = new Gson().fromJson(responseBody, JsonObject.class);
-
-                return new TokenResponse(
-                        json.get("access_token").getAsString(),
-                        json.get("refresh_token").getAsString(),
-                        json.get("expires_in").getAsInt(),
-                        json.get("refresh_expires_in").getAsInt(),
-                        json.get("token_type").getAsString()
-                );
-            }
+            return fetchToken(body);
+        } catch (RestClientResponseException e) {
+            throw new RuntimeException("Invalid or expired refresh token: " + e.getResponseBodyAsString());
         } catch (Exception e) {
             throw new RuntimeException("Error refreshing token: " + e.getMessage());
         }
@@ -197,22 +138,20 @@ public class KeycloakService {
 
     public void logout(String refreshToken) {
         try {
-            RequestBody body = new FormBody.Builder()
-                    .add("client_id", clientId)
-                    .add("client_secret", clientSecret)
-                    .add("refresh_token", refreshToken)
-                    .build();
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("client_id", clientId);
+            body.add("client_secret", clientSecret);
+            body.add("refresh_token", refreshToken);
 
-            Request req = new Request.Builder()
-                    .url(serverUrl + "/realms/" + realm + "/protocol/openid-connect/logout")
-                    .post(body)
-                    .build();
+            restClient.post()
+                    .uri(serverUrl + "/realms/" + realm + "/protocol/openid-connect/logout")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity(); // Logout Keycloak thường trả về 204 No Content
 
-            try (Response response = client.newCall(req).execute()) {
-                if (!response.isSuccessful()) {
-                    throw new RuntimeException("Failed to logout from Keycloak");
-                }
-            }
+        } catch (RestClientResponseException e) {
+            throw new RuntimeException("Failed to logout from Keycloak: " + e.getResponseBodyAsString());
         } catch (Exception e) {
             throw new RuntimeException("Error during logout: " + e.getMessage());
         }
@@ -261,5 +200,27 @@ public class KeycloakService {
         } catch (Exception e) {
             throw new RuntimeException("Error deleting user from Keycloak: " + e.getMessage());
         }
+    }
+
+    // --- Hàm hỗ trợ dùng chung để giảm lặp code (DRY) ---
+    private TokenResponse fetchToken(MultiValueMap<String, String> body) {
+        JsonNode responseNode = restClient.post()
+                .uri(serverUrl + "/realms/" + realm + "/protocol/openid-connect/token")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(body)
+                .retrieve()
+                .body(JsonNode.class);
+
+        if (responseNode == null) {
+            throw new RuntimeException("Empty response from Keycloak");
+        }
+
+        return new TokenResponse(
+                responseNode.path("access_token").asText(),
+                responseNode.path("refresh_token").asText(),
+                responseNode.path("expires_in").asInt(),
+                responseNode.path("refresh_expires_in").asInt(),
+                responseNode.path("token_type").asText()
+        );
     }
 }

@@ -48,6 +48,9 @@ public class User extends BaseEntity {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Device> devices = new ArrayList<>();
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<Notification> notifications = new ArrayList<>();
+
     // --- Helper methods để quản lý quan hệ 2 chiều ---
     public void addDevice(Device device) {
         devices.add(device);

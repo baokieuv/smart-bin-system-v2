@@ -2,18 +2,24 @@ package com.soict.smart_bin.entity;
 
 import com.soict.smart_bin.common.NotificationType;
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.UUID;
 
+@Entity
+@Table
+@Getter
+@Setter
 public class Notification extends BaseEntity{
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String userId;
-
     private String actionId;
+
+    private String title;
 
     private String message;
 
@@ -23,4 +29,8 @@ public class Notification extends BaseEntity{
     private String targetUrl;
 
     private boolean isRead = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
 }

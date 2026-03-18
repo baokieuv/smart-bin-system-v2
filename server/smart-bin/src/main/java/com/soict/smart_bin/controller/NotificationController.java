@@ -26,7 +26,8 @@ public class NotificationController {
     ){
         String keycloakId = jwt.getSubject();
 
-        return responseFactory.response(SuccessCode.OK, "");
+        var response = notificationService.getNotifications(keycloakId, page, size);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
     @GetMapping("/get-unread-count")
@@ -34,16 +35,20 @@ public class NotificationController {
             @AuthenticationPrincipal Jwt jwt
     ){
         String keycloakId = jwt.getSubject();
-        return responseFactory.response(SuccessCode.OK, "");
+
+        var response = notificationService.getUnreadCount(keycloakId);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
     @PutMapping("/{id}/read")
     public ResponseEntity<ApiResponseFormat<Object>> markAsRead(
-            @PathVariable String id,
+            @PathVariable Long id,
             @AuthenticationPrincipal Jwt jwt
     ){
         String keycloakId = jwt.getSubject();
-        return responseFactory.response(SuccessCode.OK, "");
+
+        var response = notificationService.markAsRead(keycloakId, id);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
     @PutMapping("/read-all")
@@ -51,7 +56,9 @@ public class NotificationController {
             @AuthenticationPrincipal Jwt jwt
     ){
         String keycloakId = jwt.getSubject();
-        return responseFactory.response(SuccessCode.OK, "");
+
+        var response = notificationService.readAllNotification(keycloakId);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
 
