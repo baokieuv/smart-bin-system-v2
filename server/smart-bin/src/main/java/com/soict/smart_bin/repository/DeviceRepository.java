@@ -10,6 +10,7 @@ import java.util.UUID;
 
 public interface DeviceRepository extends JpaRepository<Device, String> {
     Optional<Device> findByIdAndActiveTrue(UUID id);
+    Optional<Device> findByDeviceIdAndActiveTrue(String deviceId);
     Optional<Device> findByMacAndActiveTrue(String mac);
     List<Device> findByUserAndActiveTrue(User user);
     Optional<Device> findByMac(String mac);

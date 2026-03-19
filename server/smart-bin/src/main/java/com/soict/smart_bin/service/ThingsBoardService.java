@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.soict.smart_bin.common.DeviceStatus;
 import com.soict.smart_bin.common.NotificationType;
+import com.soict.smart_bin.dto.device.DeviceActivityWebhookRequest;
 import com.soict.smart_bin.dto.device.DeviceDto;
 import com.soict.smart_bin.entity.Device;
 import com.soict.smart_bin.entity.User;
@@ -115,45 +116,37 @@ public class ThingsBoardService {
         log.info("Delete device on ThingsBoard successfully!");
     }
 
-    public String updateDeviceStatus(String signature, String payload) {
-        String serverSignature = new HmacUtils("HmacSHA256", secretKey).hmacHex(payload);
-
-        if(!serverSignature.equalsIgnoreCase(signature)){
+    public String updateDeviceStatus(DeviceActivityWebhookRequest request) {
+        if(System.currentTimeMillis() - request.timestamp() > 10000000){
             throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR);
         }
 
-        try {
+        Device device = repository.findByDeviceIdAndActiveTrue(request.deviceId()).orElseThrow(() ->
+                new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
-            DeviceDto deviceDto = objectMapper.readValue(payload, DeviceDto.class);
+        User owner = device.getUser();
 
-            Device device = repository.findByIdAndActiveTrue(deviceDto.id()).orElseThrow(() ->
-                    new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+        if (request.active() && device.getStatus() == DeviceStatus.OFFLINE) {
 
-            User owner = device.getUser();
-
-            if (deviceDto.status() == DeviceStatus.ONLINE && device.getStatus() == DeviceStatus.OFFLINE) {
-
-                device.setStatus(DeviceStatus.ONLINE);
-                repository.save(device);
-                notificationService.createAndSendNotification(
-                        owner,
-                        "Device Online",
-                        "Smart bin " + device.getName() + " is now back online.",
-                        NotificationType.DEVICE_ONLINE
-                );
-            } else if (deviceDto.status() == DeviceStatus.OFFLINE && device.getStatus() == DeviceStatus.ONLINE) {
-                device.setStatus(DeviceStatus.OFFLINE);
-                repository.save(device);
-                notificationService.createAndSendNotification(
-                        owner,
-                        "Device Offline",
-                        "Warning: Smart bin " + device.getName() + " has lost connection.",
-                        NotificationType.DEVICE_OFFLINE
-                );
-            }
-        } catch (JsonProcessingException ex){
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR);
+            device.setStatus(DeviceStatus.ONLINE);
+            repository.save(device);
+            notificationService.createAndSendNotification(
+                    owner,
+                    "Device Online",
+                    "Smart bin " + device.getName() + " is now back online.",
+                    NotificationType.DEVICE_ONLINE
+            );
+        } else if (!request.active() && device.getStatus() == DeviceStatus.ONLINE) {
+            device.setStatus(DeviceStatus.OFFLINE);
+            repository.save(device);
+            notificationService.createAndSendNotification(
+                    owner,
+                    "Device Offline",
+                    "Warning: Smart bin " + device.getName() + " has lost connection.",
+                    NotificationType.DEVICE_OFFLINE
+            );
         }
+
         return "Status Processed";
     }
 

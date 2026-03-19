@@ -2,8 +2,10 @@ package com.soict.smart_bin.controller;
 
 import com.soict.smart_bin.common.SuccessCode;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;
+import com.soict.smart_bin.dto.device.DeviceActivityWebhookRequest;
 import com.soict.smart_bin.service.ThingsBoardService;
 import com.soict.smart_bin.utils.ResponseFactory;
+import jakarta.validation.Valid;
 import jakarta.ws.rs.HeaderParam;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,11 +24,10 @@ public class ThingsBoardController {
 
     @PostMapping("/update-status")
     public ResponseEntity<ApiResponseFormat<Object>> updateDeviceStatus(
-            @HeaderParam("signature") String signature,
-            @RequestBody String payload
+            @Valid @RequestBody DeviceActivityWebhookRequest payload
     ){
 
-        var response = service.updateDeviceStatus(signature, payload);
+        var response = service.updateDeviceStatus(payload);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
