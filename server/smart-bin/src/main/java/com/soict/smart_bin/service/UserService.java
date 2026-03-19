@@ -126,9 +126,7 @@ public class UserService {
     }
 
     public void deleteUserById(String userId) {
-        UUID uuid = UUID.fromString(userId);
-
-        User user = userRepository.findByIdAndActiveTrue(uuid)
+        User user = userRepository.findByKeycloakIdAndActiveTrue(userId)
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         user.setActive(false);

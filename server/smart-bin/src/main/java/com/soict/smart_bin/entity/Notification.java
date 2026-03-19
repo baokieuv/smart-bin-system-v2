@@ -1,5 +1,6 @@
 package com.soict.smart_bin.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.soict.smart_bin.common.NotificationType;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -32,5 +33,6 @@ public class Notification extends BaseEntity{
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
+    @JsonIgnore
     private User user;
 }

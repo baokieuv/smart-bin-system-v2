@@ -10,6 +10,7 @@ import com.soict.smart_bin.exception.UserErrorCode;
 import com.soict.smart_bin.mapper.NotificationMapper;
 import com.soict.smart_bin.repository.NotificationRepository;
 import com.soict.smart_bin.repository.UserRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -67,6 +68,7 @@ public class NotificationService {
         return 1L;
     }
 
+    @Transactional
     public Long readAllNotification(String keycloakId){
         User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId).orElseThrow(
                 () -> new ApiException(UserErrorCode.USER_NOT_FOUND)

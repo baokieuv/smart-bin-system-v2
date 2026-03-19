@@ -86,9 +86,9 @@ public class DeviceController {
     public ResponseEntity<ApiResponseFormat<Object>> getTelemetries(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable String deviceId,
-            @RequestParam String keys,
-            @RequestParam long startTs,
-            @RequestParam long endTs
+            @RequestParam(required = false) String keys,
+            @RequestParam(required = false) Long startTs,
+            @RequestParam(required = false) Long endTs
     ){
         String keycloakId = jwt.getSubject();
         var response = deviceService.getTelemetries(deviceId, keycloakId, keys, startTs, endTs);

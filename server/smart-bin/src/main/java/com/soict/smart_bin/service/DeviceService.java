@@ -1,6 +1,7 @@
 package com.soict.smart_bin.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.soict.smart_bin.common.DeviceStatus;
 import com.soict.smart_bin.common.NotificationType;
 import org.springframework.core.io.Resource;
 import com.soict.smart_bin.common.Constants;
@@ -114,6 +115,7 @@ public class DeviceService {
         device.setAccessToken(accessToken);
         device.setUser(user);
         device.setState(DeviceState.PENDING);
+        device.setStatus(DeviceStatus.OFFLINE);
 
         Device savedDevice = repository.save(device);
 
@@ -264,7 +266,7 @@ public class DeviceService {
         return mapper.toDto(savedDevice);
     }
 
-    public JsonNode getTelemetries(String id, String keycloakId, String keys, long startTs, long endTs) {
+    public JsonNode getTelemetries(String id, String keycloakId, String keys, Long startTs, Long endTs) {
         Device device = getDeviceAndVerifyOwnership(id, keycloakId);
         return thingsBoardService.getTelemetries(device.getDeviceId(), keys, startTs, endTs);
     }

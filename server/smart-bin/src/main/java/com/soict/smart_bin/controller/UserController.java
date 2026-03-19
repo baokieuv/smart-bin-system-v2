@@ -33,8 +33,11 @@ public class UserController {
         return responseFactory.response(SuccessCode.OK, user);
     }
 
-    @PutMapping("/{userId}")
-    public ResponseEntity<ApiResponseFormat<Object>> updateUserById(@PathVariable String userId){
+    @PutMapping("/")
+    public ResponseEntity<ApiResponseFormat<Object>> updateUserById(
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String keycloakId = jwt.getSubject();
         return responseFactory.response(SuccessCode.OK, "");
     }
 
@@ -50,9 +53,12 @@ public class UserController {
         return responseFactory.response(SuccessCode.OK, url);
     }
 
-    @DeleteMapping("/{userId}")
-    public ResponseEntity<ApiResponseFormat<Object>> deleteUserById(@PathVariable String userId){
-        userService.deleteUserById(userId);
+    @DeleteMapping("/")
+    public ResponseEntity<ApiResponseFormat<Object>> deleteUserById(
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String keycloakId = jwt.getSubject();
+        userService.deleteUserById(keycloakId);
         return responseFactory.response(SuccessCode.OK, "User deleted successfully");
     }
 

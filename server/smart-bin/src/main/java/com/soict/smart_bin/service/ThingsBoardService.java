@@ -63,14 +63,20 @@ public class ThingsBoardService {
                 .body(JsonNode.class);
     }
 
-    public JsonNode getTelemetries(String deviceId, String keys, long startTs, long endTs){
+    public JsonNode getTelemetries(String deviceId, String keys, Long startTs, Long endTs){
         return restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/api/plugins/telemetry/DEVICE/{deviceId}/values/timeseries")
-                        .queryParam("keys", keys)
-                        .queryParam("startTs", startTs)
-                        .queryParam("endTs", endTs)
-                        .build(deviceId))
+                .uri(uriBuilder -> {
+                    uriBuilder.path("/api/plugins/telemetry/DEVICE/{deviceId}/values/timeseries");
+                    if (keys != null && !keys.isBlank()) {
+                        uriBuilder.queryParam("keys", keys);
+                    }
+                    if (startTs != null && endTs != null) {
+                        uriBuilder.queryParam("startTs", startTs);
+                        uriBuilder.queryParam("endTs", endTs);
+                    }
+
+                    return uriBuilder.build(deviceId);
+                })
                 .retrieve()
                 .body(JsonNode.class);
     }

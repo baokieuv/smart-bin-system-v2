@@ -1,5 +1,6 @@
 package com.soict.smart_bin.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.soict.smart_bin.common.DeviceState;
 import com.soict.smart_bin.common.DeviceStatus;
 import jakarta.persistence.*;
@@ -38,5 +39,6 @@ public class Device extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
+    @JsonIgnore
     private User user;
 }
