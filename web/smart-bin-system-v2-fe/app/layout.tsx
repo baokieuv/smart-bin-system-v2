@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Smart Bin System",
-  description: "Login to manage your smart bins",
+  title: "Smart Bin Platform",
+  description: "Monitor, manage, and optimize your smart bin network.",
 };
 
 export default function RootLayout({
@@ -26,7 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased text-slate-900`}
       >
         <Providers>{children}</Providers>
       </body>

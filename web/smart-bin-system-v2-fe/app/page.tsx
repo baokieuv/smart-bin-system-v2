@@ -2,52 +2,66 @@ import Link from 'next/link';
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl text-center space-y-8">
-        
-        {/* Tiêu đề chính */}
-        <h1 className="text-5xl sm:text-6xl font-extrabold text-gray-900 tracking-tight">
-          Welcome to <span className="text-green-600">Smart Bin</span>
-        </h1>
-        
-        {/* Lời giới thiệu */}
-        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          The intelligent way to monitor, manage, and optimize your waste collection operations in real-time.
-        </p>
-        
-        {/* Khu vực nút bấm */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8">
-          <Link 
-            href="/auth/login" 
-            className="w-full sm:w-auto px-8 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm"
-          >
-            Sign In
-          </Link>
-          <Link 
-            href="/auth/register" 
-            className="w-full sm:w-auto px-8 py-3 bg-white text-green-600 font-medium rounded-lg border border-green-600 hover:bg-green-50 transition-colors shadow-sm"
-          >
-            Create Account
-          </Link>
-        </div>
-        
-        {/* Optional: Thêm một chút minh họa hoặc features ở dưới */}
-        <div className="pt-16 grid grid-cols-1 sm:grid-cols-3 gap-8 text-left">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="font-semibold text-lg text-gray-900">Real-time Tracking</h3>
-            <p className="mt-2 text-gray-500 text-sm">Monitor bin fill-levels instantly using IoT sensors.</p>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="font-semibold text-lg text-gray-900">Smart Routing</h3>
-            <p className="mt-2 text-gray-500 text-sm">Optimize collection routes based on actual needs.</p>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h3 className="font-semibold text-lg text-gray-900">Analytics</h3>
-            <p className="mt-2 text-gray-500 text-sm">Gain insights into waste generation patterns.</p>
-          </div>
-        </div>
+    <main className="home-hero-bg min-h-screen px-4 py-12 sm:px-8 lg:px-10">
+      <div className="mx-auto max-w-6xl rounded-3xl border border-slate-200/70 bg-white/85 p-6 shadow-[0_30px_80px_-44px_rgba(15,23,42,0.55)] backdrop-blur sm:p-10">
+        <section className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
+          <div className="space-y-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Smart Waste Management</p>
+            <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
+              Operate your bin network with clarity and confidence.
+            </h1>
+            <p className="max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg">
+              Smart Bin helps teams monitor fill levels, prioritize collections, and keep service quality high using real-time device signals.
+            </p>
 
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+              <Link
+                href="/auth/login"
+                className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-6 py-3 font-semibold text-white transition hover:bg-emerald-700"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/auth/register"
+                className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Create Account
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-900 p-6 text-slate-100 shadow-lg">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">Operations Snapshot</p>
+            <div className="mt-4 space-y-4">
+              {[
+                { label: 'Monitored Bins', value: '128' },
+                { label: 'Active Devices', value: '124' },
+                { label: 'Pickup Efficiency', value: '94%' },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-3">
+                  <span className="text-sm text-slate-300">{item.label}</span>
+                  <span className="text-lg font-semibold text-white">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Real-time Tracking</h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">Monitor bin fill-levels continuously using live IoT updates.</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Smart Routing</h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">Prioritize pickups where they are needed most to reduce wasted trips.</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Analytics</h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">Discover trends in usage to improve planning and sustainability outcomes.</p>
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

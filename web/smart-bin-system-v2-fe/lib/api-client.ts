@@ -1,3 +1,5 @@
+import { BaseResponse } from "@/types/core";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9999/api/v1';
 
 interface RequestOptions extends RequestInit {
@@ -22,7 +24,7 @@ const processQueue = (error: Error | null, token: string | null = null) => {
     failedQueue = [];
 };
 
-export const apiClient = async (endpoint: string, options: RequestOptions = {}): Promise<any> => {
+export const apiClient = async <T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<BaseResponse> => {
     const { skipAuthRefresh = false, ...fetchOptions } = options;
 
     // Thêm Authorization header nếu có access_token (trừ các endpoint không cần auth)
@@ -70,7 +72,7 @@ export const apiClient = async (endpoint: string, options: RequestOptions = {}):
             return new Promise((resolve, reject) => {
                 failedQueue.push({ resolve, reject });
             })
-                .then((token) => {
+                .then(() => {
                     // Retry request với token mới
                     return apiClient(endpoint, fetchOptions);
                 })
@@ -146,14 +148,14 @@ export const api = {
     get: (endpoint: string, options?: RequestOptions) =>
         apiClient(endpoint, { ...options, method: 'GET' }),
 
-    post: (endpoint: string, data?: any, options?: RequestOptions) =>
+    post: (endpoint: string, data?: unknown, options?: RequestOptions) =>
         apiClient(endpoint, {
             ...options,
             method: 'POST',
             body: data instanceof FormData ? data : JSON.stringify(data),
         }),
 
-    put: (endpoint: string, data?: any, options?: RequestOptions) =>
+    put: (endpoint: string, data?: unknown, options?: RequestOptions) =>
         apiClient(endpoint, {
             ...options,
             method: 'PUT',
@@ -163,7 +165,7 @@ export const api = {
     delete: (endpoint: string, options?: RequestOptions) =>
         apiClient(endpoint, { ...options, method: 'DELETE' }),
 
-    patch: (endpoint: string, data?: any, options?: RequestOptions) =>
+    patch: (endpoint: string, data?: unknown, options?: RequestOptions) =>
         apiClient(endpoint, {
             ...options,
             method: 'PATCH',
