@@ -1,5 +1,6 @@
 package com.soict.smart_bin.controller;
 
+import com.soict.smart_bin.dto.user.UpdateUserRequest;
 import com.soict.smart_bin.utils.ResponseFactory;
 import com.soict.smart_bin.common.SuccessCode;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;
@@ -35,10 +36,12 @@ public class UserController {
 
     @PutMapping("/")
     public ResponseEntity<ApiResponseFormat<Object>> updateUserById(
+            @Valid @RequestBody UpdateUserRequest request,
             @AuthenticationPrincipal Jwt jwt
     ){
         String keycloakId = jwt.getSubject();
-        return responseFactory.response(SuccessCode.OK, "");
+        var user = userService.updateUser(keycloakId, request);
+        return responseFactory.response(SuccessCode.OK, user);
     }
 
     @PostMapping("/upload-image")

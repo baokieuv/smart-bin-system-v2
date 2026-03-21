@@ -8,7 +8,6 @@ import com.soict.smart_bin.dto.device.CreateDeviceRequest;
 import com.soict.smart_bin.dto.device.UpdateDeviceRequest;
 import com.soict.smart_bin.service.DeviceService;
 import jakarta.validation.Valid;
-import jakarta.ws.rs.HeaderParam;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;

@@ -5,7 +5,7 @@ export const authApi = {
     // Login không cần auth, skip refresh token mechanism
     loginPassword: async (request: LoginRequest) => {
         return api.post('/auth/login-password', 
-            { email: request.email, password: request.password },
+            { username: request.email, password: request.password },
             { skipAuthRefresh: true }
         );
     },

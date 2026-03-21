@@ -3,18 +3,24 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '@/services/api/auth';
-import Link from 'next/link';
 import { AuthShell } from '@/components/ui/auth-shell';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { StatusMessage } from '@/components/ui/status-message';
+
+type VerifyStatus = 'loading' | 'success' | 'error';
 
 export default function VerifyEmailPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const token = searchParams.get('token') || '';
+    const emailFromQuery = searchParams.get('email') || '';
     const hasToken = Boolean(token);
 
-    const [status, setStatus] = useState<'loading' | 'success' | 'error'>(hasToken ? 'loading' : 'error');
+    const [status, setStatus] = useState<VerifyStatus>(hasToken ? 'loading' : 'error');
     const [message, setMessage] = useState(hasToken ? '' : 'Liên kết xác thực không hợp lệ. Vui lòng kiểm tra lại email.');
+    const [email, setEmail] = useState(emailFromQuery);
+    const [isResending, setIsResending] = useState(false);
     const [countdown, setCountdown] = useState(5);
 
     useEffect(() => {
@@ -41,18 +47,40 @@ export default function VerifyEmailPage() {
         if (status !== 'success') return;
 
         const interval = setInterval(() => {
-            setCountdown((prev) => {
-                if (prev <= 1) {
-                    clearInterval(interval);
-                    router.push('/auth/login');
-                    return 0;
-                }
-                return prev - 1;
-            });
+            setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [status, router]);
+    }, [status]);
+
+    useEffect(() => {
+        if (status === 'success' && countdown === 0) {
+            router.push('/auth/login');
+        }
+    }, [status, countdown, router]);
+
+    const handleResendVerification = async () => {
+        const targetEmail = email.trim();
+
+        if (!targetEmail) {
+            setMessage('Vui lòng nhập email để gửi lại xác thực.');
+            return;
+        }
+
+        try {
+            setIsResending(true);
+            await authApi.resendVerification(targetEmail);
+
+            setCountdown(5);
+            setStatus('success');
+            setMessage('Đã gửi lại email xác thực. Vui lòng kiểm tra hộp thư của bạn.');
+        } catch {
+            setStatus('error');
+            setMessage('Không thể gửi lại email xác thực. Vui lòng thử lại sau.');
+        } finally {
+            setIsResending(false);
+        }
+    };
 
     return (
         <AuthShell
@@ -81,7 +109,7 @@ export default function VerifyEmailPage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                             </svg>
                         </div>
-                        <h2 className="mb-2 text-xl font-bold text-slate-900">Email verified</h2>
+                        <h2 className="mb-2 text-xl font-bold text-slate-900">Success</h2>
                         <p className="mb-6 text-sm text-slate-600">{message}</p>
 
                         <div className="mb-6 flex items-center justify-center">
@@ -123,9 +151,33 @@ export default function VerifyEmailPage() {
                         <p className="mb-6 text-sm text-slate-600">{message}</p>
 
                         <div className="space-y-3">
-                            <Link href="/auth/resend-verification" className="block">
-                                <Button className="w-full" size="lg">Resend Verification Email</Button>
-                            </Link>
+                            {emailFromQuery ? (
+                                <StatusMessage tone="info" className="text-left">
+                                    Resend to: <span className="font-semibold">{emailFromQuery}</span>
+                                </StatusMessage>
+                            ) : (
+                                <div className="space-y-1 text-left">
+                                    <label htmlFor="verify-email-input" className="block text-sm font-semibold text-slate-700">
+                                        Email
+                                    </label>
+                                    <Input
+                                        id="verify-email-input"
+                                        type="email"
+                                        placeholder="you@example.com"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                    />
+                                </div>
+                            )}
+
+                            <Button
+                                className="w-full"
+                                size="lg"
+                                onClick={handleResendVerification}
+                                disabled={isResending}
+                            >
+                                {isResending ? 'Sending...' : 'Resend Verification Email'}
+                            </Button>
                             <Button onClick={() => router.push('/auth/login')} variant="secondary" className="w-full" size="lg">
                                 Back to Login
                             </Button>

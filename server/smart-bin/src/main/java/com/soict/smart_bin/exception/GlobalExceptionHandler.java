@@ -137,7 +137,7 @@ class GlobalExceptionHandler {
         ApiResponseFormat.ApiData<Object> errorResponse = new ApiResponseFormat.ApiData<>(
                 false,
                 errorCode.getCode(),
-                errorCode.getMessage(),
+                ex.getMessage(),
                 null
         );
 

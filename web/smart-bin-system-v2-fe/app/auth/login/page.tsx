@@ -35,8 +35,9 @@ export default function LoginPage() {
             } else {
                 setError(data.message || 'Sai email hoặc mật khẩu');
             }
-        } catch {
-            setError('Lỗi kết nối đến server');
+        } catch (err: unknown) {
+            const systemMessage = err instanceof Error ? err.message : '';
+            setError(systemMessage || 'Lỗi kết nối đến server');
         }
     };
 

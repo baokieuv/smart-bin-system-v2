@@ -29,7 +29,7 @@ public class AuthService {
 
     public TokenResponse loginPassword(LoginRequest request) {
         User user = userRepository.findByEmailAndActiveTrue(request.username())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         if (!user.isEmailVerified()) {
             throw new RuntimeException("Email not verified. Please check your email for verification link.");

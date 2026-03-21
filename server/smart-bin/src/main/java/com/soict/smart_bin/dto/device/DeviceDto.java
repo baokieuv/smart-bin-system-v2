@@ -4,6 +4,7 @@ import com.soict.smart_bin.common.DeviceState;
 import com.soict.smart_bin.common.DeviceStatus;
 import com.soict.smart_bin.common.UserState;
 
+import java.time.Instant;
 import java.util.UUID;
 
 public record DeviceDto (
@@ -14,6 +15,7 @@ public record DeviceDto (
         Double longitude,
         Double latitude,
         DeviceState state,
-        DeviceStatus status
+        DeviceStatus status,
+        Instant createdDate
 ) {
 }

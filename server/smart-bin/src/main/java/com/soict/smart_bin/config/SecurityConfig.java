@@ -29,11 +29,13 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/change-password").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/complete-profile").authenticated()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/users/").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/devices/activate").permitAll()
+                        .requestMatchers("/api/v1/things-board/**").permitAll()
                         .requestMatchers("/api/v1/users/**").authenticated()
+                        .requestMatchers("/api/v1/devices/**").authenticated()
+                        .requestMatchers("/api/v1/notifications/**").authenticated()
 
                         .anyRequest().authenticated()
                 )

@@ -32,7 +32,7 @@ public class EmailService {
             helper.setTo(toEmail);
             helper.setSubject("Smart Bin - Verify Your Email");
 
-            String htmlContent = buildVerificationEmailHtml(firstName, token);
+            String htmlContent = buildVerificationEmailHtml(firstName, token, toEmail);
             helper.setText(htmlContent, true);
 
             mailSender.send(message);
@@ -41,8 +41,8 @@ public class EmailService {
         }
     }
 
-    private String buildVerificationEmailHtml(String firstName, String token){
-        String verifyLink = frontendUrl + "/auth/verify-email" + "?token=" + token;
+    private String buildVerificationEmailHtml(String firstName, String token, String email){
+        String verifyLink = frontendUrl + "/auth/verify-email" + "?token=" + token + "&email=" + email;
 
         return """
             <!DOCTYPE html>

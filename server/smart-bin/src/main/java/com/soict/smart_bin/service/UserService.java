@@ -5,6 +5,7 @@ import com.soict.smart_bin.common.TokenType;
 import com.soict.smart_bin.common.UserState;
 import com.soict.smart_bin.dto.auth.ResendVerificationRequest;
 import com.soict.smart_bin.dto.user.CreateUserRequest;
+import com.soict.smart_bin.dto.user.UpdateUserRequest;
 import com.soict.smart_bin.dto.user.UserDto;
 import com.soict.smart_bin.entity.User;
 import com.soict.smart_bin.exception.ApiException;
@@ -123,6 +124,18 @@ public class UserService {
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         return mapper.toDto(user);
+    }
+
+    public UserDto updateUser(String keycloakId, UpdateUserRequest request) {
+        User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
+
+        user.setFirstName(request.firstName());
+        user.setLastName(request.lastName());
+
+        User savedUser = userRepository.save(user);
+
+        return mapper.toDto(savedUser);
     }
 
     public void deleteUserById(String userId) {
