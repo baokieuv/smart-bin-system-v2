@@ -24,7 +24,7 @@ const processQueue = (error: Error | null, token: string | null = null) => {
     failedQueue = [];
 };
 
-export const apiClient = async <T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<BaseResponse> => {
+export const apiClient = async <T = any> (endpoint: string, options: RequestOptions = {}): Promise<BaseResponse<T>> => {
     const { skipAuthRefresh = false, ...fetchOptions } = options;
 
     // Thêm Authorization header nếu có access_token (trừ các endpoint không cần auth)
@@ -145,28 +145,44 @@ export const apiClient = async <T = unknown>(endpoint: string, options: RequestO
 
 // Helper functions cho các HTTP methods
 export const api = {
-    get: (endpoint: string, options?: RequestOptions) =>
-        apiClient(endpoint, { ...options, method: 'GET' }),
+    get: <T = any>(endpoint: string, params?: Record<string, unknown>, options?: RequestOptions) => {
+        let fullEndpoint = endpoint;
 
-    post: (endpoint: string, data?: unknown, options?: RequestOptions) =>
-        apiClient(endpoint, {
+        if (params) {
+            const searchParams = new URLSearchParams();
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== undefined && value !== null) {
+                    searchParams.append(key, value.toString());
+                }
+            });
+            const queryString = searchParams.toString();
+            if (queryString) {
+                fullEndpoint += `?${queryString}`;
+            }
+        }
+
+        return apiClient<T>(fullEndpoint, { ...options, method: 'GET' });
+    },
+
+    post: <T = any>(endpoint: string, data?: unknown, options?: RequestOptions) =>
+        apiClient<T>(endpoint, {
             ...options,
             method: 'POST',
             body: data instanceof FormData ? data : JSON.stringify(data),
         }),
 
-    put: (endpoint: string, data?: unknown, options?: RequestOptions) =>
-        apiClient(endpoint, {
+    put: <T = any>(endpoint: string, data?: unknown, options?: RequestOptions) =>
+        apiClient<T>(endpoint, {
             ...options,
             method: 'PUT',
             body: data instanceof FormData ? data : JSON.stringify(data),
         }),
 
-    delete: (endpoint: string, options?: RequestOptions) =>
-        apiClient(endpoint, { ...options, method: 'DELETE' }),
+    delete: <T = any>(endpoint: string, options?: RequestOptions) =>
+        apiClient<T>(endpoint, { ...options, method: 'DELETE' }),
 
-    patch: (endpoint: string, data?: unknown, options?: RequestOptions) =>
-        apiClient(endpoint, {
+    patch: <T = any>(endpoint: string, data?: unknown, options?: RequestOptions) =>
+        apiClient<T>(endpoint, {
             ...options,
             method: 'PATCH',
             body: data instanceof FormData ? data : JSON.stringify(data),

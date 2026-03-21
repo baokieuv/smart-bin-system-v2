@@ -1,12 +1,40 @@
-export type DeviceStatus = 'online' | 'offline';
+export type DeviceStatus = 'ONLINE' | 'OFFLINE';
 
-export type Device = {
+export type DeviceDto = {
   id: string;
   name: string;
-  macAddress: string;
-  status: DeviceStatus;
+  accessToken?: string;
+  mac: string;
   longitude: number;
   latitude: number;
-  addedAt: string;
-  trashLevel: number;
+  state: string;
+  status: DeviceStatus | string;
+  createdDate: string;
+};
+
+export type DeviceAttributes = Record<string, unknown>;
+
+export type TelemetryPoint = {
+  ts: number;
+  value: string;
+};
+
+export type DeviceTelemetries = Record<string, TelemetryPoint[]>;
+
+export interface TelemetryParams {
+  keys?: string;
+  startTs?: number;
+  endTs?: number;
+  limit?: number;
+  agg?: string;
+  interval?: number;
+  [key: string]: any;
+}
+
+export type UpdateDeviceRequest = {
+  name?: string;
+  latitude?: number;
+  longitude?: number;
+  scope?: string;
+  additionalAttributes?: Record<string, unknown>;
 };
