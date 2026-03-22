@@ -16,6 +16,23 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Google Maps Setup
+
+Dashboard map uses Google Maps with marker clustering.
+
+Create `.env.local` and add:
+
+```bash
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+```
+
+Marker colors:
+
+- Online devices: green
+- Offline devices: red
+
+When there are many devices, nearby markers are grouped into clusters. Zoom in or click cluster to split into detailed markers.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

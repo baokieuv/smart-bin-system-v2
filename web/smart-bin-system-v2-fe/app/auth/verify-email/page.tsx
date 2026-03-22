@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '@/services/api/auth';
 import { AuthShell } from '@/components/ui/auth-shell';
@@ -10,7 +10,7 @@ import { StatusMessage } from '@/components/ui/status-message';
 
 type VerifyStatus = 'loading' | 'success' | 'error';
 
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const token = searchParams.get('token') || '';
@@ -185,5 +185,23 @@ export default function VerifyEmailPage() {
                     </>
                 )}
         </AuthShell>
+    );
+}
+
+export default function VerifyEmailPage() {
+    return (
+        <Suspense
+            fallback={
+                <AuthShell
+                    title="Email Verification"
+                    description="We are validating your email confirmation link."
+                    className="text-center"
+                >
+                    <div className="text-sm text-slate-600">Loading verification link...</div>
+                </AuthShell>
+            }
+        >
+            <VerifyEmailContent />
+        </Suspense>
     );
 }

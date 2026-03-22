@@ -11,6 +11,8 @@ import { Surface } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ToastStack } from '@/components/ui/toast-stack';
+import DeviceMap from '@/components/layout/map';
+import { LocationPickerMap, type LocationValue } from '@/components/layout/location-picker-map';
 import { deviceApi } from '@/services/api/device';
 import { DeviceDto, DeviceTelemetries } from '@/types/device';
 
@@ -26,16 +28,6 @@ type DeviceTelemetrySummary = {
     fillLevel: number | null;
     thrownCount: number | null;
     sampledAt: number | null;
-};
-
-const getDotPosition = (latitude: number, longitude: number) => {
-    const x = ((longitude + 180) / 360) * 100;
-    const y = ((90 - latitude) / 180) * 100;
-
-    return {
-        x: Math.min(Math.max(x, 8), 92),
-        y: Math.min(Math.max(y, 8), 92),
-    };
 };
 
 const formatTime = (value: string) =>
@@ -87,6 +79,8 @@ export default function DashboardPage() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isAddDevicePopupOpen, setIsAddDevicePopupOpen] = useState(false);
     const [macAddress, setMacAddress] = useState('');
+    const [addDeviceLatitude, setAddDeviceLatitude] = useState('');
+    const [addDeviceLongitude, setAddDeviceLongitude] = useState('');
     const [imageSrc, setImageSrc] = useState<string | null>(null);
     const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
@@ -169,10 +163,6 @@ export default function DashboardPage() {
         }, 2500);
     };
 
-    const selectedDotPosition = selectedDevice
-        ? getDotPosition(selectedDevice.latitude, selectedDevice.longitude)
-        : null;
-
     const userInitial = userInfo?.firstName?.charAt(0).toUpperCase() ?? userInfo?.email?.charAt(0).toUpperCase() ?? 'U';
     const fullName = `${userInfo?.firstName ?? ''} ${userInfo?.lastName ?? ''}`.trim() || 'User';
     const normalizedFullName = fullName.trim().replace(/\s+/g, ' ');
@@ -182,6 +172,36 @@ export default function DashboardPage() {
     const greeting = currentHour < 12 ? 'Good morning' : currentHour < 18 ? 'Good afternoon' : 'Good evening';
     const hasDevices = devices.length > 0;
     const MAC_PATTERN = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
+
+    const formatMacAddress = (rawValue: string) => {
+        const normalized = rawValue
+            .toUpperCase()
+            .replace(/[^0-9A-F]/g, '')
+            .slice(0, 12);
+
+        const pairs = normalized.match(/.{1,2}/g);
+        return pairs ? pairs.join(':') : '';
+    };
+
+    const handleMacAddressChange = (value: string) => {
+        setMacAddress(formatMacAddress(value));
+    };
+
+    const parseCoordinatePair = (latitudeValue: string, longitudeValue: string): LocationValue | null => {
+        const latitude = Number(latitudeValue);
+        const longitude = Number(longitudeValue);
+
+        if (Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
+        if (latitude < -90 || latitude > 90) return null;
+        if (longitude < -180 || longitude > 180) return null;
+
+        return { latitude, longitude };
+    };
+
+    const addLocation = parseCoordinatePair(addDeviceLatitude, addDeviceLongitude);
+    const editLocation = parseCoordinatePair(editDeviceLatitude, editDeviceLongitude);
+    const isMacValid = MAC_PATTERN.test(macAddress.trim());
+    const canSubmitAddDevice = isMacValid && addLocation !== null && !isSubmittingDeviceAction;
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files.length > 0) {
@@ -235,15 +255,48 @@ export default function DashboardPage() {
         }
     };
 
-    const handleAddDevice = () => {
-        if (!MAC_PATTERN.test(macAddress.trim())) {
+    const handleAddDevice = async () => {
+        const normalizedMac = macAddress.trim().toUpperCase();
+
+        if (!MAC_PATTERN.test(normalizedMac)) {
             pushToast('Add device failed. Invalid MAC address format.', 'error');
             return;
         }
 
-        setIsAddDevicePopupOpen(false);
-        setMacAddress('');
-        pushToast('Device added successfully (UI demo).', 'success');
+        const location = parseCoordinatePair(addDeviceLatitude, addDeviceLongitude);
+        if (!location) {
+            pushToast('Add device failed. Please select a valid location on map.', 'error');
+            return;
+        }
+
+        try {
+            setIsSubmittingDeviceAction(true);
+
+            const response = await deviceApi.add({
+                mac: normalizedMac,
+                latitude: location.latitude,
+                longitude: location.longitude,
+                name: `Smart Bin ${normalizedMac.slice(-8)}`,
+            });
+
+            if (!response.success) {
+                pushToast(response.message || 'Failed to add device.', 'error');
+                return;
+            }
+
+            const created = response.data as DeviceDto;
+            setDevices((prev) => [created, ...prev]);
+            setSelectedDeviceId(created.id);
+            setIsAddDevicePopupOpen(false);
+            setMacAddress('');
+            setAddDeviceLatitude('');
+            setAddDeviceLongitude('');
+            pushToast('Device added successfully.', 'success');
+        } catch {
+            pushToast('Failed to add device.', 'error');
+        } finally {
+            setIsSubmittingDeviceAction(false);
+        }
     };
 
     useEffect(() => {
@@ -286,21 +339,15 @@ export default function DashboardPage() {
     const handleUpdateDevice = async () => {
         if (!selectedDevice) return;
 
-        const latitude = Number(editDeviceLatitude);
-        const longitude = Number(editDeviceLongitude);
+        const location = parseCoordinatePair(editDeviceLatitude, editDeviceLongitude);
 
         if (!editDeviceName.trim()) {
             pushToast('Device name is required.', 'error');
             return;
         }
 
-        if (Number.isNaN(latitude) || latitude < -90 || latitude > 90) {
-            pushToast('Latitude must be between -90 and 90.', 'error');
-            return;
-        }
-
-        if (Number.isNaN(longitude) || longitude < -180 || longitude > 180) {
-            pushToast('Longitude must be between -180 and 180.', 'error');
+        if (!location) {
+            pushToast('Please select a valid location on map.', 'error');
             return;
         }
 
@@ -309,8 +356,8 @@ export default function DashboardPage() {
 
             const response = await deviceApi.update(selectedDevice.id, {
                 name: editDeviceName.trim(),
-                latitude,
-                longitude,
+                latitude: location.latitude,
+                longitude: location.longitude,
                 scope: 'SERVER_SCOPE',
                 additionalAttributes: {},
             });
@@ -539,7 +586,7 @@ export default function DashboardPage() {
                     </button>
                 </div>
 
-                <section className="relative flex min-h-0 flex-1 gap-4 overflow-hidden">
+                <section className="relative flex min-h-0 min-w-0 flex-1 gap-4 overflow-hidden">
                     {activeTab === 'devices' ? (
                     hasDevices ? (
                         <>
@@ -581,47 +628,30 @@ export default function DashboardPage() {
                         </aside>
                     )}
 
-                    <div className={`relative h-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 ${selectedDevice ? 'w-[60%]' : 'flex-1'}`}>
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(16,185,129,0.25),transparent_30%),radial-gradient(circle_at_70%_80%,rgba(239,68,68,0.25),transparent_28%),linear-gradient(120deg,#0f172a_10%,#1e293b_50%,#0f172a_95%)]" />
-                        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-size-[36px_36px]" />
+                    <div className={`relative h-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white ${selectedDevice ? 'w-[60%]' : 'flex-1'}`}>
+                        <DeviceMap
+                            devices={devices}
+                            selectedDeviceId={selectedDeviceId}
+                            onSelectDevice={setSelectedDeviceId}
+                            className="h-full w-full"
+                        />
 
-                        <div
-                            className="absolute inset-0 transition-transform duration-500"
-                            style={{
-                                transform:
-                                    selectedDevice && selectedDotPosition
-                                        ? `scale(1.8) translate(${(50 - selectedDotPosition.x) / 1.8}%, ${(50 - selectedDotPosition.y) / 1.8}%)`
-                                        : 'scale(1)',
-                            }}
-                        >
-                            {devices.map((device) => {
-                                const dot = getDotPosition(device.latitude, device.longitude);
+                        {selectedDevice && (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedDeviceId(null)}
+                                className="absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/70 bg-white/90 text-slate-700 shadow-sm transition hover:bg-white"
+                                aria-label="Back to map overview"
+                                title="Back to map overview"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />
+                                </svg>
+                            </button>
+                        )}
 
-                                return (
-                                    <button
-                                        key={device.id}
-                                        type="button"
-                                        onClick={() => setSelectedDeviceId(device.id)}
-                                        className="group absolute -translate-x-1/2 -translate-y-1/2"
-                                        style={{ left: `${dot.x}%`, top: `${dot.y}%` }}
-                                        aria-label={`Open ${device.name}`}
-                                    >
-                                        <span className="absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500/35 blur-sm" />
-                                        <span
-                                            className={`relative block h-4 w-4 rounded-full border-2 border-white shadow-[0_0_0_4px_rgba(239,68,68,0.25)] ${
-                                                selectedDeviceId === device.id ? 'bg-red-400' : 'bg-red-500'
-                                            }`}
-                                        />
-                                        <span className="absolute left-1/2 top-6 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-800 px-2 py-1 text-xs font-semibold text-white group-hover:block">
-                                            {device.name}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        <div className="absolute left-3 top-3 rounded-md bg-black/40 px-3 py-1 text-xs font-semibold text-white">
-                            {selectedDevice ? 'Zoomed on selected device' : 'Click a device card or red dot'}
+                        <div className={`absolute top-3 rounded-md bg-black/40 px-3 py-1 text-xs font-semibold text-white ${selectedDevice ? 'left-14' : 'left-3'}`}>
+                            Click a marker or device card
                         </div>
                     </div>
 
@@ -953,6 +983,19 @@ export default function DashboardPage() {
                                     <Input value={editDeviceLongitude} onChange={(event) => setEditDeviceLongitude(event.target.value)} />
                                 </div>
                             </div>
+
+                            <div>
+                                <p className="mb-1 block text-sm font-semibold text-slate-700">Pick Location on Map</p>
+                                <LocationPickerMap
+                                    className="h-52 w-full rounded-xl border border-slate-200"
+                                    value={editLocation}
+                                    onChange={(location) => {
+                                        setEditDeviceLatitude(location.latitude.toFixed(6));
+                                        setEditDeviceLongitude(location.longitude.toFixed(6));
+                                    }}
+                                />
+                                <p className="mt-1 text-xs text-slate-500">Click map to set new device location.</p>
+                            </div>
                         </div>
 
                         <div className="mt-5 flex justify-end gap-2">
@@ -980,34 +1023,78 @@ export default function DashboardPage() {
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4">
                     <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
                         <h2 className="text-lg font-bold text-slate-900">Add New Device</h2>
-                        <p className="mt-2 text-sm text-slate-600">Please enter your smart bin MAC address.</p>
+                        <p className="mt-2 text-sm text-slate-600">Complete both steps to enable Add Device.</p>
 
-                        <div className="mt-4">
-                            <label htmlFor="dashboard-mac-address" className="mb-1 block text-sm font-semibold text-slate-700">
-                                MAC Address
-                            </label>
-                            <Input
-                                id="dashboard-mac-address"
-                                type="text"
-                                value={macAddress}
-                                onChange={(event) => setMacAddress(event.target.value)}
-                                placeholder="AA:BB:CC:DD:EE:FF"
-                            />
+                        <div className="mt-4 space-y-3">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Step 1</p>
+                                <label htmlFor="dashboard-mac-address" className="mb-1 mt-2 block text-sm font-semibold text-slate-700">
+                                    MAC Address
+                                </label>
+                                <Input
+                                    id="dashboard-mac-address"
+                                    type="text"
+                                    value={macAddress}
+                                    onChange={(event) => handleMacAddressChange(event.target.value)}
+                                    placeholder="AA:BB:CC:DD:EE:FF"
+                                    maxLength={17}
+                                    className={macAddress && !isMacValid ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/25' : ''}
+                                />
+                                {macAddress && !isMacValid && (
+                                    <p className="mt-1 text-xs text-rose-600">Invalid MAC format. Use hex pairs like AA:BB:CC:DD:EE:FF.</p>
+                                )}
+                                <p className="mt-1 text-xs text-slate-500">You only type letters/numbers, the : separator is added automatically every 2 characters.</p>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Step 2</p>
+                                <p className="mb-2 mt-2 text-sm font-semibold text-slate-700">Pick Device Location</p>
+                                <LocationPickerMap
+                                    className="h-52 w-full rounded-xl border border-slate-200"
+                                    value={addLocation}
+                                    onChange={(location) => {
+                                        setAddDeviceLatitude(location.latitude.toFixed(6));
+                                        setAddDeviceLongitude(location.longitude.toFixed(6));
+                                    }}
+                                />
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                    <Input
+                                        value={addDeviceLatitude}
+                                        onChange={(event) => setAddDeviceLatitude(event.target.value)}
+                                        placeholder="Latitude"
+                                    />
+                                    <Input
+                                        value={addDeviceLongitude}
+                                        onChange={(event) => setAddDeviceLongitude(event.target.value)}
+                                        placeholder="Longitude"
+                                    />
+                                </div>
+                                {!addLocation && (addDeviceLatitude || addDeviceLongitude) && (
+                                    <p className="mt-1 text-xs text-rose-600">Invalid coordinates. Latitude: -90..90, Longitude: -180..180.</p>
+                                )}
+                            </div>
                         </div>
 
                         <div className="mt-5 flex justify-end gap-2">
                             <Button
                                 type="button"
-                                onClick={() => setIsAddDevicePopupOpen(false)}
+                                onClick={() => {
+                                    setIsAddDevicePopupOpen(false);
+                                    setMacAddress('');
+                                    setAddDeviceLatitude('');
+                                    setAddDeviceLongitude('');
+                                }}
                                 variant="secondary"
+                                disabled={isSubmittingDeviceAction}
                             >
                                 Cancel
                             </Button>
                             <Button
                                 type="button"
                                 onClick={handleAddDevice}
+                                disabled={!canSubmitAddDevice}
                             >
-                                Add Device
+                                {isSubmittingDeviceAction ? 'Adding...' : 'Add Device'}
                             </Button>
                         </div>
                     </div>

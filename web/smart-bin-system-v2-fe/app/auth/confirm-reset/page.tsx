@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '@/services/api/auth';
 import { AuthShell } from '@/components/ui/auth-shell';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { PasswordVisibilityButton } from '@/components/ui/password-visibility-button';
 
-export default function ConfirmResetPasswordPage() {
+function ConfirmResetPasswordForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const token = searchParams.get('token') || '';
@@ -155,5 +155,22 @@ export default function ConfirmResetPasswordPage() {
                 </form>
             )}
         </AuthShell>
+    );
+}
+
+export default function ConfirmResetPasswordPage() {
+    return (
+        <Suspense
+            fallback={
+                <AuthShell
+                    title="Set New Password"
+                    description="Choose a strong password to secure your account."
+                >
+                    <div className="text-center text-sm text-slate-600">Loading reset link...</div>
+                </AuthShell>
+            }
+        >
+            <ConfirmResetPasswordForm />
+        </Suspense>
     );
 }
