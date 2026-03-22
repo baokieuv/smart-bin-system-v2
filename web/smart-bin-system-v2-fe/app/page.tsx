@@ -1,4 +1,4 @@
-"use client";
+"use client"; // Landing page entry for the Smart Bin frontend.
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';

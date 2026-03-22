@@ -1,3 +1,5 @@
+// User profile and account state type definitions.
+
 export type UserState = 'ACTIVE' | 'PENDING' | 'SUSPENDED' | 'DELETED'; 
 
 export interface UserDto {

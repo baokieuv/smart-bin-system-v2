@@ -1,5 +1,7 @@
 'use client';
 
+// Authenticated password change screen with strength checks.
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/services/api/auth';
@@ -8,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { StatusMessage } from '@/components/ui/status-message';
 import { PasswordVisibilityButton } from '@/components/ui/password-visibility-button';
+import { PASSWORD_MIN_LENGTH, getPasswordRules, getPasswordStrengthScore, isPasswordStrongEnough } from '@/lib/password-policy';
 
 export default function ChangePasswordPage() {
     const router = useRouter();
@@ -20,33 +23,25 @@ export default function ChangePasswordPage() {
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [error, setError] = useState('');
 
-    const getPasswordStrength = (pwd: string) => {
-        let score = 0;
-        if (pwd.length >= 8) score++;
-        if (/[A-Z]/.test(pwd)) score++;
-        if (/[0-9]/.test(pwd)) score++;
-        if (/[^A-Za-z0-9]/.test(pwd)) score++;
-        return score;
-    };
-
-    const strengthLabels = ['', 'Yếu', 'Trung bình', 'Khá', 'Mạnh'];
+    const strengthLabels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
     const strengthColors = ['', 'bg-red-400', 'bg-yellow-400', 'bg-blue-400', 'bg-green-500'];
-    const strength = getPasswordStrength(newPassword);
+    const strength = getPasswordStrengthScore(newPassword);
+    const passwordRules = getPasswordRules(newPassword);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
         if (currentPassword === newPassword) {
-            setError('Mật khẩu mới không được trùng với mật khẩu hiện tại.');
+            setError('The new password must be different from the current password.');
             return;
         }
         if (newPassword !== confirmPassword) {
-            setError('Mật khẩu xác nhận không khớp.');
+            setError('Password confirmation does not match.');
             return;
         }
-        if (newPassword.length < 8) {
-            setError('Mật khẩu mới phải có ít nhất 8 ký tự.');
+        if (!isPasswordStrongEnough(newPassword)) {
+            setError(`The new password must be at least ${PASSWORD_MIN_LENGTH} characters and include an uppercase letter, a number, and a special character.`);
             return;
         }
 
@@ -58,7 +53,7 @@ export default function ChangePasswordPage() {
         } catch (err: unknown) {
             setStatus('error');
             const message = err instanceof Error ? err.message : '';
-            setError(message || 'Mật khẩu hiện tại không đúng hoặc có lỗi xảy ra.');
+            setError(message || 'Current password is incorrect or an unexpected error occurred.');
         }
     };
 
@@ -150,13 +145,8 @@ export default function ChangePasswordPage() {
                         </div>
                     </div>
 
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-1.5">
-                            {[
-                            { label: 'At least 8 characters', check: newPassword.length >= 8 },
-                            { label: 'Contains uppercase letter', check: /[A-Z]/.test(newPassword) },
-                            { label: 'Contains number', check: /[0-9]/.test(newPassword) },
-                            { label: 'Contains special character', check: /[^A-Za-z0-9]/.test(newPassword) },
-                        ].map((rule) => (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-1.5">
+                            {passwordRules.map((rule) => (
                             <div key={rule.label} className="flex items-center gap-2 text-xs">
                                 <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${rule.check ? 'bg-emerald-500' : 'bg-slate-300'}`}>
                                     {rule.check && (

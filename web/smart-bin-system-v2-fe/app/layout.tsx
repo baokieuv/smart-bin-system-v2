@@ -1,3 +1,5 @@
+// Root layout: wires global styles, metadata, and top-level providers.
+
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "mapbox-gl/dist/mapbox-gl.css";

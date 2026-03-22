@@ -1,3 +1,5 @@
+// Toast renderer for stacked transient notifications.
+
 type Toast = {
   id: number;
   message: string;

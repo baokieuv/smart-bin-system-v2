@@ -1,11 +1,20 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+// Reusable map picker for selecting lat/lng with address suggestions.
+
+import { useCallback, useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 
 export type LocationValue = {
   latitude: number;
   longitude: number;
+};
+
+type AddressSuggestion = {
+  id: string;
+  placeName: string;
+  longitude: number;
+  latitude: number;
 };
 
 type LocationPickerMapProps = {
@@ -33,10 +42,44 @@ export function LocationPickerMap({
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [helperMessage, setHelperMessage] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [isSuggestionListOpen, setIsSuggestionListOpen] = useState(false);
+  const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const onChangeRef = useRef(onChange);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const fetchAddressSuggestions = useCallback(async (query: string) => {
+    if (!accessToken) return [] as AddressSuggestion[];
+
+    const response = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=3&access_token=${accessToken}`,
+    );
+    if (!response.ok) {
+      throw new Error('Address lookup failed');
+    }
+
+    const result = (await response.json()) as {
+      features?: Array<{ id?: string; center?: [number, number]; place_name?: string }>;
+    };
+
+    return (result.features ?? [])
+      .map((feature) => {
+        const center = feature.center;
+        if (!center || center.length < 2 || !feature.place_name) return null;
+
+        return {
+          id: feature.id ?? `${center[0]}-${center[1]}`,
+          placeName: feature.place_name,
+          longitude: Number(center[0].toFixed(6)),
+          latitude: Number(center[1].toFixed(6)),
+        } satisfies AddressSuggestion;
+      })
+      .filter((item): item is AddressSuggestion => item !== null)
+      .slice(0, 3);
+  }, [accessToken]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -105,6 +148,38 @@ export function LocationPickerMap({
     map.easeTo({ center: [value.longitude, value.latitude], duration: 350 });
   }, [value]);
 
+  useEffect(() => {
+    const query = addressQuery.trim();
+    if (!query || !accessToken) {
+      setSuggestions([]);
+      setIsSearching(false);
+      return;
+    }
+
+    if (query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const debounceId = window.setTimeout(async () => {
+      try {
+        setIsSearching(true);
+        const nextSuggestions = await fetchAddressSuggestions(query);
+        setSuggestions(nextSuggestions);
+        setHighlightedSuggestionIndex(nextSuggestions.length > 0 ? 0 : -1);
+      } catch {
+        setSuggestions([]);
+        setHighlightedSuggestionIndex(-1);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 280);
+
+    return () => {
+      window.clearTimeout(debounceId);
+    };
+  }, [accessToken, addressQuery, fetchAddressSuggestions]);
+
   const applyLocation = (longitude: number, latitude: number) => {
     const map = mapRef.current;
     if (!map) return;
@@ -121,6 +196,16 @@ export function LocationPickerMap({
     onChangeRef.current({ latitude, longitude });
   };
 
+  const selectSuggestion = (suggestion: AddressSuggestion) => {
+    applyLocation(suggestion.longitude, suggestion.latitude);
+    setAddressQuery(suggestion.placeName);
+    setHelperMessage(suggestion.placeName);
+    setSuggestions([]);
+    setHighlightedSuggestionIndex(-1);
+    setIsSuggestionListOpen(false);
+    inputRef.current?.blur();
+  };
+
   const handleSearchAddress = async () => {
     const query = addressQuery.trim();
     if (!query || !accessToken) return;
@@ -128,32 +213,23 @@ export function LocationPickerMap({
     try {
       setIsSearching(true);
       setHelperMessage(null);
+      const mappedSuggestions = await fetchAddressSuggestions(query);
 
-      const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&access_token=${accessToken}`,
-      );
-      if (!response.ok) {
-        throw new Error('Address lookup failed');
-      }
-
-      const result = (await response.json()) as {
-        features?: Array<{ center?: [number, number]; place_name?: string }>;
-      };
-
-      const firstFeature = result.features?.[0];
-      const center = firstFeature?.center;
-      if (!center || center.length < 2) {
+      if (mappedSuggestions.length === 0) {
+        setSuggestions([]);
+        setHighlightedSuggestionIndex(-1);
         setHelperMessage('No matching address found. Please try another keyword.');
         return;
       }
 
-      const longitude = Number(center[0].toFixed(6));
-      const latitude = Number(center[1].toFixed(6));
-      applyLocation(longitude, latitude);
-      if (firstFeature?.place_name) {
-        setHelperMessage(firstFeature.place_name);
-      }
+      setSuggestions(mappedSuggestions);
+      setHighlightedSuggestionIndex(0);
+      const firstSuggestion = mappedSuggestions[0];
+      applyLocation(firstSuggestion.longitude, firstSuggestion.latitude);
+      setHelperMessage(firstSuggestion.placeName);
     } catch {
+      setSuggestions([]);
+      setHighlightedSuggestionIndex(-1);
       setHelperMessage('Cannot search this address right now.');
     } finally {
       setIsSearching(false);
@@ -168,6 +244,9 @@ export function LocationPickerMap({
 
     setIsLocating(true);
     setHelperMessage(null);
+    setSuggestions([]);
+    setHighlightedSuggestionIndex(-1);
+    setIsSuggestionListOpen(false);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -200,13 +279,58 @@ export function LocationPickerMap({
       <div className="pointer-events-none absolute left-2 right-2 top-2 z-10 space-y-2">
         <div className="pointer-events-auto flex items-center gap-2 rounded-lg bg-white/95 p-2 shadow">
           <input
+            ref={inputRef}
             type="text"
             value={addressQuery}
-            onChange={(event) => setAddressQuery(event.target.value)}
+            onFocus={() => {
+              setIsSuggestionListOpen(true);
+            }}
+            onBlur={() => {
+              window.setTimeout(() => {
+                setIsSuggestionListOpen(false);
+              }, 120);
+            }}
+            onChange={(event) => {
+              setAddressQuery(event.target.value);
+              if (!isSuggestionListOpen) {
+                setIsSuggestionListOpen(true);
+              }
+            }}
             onKeyDown={(event) => {
+              if (event.key === 'ArrowDown' && suggestions.length > 0) {
+                event.preventDefault();
+                setHighlightedSuggestionIndex((previous) =>
+                  previous < suggestions.length - 1 ? previous + 1 : 0,
+                );
+                return;
+              }
+
+              if (event.key === 'ArrowUp' && suggestions.length > 0) {
+                event.preventDefault();
+                setHighlightedSuggestionIndex((previous) =>
+                  previous > 0 ? previous - 1 : suggestions.length - 1,
+                );
+                return;
+              }
+
               if (event.key === 'Enter') {
                 event.preventDefault();
+
+                if (isSuggestionListOpen && suggestions.length > 0) {
+                  const safeIndex = highlightedSuggestionIndex >= 0 ? highlightedSuggestionIndex : 0;
+                  const pickedSuggestion = suggestions[safeIndex];
+                  if (pickedSuggestion) {
+                    selectSuggestion(pickedSuggestion);
+                    return;
+                  }
+                }
+
                 handleSearchAddress();
+              }
+
+              if (event.key === 'Escape') {
+                setIsSuggestionListOpen(false);
+                setHighlightedSuggestionIndex(-1);
               }
             }}
             placeholder="Search address (house number, street...)"
@@ -240,6 +364,28 @@ export function LocationPickerMap({
         {helperMessage && (
           <div className="pointer-events-auto rounded-md bg-black/65 px-2 py-1 text-[11px] text-white">
             {helperMessage}
+          </div>
+        )}
+
+        {isSuggestionListOpen && suggestions.length > 0 && (
+          <div className="pointer-events-auto rounded-md bg-white/95 p-1 shadow">
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={suggestion.id}
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={() => {
+                  selectSuggestion(suggestion);
+                }}
+                className={`block w-full rounded px-2 py-1 text-left text-[11px] text-slate-700 transition hover:bg-slate-100 ${
+                  index === highlightedSuggestionIndex ? 'bg-slate-100' : ''
+                }`}
+              >
+                {suggestion.placeName}
+              </button>
+            ))}
           </div>
         )}
       </div>

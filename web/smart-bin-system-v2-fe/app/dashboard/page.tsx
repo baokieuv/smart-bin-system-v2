@@ -1,5 +1,7 @@
 'use client';
 
+// Main dashboard for account and device management.
+
 import Cropper, { Area } from 'react-easy-crop';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -447,7 +449,7 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="h-screen w-full bg-slate-50">
+        <div className="h-screen w-full overflow-y-auto bg-slate-50">
             <Surface className="flex h-full w-full max-w-none flex-col gap-4 rounded-none border-0 bg-slate-50 p-4 shadow-none md:p-5">
                 <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3.5">
                     <div>
@@ -586,12 +588,12 @@ export default function DashboardPage() {
                     </button>
                 </div>
 
-                <section className="relative flex min-h-0 min-w-0 flex-1 gap-4 overflow-hidden">
+                <section className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto lg:flex-row lg:overflow-hidden">
                     {activeTab === 'devices' ? (
                     hasDevices ? (
                         <>
                     {!selectedDevice && (
-                        <aside className="h-full w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:w-[30%]">
+                        <aside className="h-80 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-full lg:w-[30%]">
                             <div className="border-b border-slate-200 px-4 py-3">
                                 <h2 className="text-lg font-bold text-slate-900">Your Devices</h2>
                                 <p className="text-sm text-slate-500">Select a card to view details on the right.</p>
@@ -628,7 +630,7 @@ export default function DashboardPage() {
                         </aside>
                     )}
 
-                    <div className={`relative h-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white ${selectedDevice ? 'w-[60%]' : 'flex-1'}`}>
+                    <div className={`relative h-105 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-full ${selectedDevice ? 'w-full lg:w-[60%]' : 'w-full lg:flex-1'}`}>
                         <DeviceMap
                             devices={devices}
                             selectedDeviceId={selectedDeviceId}
@@ -656,7 +658,7 @@ export default function DashboardPage() {
                     </div>
 
                     {selectedDevice && (
-                        <aside className="h-full w-[40%] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <aside className="h-80 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:h-full lg:w-[40%]">
                             <div className="flex items-start justify-between gap-3">
                                 <div>
                                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Device Detail</p>
@@ -1041,7 +1043,7 @@ export default function DashboardPage() {
                                     className={macAddress && !isMacValid ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/25' : ''}
                                 />
                                 {macAddress && !isMacValid && (
-                                    <p className="mt-1 text-xs text-rose-600">Invalid MAC format. Use hex pairs like AA:BB:CC:DD:EE:FF.</p>
+                                    <p className="mt-1 text-xs text-rose-600">Invalid MAC format. Use 12 letters/numbers, grouped as AA:BB:CC:DD:EE:FF.</p>
                                 )}
                                 <p className="mt-1 text-xs text-slate-500">You only type letters/numbers, the : separator is added automatically every 2 characters.</p>
                             </div>

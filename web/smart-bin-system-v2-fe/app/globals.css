@@ -51,3 +51,23 @@ body {
     radial-gradient(circle at 82% 14%, rgba(2, 132, 199, 0.14), transparent 36%),
     linear-gradient(180deg, #f8fafc 0%, #edf4fb 100%);
 }
+
+/* Keep one consistent eye icon by hiding browser-native password controls on Windows/Edge and legacy engines. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Hide built-in credentials/reveal decorations where supported to avoid overlap with the custom toggle button. */
+input[type="password"]::-webkit-contacts-auto-fill-button,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+input[type="password"]::-webkit-textfield-decoration-container {
+  visibility: hidden;
+}

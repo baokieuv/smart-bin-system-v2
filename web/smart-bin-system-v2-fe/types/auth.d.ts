@@ -1,3 +1,5 @@
+// TypeScript contracts for auth-related payloads and responses.
+
 export interface LoginRequest {
   email: string;
   password: string;
@@ -8,7 +10,7 @@ export interface LoginGoogleRequest {
 }
 
 export interface RefreshTokenRequest {
-  refreshToken: string; // Lưu ý: Ở backend Java bạn để biến là refreshToken (camelCase)
+  refreshToken: string; // Note: backend uses refreshToken (camelCase)
 }
 
 export interface LogoutRequest {

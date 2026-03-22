@@ -1,3 +1,5 @@
+// Status message box for success/error/info feedback.
+
 import { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 

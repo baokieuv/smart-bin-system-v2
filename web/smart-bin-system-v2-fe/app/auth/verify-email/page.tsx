@@ -1,5 +1,7 @@
 'use client';
 
+// Verify email token and support resend verification.
+
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '@/services/api/auth';
@@ -18,7 +20,7 @@ function VerifyEmailContent() {
     const hasToken = Boolean(token);
 
     const [status, setStatus] = useState<VerifyStatus>(hasToken ? 'loading' : 'error');
-    const [message, setMessage] = useState(hasToken ? '' : 'Liên kết xác thực không hợp lệ. Vui lòng kiểm tra lại email.');
+    const [message, setMessage] = useState(hasToken ? '' : 'The verification link is invalid. Please check your email again.');
     const [email, setEmail] = useState(emailFromQuery);
     const [isResending, setIsResending] = useState(false);
     const [countdown, setCountdown] = useState(5);
@@ -32,10 +34,10 @@ function VerifyEmailContent() {
             try {
                 const data = await authApi.verifyEmail(token);
                 setStatus('success');
-                setMessage(data.data || 'Email của bạn đã được xác thực thành công!');
+                setMessage(data.data || 'Your email has been verified successfully!');
             } catch {
                 setStatus('error');
-                setMessage('Liên kết xác thực không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu gửi lại email xác thực.');
+                setMessage('The verification link is invalid or has expired. Please request a new verification email.');
             }
         };
 
@@ -63,7 +65,7 @@ function VerifyEmailContent() {
         const targetEmail = email.trim();
 
         if (!targetEmail) {
-            setMessage('Vui lòng nhập email để gửi lại xác thực.');
+            setMessage('Please enter an email address to resend verification.');
             return;
         }
 
@@ -73,10 +75,10 @@ function VerifyEmailContent() {
 
             setCountdown(5);
             setStatus('success');
-            setMessage('Đã gửi lại email xác thực. Vui lòng kiểm tra hộp thư của bạn.');
+            setMessage('Verification email has been resent. Please check your inbox.');
         } catch {
             setStatus('error');
-            setMessage('Không thể gửi lại email xác thực. Vui lòng thử lại sau.');
+            setMessage('Unable to resend verification email. Please try again later.');
         } finally {
             setIsResending(false);
         }

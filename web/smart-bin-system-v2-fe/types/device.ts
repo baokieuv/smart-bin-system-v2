@@ -1,3 +1,5 @@
+// Device domain types and request DTOs.
+
 export type DeviceStatus = 'ONLINE' | 'OFFLINE';
 
 export type DeviceDto = {

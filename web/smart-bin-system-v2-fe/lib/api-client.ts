@@ -1,9 +1,11 @@
+// HTTP client wrapper with auth token refresh and retry queue.
+
 import { BaseResponse } from "@/types/core";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9999/api/v1';
 
 interface RequestOptions extends RequestInit {
-    skipAuthRefresh?: boolean; // Flag để tránh vòng lặp vô hạn khi refresh token
+    skipAuthRefresh?: boolean; // Flag to avoid infinite refresh-token retry loops
 }
 
 let isRefreshing = false;
@@ -24,10 +26,10 @@ const processQueue = (error: Error | null, token: string | null = null) => {
     failedQueue = [];
 };
 
-export const apiClient = async <T = any> (endpoint: string, options: RequestOptions = {}): Promise<BaseResponse<T>> => {
+export const apiClient = async <T = unknown> (endpoint: string, options: RequestOptions = {}): Promise<BaseResponse<T>> => {
     const { skipAuthRefresh = false, ...fetchOptions } = options;
 
-    // Thêm Authorization header nếu có access_token (trừ các endpoint không cần auth)
+    // Add Authorization header if access_token exists (except public endpoints)
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
     
     const headers: Record<string, string> = {
@@ -35,12 +37,12 @@ export const apiClient = async <T = any> (endpoint: string, options: RequestOpti
         ...(fetchOptions.headers as Record<string, string>),
     };
 
-    // Chỉ thêm Authorization header nếu có token và không phải là FormData
+    // Add Authorization header only when token exists and body is not FormData
     if (token && !skipAuthRefresh) {
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    // Xóa Content-Type nếu body là FormData
+    // Remove Content-Type when body is FormData
     if (fetchOptions.body instanceof FormData) {
         delete headers['Content-Type'];
     }
@@ -53,27 +55,27 @@ export const apiClient = async <T = any> (endpoint: string, options: RequestOpti
     try {
         const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
-        // Nếu không phải 401 hoặc đã skip auth refresh, xử lý response bình thường
+        // If not 401 or auth refresh is skipped, handle response normally
         if (response.status !== 401 || skipAuthRefresh) {
             const data = await response.json();
             
             if (!response.ok) {
-                throw new Error(data.message || 'Có lỗi xảy ra, vui lòng thử lại sau.');
+                throw new Error(data.message || 'An error occurred. Please try again later.');
             }
 
             return data;
         }
 
-        // Xử lý 401 - Token hết hạn, thử refresh
+        // Handle 401 - token expired, attempt refresh
         const originalRequest = { endpoint, options: fetchOptions };
 
         if (isRefreshing) {
-            // Nếu đang refresh, đợi kết quả
+            // If token refresh is in progress, wait for the result
             return new Promise((resolve, reject) => {
                 failedQueue.push({ resolve, reject });
             })
                 .then(() => {
-                    // Retry request với token mới
+                    // Retry request with new token
                     return apiClient(endpoint, fetchOptions);
                 })
                 .catch((err) => {
@@ -90,7 +92,7 @@ export const apiClient = async <T = any> (endpoint: string, options: RequestOpti
                 throw new Error('No refresh token available');
             }
 
-            // Gọi API refresh token
+            // Call refresh token API
             const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
                 method: 'POST',
                 headers: {
@@ -108,7 +110,7 @@ export const apiClient = async <T = any> (endpoint: string, options: RequestOpti
             if (refreshData.success && refreshData.data) {
                 const { access_token, refresh_token } = refreshData.data;
 
-                // Lưu token mới
+                // Save new token
                 if (typeof window !== 'undefined') {
                     localStorage.setItem('access_token', access_token);
                     if (refresh_token) {
@@ -116,18 +118,18 @@ export const apiClient = async <T = any> (endpoint: string, options: RequestOpti
                     }
                 }
 
-                // Xử lý queue
+                // Process queued requests
                 processQueue(null, access_token);
 
-                // Retry request ban đầu với token mới
+                // Retry original request with new token
                 return apiClient(originalRequest.endpoint, originalRequest.options);
             } else {
-                throw new Error('Refresh token không hợp lệ');
+                throw new Error('Invalid refresh token');
             }
         } catch (refreshError) {
             processQueue(refreshError as Error, null);
 
-            // Clear tokens và redirect đến login
+            // Clear tokens and redirect to login
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('refresh_token');
@@ -143,9 +145,9 @@ export const apiClient = async <T = any> (endpoint: string, options: RequestOpti
     }
 };
 
-// Helper functions cho các HTTP methods
+// Helper functions for HTTP methods
 export const api = {
-    get: <T = any>(endpoint: string, params?: Record<string, unknown>, options?: RequestOptions) => {
+    get: <T = unknown>(endpoint: string, params?: Record<string, unknown>, options?: RequestOptions) => {
         let fullEndpoint = endpoint;
 
         if (params) {
@@ -164,24 +166,24 @@ export const api = {
         return apiClient<T>(fullEndpoint, { ...options, method: 'GET' });
     },
 
-    post: <T = any>(endpoint: string, data?: unknown, options?: RequestOptions) =>
+    post: <T = unknown>(endpoint: string, data?: unknown, options?: RequestOptions) =>
         apiClient<T>(endpoint, {
             ...options,
             method: 'POST',
             body: data instanceof FormData ? data : JSON.stringify(data),
         }),
 
-    put: <T = any>(endpoint: string, data?: unknown, options?: RequestOptions) =>
+    put: <T = unknown>(endpoint: string, data?: unknown, options?: RequestOptions) =>
         apiClient<T>(endpoint, {
             ...options,
             method: 'PUT',
             body: data instanceof FormData ? data : JSON.stringify(data),
         }),
 
-    delete: <T = any>(endpoint: string, options?: RequestOptions) =>
+    delete: <T = unknown>(endpoint: string, options?: RequestOptions) =>
         apiClient<T>(endpoint, { ...options, method: 'DELETE' }),
 
-    patch: <T = any>(endpoint: string, data?: unknown, options?: RequestOptions) =>
+    patch: <T = unknown>(endpoint: string, data?: unknown, options?: RequestOptions) =>
         apiClient<T>(endpoint, {
             ...options,
             method: 'PATCH',

@@ -1,3 +1,5 @@
+// Mock data used for local device list/testing scenarios.
+
 // import { Device } from '@/types/device';
 
 // export const mockDevices: Device[] = [

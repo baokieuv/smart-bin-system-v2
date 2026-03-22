@@ -1,5 +1,7 @@
 'use client';
 
+// Login flow with email/password and Google authentication.
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGoogleLogin } from '@react-oauth/google';
@@ -18,7 +20,7 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
 
-    // State quản lý ẩn/hiện mật khẩu
+    // Password visibility state
     const [showPassword, setShowPassword] = useState(false);
 
     const handlePasswordLogin = async (e: React.FormEvent) => {
@@ -33,11 +35,11 @@ export default function LoginPage() {
                 localStorage.setItem('refresh_token', data.data.refresh_token);
                 router.push('/dashboard');
             } else {
-                setError(data.message || 'Sai email hoặc mật khẩu');
+                setError(data.message || 'Incorrect email or password');
             }
         } catch (err: unknown) {
             const systemMessage = err instanceof Error ? err.message : '';
-            setError(systemMessage || 'Lỗi kết nối đến server');
+            setError(systemMessage || 'Failed to connect to the server');
         }
     };
 
@@ -60,10 +62,10 @@ export default function LoginPage() {
                         router.push('/dashboard');
                     }
                 } else {
-                    setError(dataLogin.message || 'Đăng nhập Google thất bại');
+                    setError(dataLogin.message || 'Google sign-in failed');
                 }
             } catch {
-                setError('Đăng nhập Google thất bại');
+                setError('Google sign-in failed');
             }
         },
         onError: () => setError('Google Login Failed'),

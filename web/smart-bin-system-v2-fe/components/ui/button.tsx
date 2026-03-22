@@ -1,3 +1,5 @@
+// Reusable button component with style variants.
+
 import { ButtonHTMLAttributes } from 'react';
 import { cn } from '@/lib/cn';
 

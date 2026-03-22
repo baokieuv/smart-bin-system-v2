@@ -1,3 +1,5 @@
+// Shared generic API response types.
+
 export interface BaseResponse <T = any> {
   traceId: string,
   timestamp: number,

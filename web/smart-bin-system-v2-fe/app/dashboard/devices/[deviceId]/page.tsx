@@ -9,6 +9,7 @@ import { ToastStack } from '@/components/ui/toast-stack';
 import { deviceApi } from '@/services/api/device';
 import { DeviceDto, DeviceTelemetries } from '@/types/device';
 import { Input } from '@/components/ui/input';
+import { LocationPickerMap, type LocationValue } from '@/components/layout/location-picker-map';
 
 type Toast = {
   id: number;
@@ -35,6 +36,17 @@ const toNumber = (value: string | undefined) => {
   if (!value) return null;
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
+};
+
+const parseCoordinatePair = (latitudeValue: string, longitudeValue: string): LocationValue | null => {
+  const latitude = Number(latitudeValue);
+  const longitude = Number(longitudeValue);
+
+  if (Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
+  if (latitude < -90 || latitude > 90) return null;
+  if (longitude < -180 || longitude > 180) return null;
+
+  return { latitude, longitude };
 };
 
 const buildTelemetryHistory = (telemetries: DeviceTelemetries): DeviceTelemetryHistoryItem[] => {
@@ -93,6 +105,10 @@ export default function DeviceDetailPage() {
   };
 
   const latestTelemetry = useMemo(() => telemetryHistory[0] ?? null, [telemetryHistory]);
+  const editLocation = useMemo(
+    () => parseCoordinatePair(editLatitude, editLongitude),
+    [editLatitude, editLongitude],
+  );
 
   useEffect(() => {
     const fetchDeviceData = async () => {
@@ -155,21 +171,15 @@ export default function DeviceDetailPage() {
   const handleUpdateDevice = async () => {
     if (!device) return;
 
-    const latitude = Number(editLatitude);
-    const longitude = Number(editLongitude);
+    const location = parseCoordinatePair(editLatitude, editLongitude);
 
     if (!editName.trim()) {
       pushToast('Device name is required.', 'error');
       return;
     }
 
-    if (Number.isNaN(latitude) || latitude < -90 || latitude > 90) {
-      pushToast('Latitude must be between -90 and 90.', 'error');
-      return;
-    }
-
-    if (Number.isNaN(longitude) || longitude < -180 || longitude > 180) {
-      pushToast('Longitude must be between -180 and 180.', 'error');
+    if (!location) {
+      pushToast('Please select a valid location on map.', 'error');
       return;
     }
 
@@ -177,8 +187,8 @@ export default function DeviceDetailPage() {
       setIsSubmittingAction(true);
       const response = await deviceApi.update(device.id, {
         name: editName.trim(),
-        latitude,
-        longitude,
+        latitude: location.latitude,
+        longitude: location.longitude,
         scope: 'SERVER_SCOPE',
         additionalAttributes: {},
       });
@@ -395,7 +405,7 @@ export default function DeviceDetailPage() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
             <h2 className="text-lg font-bold text-slate-900">Edit Device</h2>
-            <p className="mt-2 text-sm text-slate-600">Update name and location coordinates.</p>
+            <p className="mt-2 text-sm text-slate-600">Update name and location.</p>
 
             <div className="mt-4 space-y-3">
               <div>
@@ -411,6 +421,21 @@ export default function DeviceDetailPage() {
                   <label className="mb-1 block text-sm font-semibold text-slate-700">Longitude</label>
                   <Input value={editLongitude} onChange={(event) => setEditLongitude(event.target.value)} />
                 </div>
+              </div>
+
+              <div>
+                <p className="mb-1 block text-sm font-semibold text-slate-700">Pick Location on Map</p>
+                <LocationPickerMap
+                  className="h-52 w-full rounded-xl border border-slate-200"
+                  value={editLocation}
+                  onChange={(location) => {
+                    setEditLatitude(location.latitude.toFixed(6));
+                    setEditLongitude(location.longitude.toFixed(6));
+                  }}
+                />
+                {!editLocation && (editLatitude || editLongitude) && (
+                  <p className="mt-1 text-xs text-rose-600">Invalid coordinates. Latitude: -90..90, Longitude: -180..180.</p>
+                )}
               </div>
             </div>
 

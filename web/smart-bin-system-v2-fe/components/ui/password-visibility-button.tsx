@@ -1,3 +1,5 @@
+// Eye toggle button used by password fields.
+
 type PasswordVisibilityButtonProps = {
   open: boolean;
   onToggle: () => void;
@@ -8,6 +10,7 @@ export function PasswordVisibilityButton({ open, onToggle }: PasswordVisibilityB
     <button
       type="button"
       onClick={onToggle}
+      // Positioned inside the input wrapper; password fields reserve right padding (`pr-10`) for this control.
       className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 transition hover:text-slate-700"
       aria-label={open ? 'Hide password' : 'Show password'}
     >

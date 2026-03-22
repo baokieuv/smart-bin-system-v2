@@ -1,3 +1,5 @@
+// Canvas-based image cropping helper for avatar upload flow.
+
 // utils/cropImage.ts
 
 export const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -5,7 +7,7 @@ export const createImage = (url: string): Promise<HTMLImageElement> =>
     const image = new Image();
     image.addEventListener('load', () => resolve(image));
     image.addEventListener('error', (error) => reject(error));
-    image.setAttribute('crossOrigin', 'anonymous'); // Tránh lỗi CORS nếu dùng ảnh từ URL ngoài
+    image.setAttribute('crossOrigin', 'anonymous'); // Avoid CORS issues when loading image from an external URL
     image.src = url;
   });
 

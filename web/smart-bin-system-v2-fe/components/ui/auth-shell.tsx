@@ -1,3 +1,5 @@
+// Shared auth-page layout wrapper.
+
 import { ReactNode } from 'react';
 import { Surface } from '@/components/ui/surface';
 import { cn } from '@/lib/cn';

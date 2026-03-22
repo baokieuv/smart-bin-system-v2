@@ -1,5 +1,7 @@
 'use client';
 
+// Request reset link by email.
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/services/api/auth';
@@ -22,10 +24,10 @@ export default function ResetPasswordPage() {
         try {
             const data = await authApi.resetPassword(email);
             setStatus('success');
-            setMessage(data.data || 'Nếu email hợp lệ, hướng dẫn đặt lại mật khẩu đã được gửi.');
+            setMessage(data.data || 'If the email is valid, password reset instructions have been sent.');
         } catch {
             setStatus('error');
-            setMessage('Có lỗi xảy ra, vui lòng thử lại sau.');
+            setMessage('An error occurred. Please try again later.');
         }
     };
 
