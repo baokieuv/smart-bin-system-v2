@@ -10,16 +10,16 @@ interface RequestOptions extends RequestInit {
 
 let isRefreshing = false;
 let failedQueue: Array<{
-    resolve: (value?: unknown) => void;
+    resolve: () => void;
     reject: (reason?: unknown) => void;
 }> = [];
 
-const processQueue = (error: Error | null, token: string | null = null) => {
+const processQueue = (error: Error | null) => {
     failedQueue.forEach((prom) => {
         if (error) {
             prom.reject(error);
         } else {
-            prom.resolve(token);
+            prom.resolve();
         }
     });
 
@@ -71,12 +71,12 @@ export const apiClient = async <T = unknown> (endpoint: string, options: Request
 
         if (isRefreshing) {
             // If token refresh is in progress, wait for the result
-            return new Promise((resolve, reject) => {
+            return new Promise<void>((resolve, reject) => {
                 failedQueue.push({ resolve, reject });
             })
                 .then(() => {
                     // Retry request with new token
-                    return apiClient(endpoint, fetchOptions);
+                    return apiClient<T>(endpoint, fetchOptions);
                 })
                 .catch((err) => {
                     return Promise.reject(err);
@@ -119,7 +119,7 @@ export const apiClient = async <T = unknown> (endpoint: string, options: Request
                 }
 
                 // Process queued requests
-                processQueue(null, access_token);
+                processQueue(null);
 
                 // Retry original request with new token
                 return apiClient(originalRequest.endpoint, originalRequest.options);
@@ -127,7 +127,7 @@ export const apiClient = async <T = unknown> (endpoint: string, options: Request
                 throw new Error('Invalid refresh token');
             }
         } catch (refreshError) {
-            processQueue(refreshError as Error, null);
+            processQueue(refreshError as Error);
 
             // Clear tokens and redirect to login
             if (typeof window !== 'undefined') {
