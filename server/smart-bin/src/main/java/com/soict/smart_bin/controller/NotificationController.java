@@ -1,9 +1,11 @@
 package com.soict.smart_bin.controller;
 
+import com.soict.smart_bin.dto.notification.MarkNotiRequest;
 import com.soict.smart_bin.utils.ResponseFactory;
 import com.soict.smart_bin.common.SuccessCode;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;
 import com.soict.smart_bin.service.NotificationService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -51,6 +53,17 @@ public class NotificationController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
+    @PutMapping("/reads")
+    public ResponseEntity<ApiResponseFormat<Object>> markAsRead(
+            @Valid @RequestBody MarkNotiRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String keycloakId = jwt.getSubject();
+
+        var response = notificationService.markNotifications(request, keycloakId);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
     @PutMapping("/read-all")
     public ResponseEntity<ApiResponseFormat<Object>> readAllNotifications(
             @AuthenticationPrincipal Jwt jwt
@@ -60,6 +73,4 @@ public class NotificationController {
         var response = notificationService.readAllNotification(keycloakId);
         return responseFactory.response(SuccessCode.OK, response);
     }
-
-
 }

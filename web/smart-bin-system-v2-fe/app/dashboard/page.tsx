@@ -2,21 +2,25 @@
 
 // Main dashboard for account and device management.
 
-import Cropper, { Area } from 'react-easy-crop';
-import Link from 'next/link';
+import type { Area } from 'react-easy-crop';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usersApi } from '@/services/api/users';
 import { UserDto } from '@/types/user';
 import { useRouter } from 'next/navigation';
 import { getCroppedImg } from '@/utils/cropImage';
 import { Surface } from '@/components/ui/surface';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ToastStack } from '@/components/ui/toast-stack';
-import DeviceMap from '@/components/layout/map';
-import { LocationPickerMap, type LocationValue } from '@/components/layout/location-picker-map';
+import { type LocationValue } from '@/components/layout/location-picker-map';
 import { deviceApi } from '@/services/api/device';
 import { DeviceDto, DeviceTelemetries } from '@/types/device';
+import { notificationApi } from '@/services/api/notification';
+import { NotificationDto, NotificationListPayload, NotificationType, UnreadCountPayload } from '@/types/notification';
+import DevicesTab from '@/app/dashboard/tabs/devices-tab';
+import AccountTab from '@/app/dashboard/tabs/account-tab';
+import ActivityTab from '@/app/dashboard/tabs/activity-tab';
+import DashboardHeader from '@/app/dashboard/sections/dashboard-header';
+import DashboardTabNav, { DashboardTab } from '@/app/dashboard/sections/dashboard-tab-nav';
+import DashboardOverlays from '@/app/dashboard/sections/dashboard-overlays';
 
 type Toast = {
     id: number;
@@ -24,12 +28,104 @@ type Toast = {
     type: 'success' | 'error';
 };
 
-type DashboardTab = 'devices' | 'account' | 'activity';
+type ActivityFilter = 'all' | 'unread' | 'critical';
 
 type DeviceTelemetrySummary = {
     fillLevel: number | null;
     thrownCount: number | null;
     sampledAt: number | null;
+};
+
+const CRITICAL_NOTIFICATION_TYPES: NotificationType[] = [
+    'THRESHOLD_CRITICAL',
+    'ANOMALY_DETECTED',
+    'DEVICE_OFFLINE',
+    'LOW_BATTERY',
+    'SENSOR_FAULT',
+    'COMMAND_FAILED',
+    'FIRMWARE_UPDATE_FAILED',
+    'MAINTENANCE_REQUIRED',
+];
+
+const WARNING_NOTIFICATION_TYPES: NotificationType[] = [
+    'THRESHOLD_WARNING',
+    'LOW_BATTERY',
+    'MAINTENANCE_REQUIRED',
+];
+
+const toNotificationLabel = (value: NotificationType) =>
+    value
+        .split('_')
+        .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+        .join(' ');
+
+const toNumberFromUnknown = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+};
+
+type ActivityPageData = {
+    items: NotificationDto[];
+    page: number;
+    totalPages: number;
+    hasNext: boolean;
+};
+
+const toActivityPageData = (
+    payload: NotificationListPayload,
+    requestedPage: number,
+    pageSize: number,
+): ActivityPageData => {
+    if (Array.isArray(payload)) {
+        const hasNext = payload.length >= pageSize;
+        return {
+            items: payload,
+            page: requestedPage,
+            totalPages: hasNext ? requestedPage + 1 : requestedPage,
+            hasNext,
+        };
+    }
+
+    const items = Array.isArray(payload.items)
+        ? payload.items
+        : Array.isArray(payload.content)
+            ? payload.content
+            : Array.isArray(payload.data)
+                ? payload.data
+                : [];
+
+    const pageFromPayload = toNumberFromUnknown(payload.pageNumber) ?? toNumberFromUnknown(payload.page);
+    const totalPages = toNumberFromUnknown(payload.totalPages);
+    const hasNext = typeof payload.hasNext === 'boolean'
+        ? payload.hasNext
+        : totalPages !== null
+            ? (pageFromPayload ?? requestedPage) < totalPages
+            : items.length >= pageSize;
+
+    const resolvedPage = pageFromPayload ?? requestedPage;
+
+    return {
+        items,
+        page: resolvedPage,
+        totalPages: totalPages ?? (resolvedPage + (hasNext ? 1 : 0)),
+        hasNext,
+    };
+};
+
+const toUnreadCount = (payload: UnreadCountPayload): number => {
+    if (typeof payload === 'number') return payload;
+
+    const candidates = [payload.unreadCount, payload.count, payload.total];
+    for (const candidate of candidates) {
+        const parsed = toNumberFromUnknown(candidate);
+        if (parsed !== null) return parsed;
+    }
+
+    return 0;
 };
 
 const formatTime = (value: string) =>
@@ -98,6 +194,18 @@ export default function DashboardPage() {
     const [isSubmittingDeviceAction, setIsSubmittingDeviceAction] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
     const [editableName, setEditableName] = useState('');
+    const [activities, setActivities] = useState<NotificationDto[]>([]);
+    const [isActivityLoading, setIsActivityLoading] = useState(false);
+    const [isMarkingAllActivityRead, setIsMarkingAllActivityRead] = useState(false);
+    const [markingActivityIds, setMarkingActivityIds] = useState<Array<string | number>>([]);
+    const [selectedActivityIds, setSelectedActivityIds] = useState<Array<string | number>>([]);
+    const [isBatchUpdatingActivities, setIsBatchUpdatingActivities] = useState(false);
+    const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
+    const [activityPage, setActivityPage] = useState(1);
+    const [activityTotalPages, setActivityTotalPages] = useState(1);
+    const [activityUnreadCount, setActivityUnreadCount] = useState(0);
+
+    const ACTIVITY_PAGE_SIZE = 5;
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -154,6 +262,42 @@ export default function DashboardPage() {
     const selectedDevice = useMemo(
         () => devices.find((device) => device.id === selectedDeviceId) ?? null,
         [selectedDeviceId, devices],
+    );
+
+    const unreadActivityCount = useMemo(() => {
+        if (activityUnreadCount >= 0) return activityUnreadCount;
+        return activities.filter((item) => !item.isRead).length;
+    }, [activities, activityUnreadCount]);
+
+    const filteredActivities = useMemo(() => {
+        const sorted = [...activities].sort(
+            (a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime(),
+        );
+
+        if (activityFilter === 'unread') {
+            return sorted.filter((item) => !item.isRead);
+        }
+
+        if (activityFilter === 'critical') {
+            return sorted.filter((item) => CRITICAL_NOTIFICATION_TYPES.includes(item.type));
+        }
+
+        return sorted;
+    }, [activities, activityFilter]);
+
+    const visibleActivityIds = useMemo(
+        () => filteredActivities.map((item) => item.id),
+        [filteredActivities],
+    );
+
+    const allVisibleSelected = useMemo(() => {
+        if (visibleActivityIds.length === 0) return false;
+        return visibleActivityIds.every((id) => selectedActivityIds.some((selectedId) => String(selectedId) === String(id)));
+    }, [visibleActivityIds, selectedActivityIds]);
+
+    const selectedVisibleCount = useMemo(
+        () => visibleActivityIds.filter((id) => selectedActivityIds.some((selectedId) => String(selectedId) === String(id))).length,
+        [visibleActivityIds, selectedActivityIds],
     );
 
     const pushToast = (message: string, type: Toast['type']) => {
@@ -330,6 +474,173 @@ export default function DashboardPage() {
         fetchTelemetrySummary();
     }, [selectedDeviceId, activeTab]);
 
+    const loadUnreadCount = async () => {
+        try {
+            const response = await notificationApi.getUnreadCount();
+            if (response.success) {
+                setActivityUnreadCount(toUnreadCount(response.data));
+            }
+        } catch {
+            // Keep previous count when unread endpoint fails.
+        }
+    };
+
+    const loadActivities = async (page: number) => {
+        try {
+            setIsActivityLoading(true);
+
+            const response = await notificationApi.getList({ page, size: ACTIVITY_PAGE_SIZE });
+
+            if (!response.success) {
+                setActivities([]);
+                setSelectedActivityIds([]);
+                pushToast(response.message || 'Failed to load activity feed.', 'error');
+                return;
+            }
+
+            const parsed = toActivityPageData(response.data, page, ACTIVITY_PAGE_SIZE);
+            setActivities(parsed.items);
+
+            setActivityPage(parsed.page);
+            setActivityTotalPages(parsed.totalPages);
+            setSelectedActivityIds([]);
+        } catch {
+            setActivities([]);
+            setSelectedActivityIds([]);
+            pushToast('Failed to load activity feed.', 'error');
+        } finally {
+            setIsActivityLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab !== 'activity') return;
+        loadActivities(1);
+        loadUnreadCount();
+    }, [activeTab]);
+
+    useEffect(() => {
+        if (!userInfo) return;
+        loadUnreadCount();
+    }, [userInfo]);
+
+    const handlePrevActivityPage = async () => {
+        if (activityPage <= 1) return;
+        await loadActivities(activityPage - 1);
+    };
+
+    const handleNextActivityPage = async () => {
+        if (activityPage >= Math.max(activityTotalPages, 1)) return;
+        await loadActivities(activityPage + 1);
+    };
+
+    const handleMarkActivityAsRead = async (id: string | number) => {
+        const target = activities.find((item) => String(item.id) === String(id));
+        if (!target || target.isRead) return;
+
+        try {
+            setMarkingActivityIds((prev) => [...prev, id]);
+            const numericId = Number(id);
+            if (!Number.isFinite(numericId)) {
+                pushToast('Invalid notification id.', 'error');
+                return;
+            }
+            const response = await notificationApi.markMany({ ids: [numericId], isRead: true });
+
+            if (!response.success) {
+                pushToast(response.message || 'Failed to mark notification as read.', 'error');
+                return;
+            }
+
+            setActivities((prev) => prev.map((item) => (
+                String(item.id) === String(id)
+                    ? { ...item, isRead: true }
+                    : item
+            )));
+            setActivityUnreadCount((prev) => Math.max(prev - 1, 0));
+        } catch {
+            pushToast('Failed to mark notification as read.', 'error');
+        } finally {
+            setMarkingActivityIds((prev) => prev.filter((itemId) => String(itemId) !== String(id)));
+        }
+    };
+
+    const handleMarkAllActivitiesAsRead = async () => {
+        if (activities.length === 0 || unreadActivityCount === 0) return;
+
+        try {
+            setIsMarkingAllActivityRead(true);
+            const response = await notificationApi.readAll();
+
+            if (!response.success) {
+                pushToast(response.message || 'Failed to mark all notifications as read.', 'error');
+                return;
+            }
+
+            setActivities((prev) => prev.map((item) => ({ ...item, isRead: true })));
+            setActivityUnreadCount(0);
+            pushToast('All notifications marked as read.', 'success');
+        } catch {
+            pushToast('Failed to mark all notifications as read.', 'error');
+        } finally {
+            setIsMarkingAllActivityRead(false);
+        }
+    };
+
+    const handleToggleActivitySelection = (id: string | number, checked: boolean) => {
+        setSelectedActivityIds((prev) => {
+            if (checked) {
+                if (prev.some((item) => String(item) === String(id))) return prev;
+                return [...prev, id];
+            }
+
+            return prev.filter((item) => String(item) !== String(id));
+        });
+    };
+
+    const handleToggleSelectAllVisible = (checked: boolean) => {
+        if (checked) {
+            setSelectedActivityIds((prev) => {
+                const merged = [...prev, ...visibleActivityIds];
+                return Array.from(new Map(merged.map((id) => [String(id), id])).values());
+            });
+            return;
+        }
+
+        setSelectedActivityIds((prev) => prev.filter((id) => !visibleActivityIds.some((visibleId) => String(visibleId) === String(id))));
+    };
+
+    const handleBatchUpdateSelectedActivities = async (isRead: boolean) => {
+        const idNumbers = selectedActivityIds
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id));
+
+        if (idNumbers.length === 0) {
+            pushToast('Please select at least one notification.', 'error');
+            return;
+        }
+
+        try {
+            setIsBatchUpdatingActivities(true);
+            const response = await notificationApi.markMany({ ids: idNumbers, isRead });
+
+            if (!response.success) {
+                pushToast(response.message || 'Failed to update selected notifications.', 'error');
+                return;
+            }
+
+            const idSet = new Set(idNumbers.map((id) => String(id)));
+            setActivities((prev) => prev.map((item) => (idSet.has(String(item.id)) ? { ...item, isRead } : item)));
+            setSelectedActivityIds([]);
+            loadUnreadCount();
+            pushToast(isRead ? 'Selected notifications marked as read.' : 'Selected notifications marked as unread.', 'success');
+        } catch {
+            pushToast('Failed to update selected notifications.', 'error');
+        } finally {
+            setIsBatchUpdatingActivities(false);
+        }
+    };
+
     const openEditDevicePopup = () => {
         if (!selectedDevice) return;
         setEditDeviceName(selectedDevice.name || '');
@@ -444,6 +755,20 @@ export default function DashboardPage() {
         setIsEditingName(false);
     };
 
+    const handleChangeTab = (nextTab: DashboardTab) => {
+        setActiveTab(nextTab);
+        if (nextTab !== 'devices') {
+            setSelectedDeviceId(null);
+        }
+    };
+
+    const closeAddDevicePopup = () => {
+        setIsAddDevicePopupOpen(false);
+        setMacAddress('');
+        setAddDeviceLatitude('');
+        setAddDeviceLongitude('');
+    };
+
     if (isLoading) {
         return <div className="flex min-h-screen items-center justify-center text-slate-700">Loading...</div>;
     }
@@ -451,710 +776,144 @@ export default function DashboardPage() {
     return (
         <div className="h-screen w-full overflow-y-auto bg-slate-50">
             <Surface className="flex h-full w-full max-w-none flex-col gap-4 rounded-none border-0 bg-slate-50 p-4 shadow-none md:p-5">
-                <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3.5">
-                    <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Smart Bin Platform</p>
-                        <h1 className="text-xl font-bold text-slate-900 md:text-2xl">Device Dashboard</h1>
-                    </div>
+                <DashboardHeader
+                    userInfo={userInfo}
+                    userInitial={userInitial}
+                    isUploading={isUploading}
+                    isSettingsOpen={isSettingsOpen}
+                    fileInputRef={fileInputRef}
+                    onToggleSettings={() => setIsSettingsOpen((prev) => !prev)}
+                    onFileChange={handleFileChange}
+                    onOpenAddDeviceFromSettings={() => {
+                        setIsSettingsOpen(false);
+                        setIsAddDevicePopupOpen(true);
+                    }}
+                    onLogout={() => {
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('refresh_token');
+                        router.push('/auth/login');
+                    }}
+                />
 
-                    <div className="relative flex items-center gap-3">
-                        <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="group relative"
-                            aria-label="Update avatar"
-                        >
-                            {userInfo?.avatarUrl ? (
-                                <img
-                                    src={userInfo.avatarUrl}
-                                    alt="User avatar"
-                                    className={`h-11 w-11 rounded-full border border-slate-300 object-cover ${isUploading ? 'opacity-60' : ''}`}
-                                />
-                            ) : (
-                                <div className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-300 bg-slate-200 font-bold text-slate-700">
-                                    {userInitial}
-                                </div>
-                            )}
-
-                            <span className="pointer-events-none absolute inset-0 hidden items-center justify-center rounded-full bg-black/45 text-[10px] font-semibold text-white group-hover:flex">
-                                Edit
-                            </span>
-                        </button>
-
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            onChange={handleFileChange}
-                            accept="image/png, image/jpeg, image/jpg"
-                            className="hidden"
-                        />
-
-                        <button
-                            type="button"
-                            onClick={() => setIsSettingsOpen((prev) => !prev)}
-                            className="rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                        >
-                            User Settings
-                        </button>
-
-                        {isSettingsOpen && (
-                            <div className="absolute right-0 top-14 z-20 w-64 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-                                <p className="text-sm font-semibold text-slate-900">{userInfo?.firstName} {userInfo?.lastName}</p>
-                                <p className="mb-3 text-xs text-slate-500">{userInfo?.email}</p>
-
-                                <div className="space-y-2">
-                                    <Link
-                                        href="#"
-                                        onClick={(event) => {
-                                            event.preventDefault();
-                                            setIsSettingsOpen(false);
-                                            setIsAddDevicePopupOpen(true);
-                                        }}
-                                        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                        </svg>
-                                        Add Device
-                                    </Link>
-                                    <Link
-                                        href="/auth/change-password"
-                                        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 0h10.5a2.25 2.25 0 012.25 2.25v6.75a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25v-6.75a2.25 2.25 0 012.25-2.25z" />
-                                        </svg>
-                                        Change Password
-                                    </Link>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            localStorage.removeItem('access_token');
-                                            localStorage.removeItem('refresh_token');
-                                            router.push('/auth/login');
-                                        }}
-                                        className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-slate-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-7.5a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 006 21h7.5a2.25 2.25 0 002.25-2.25V15m-3 0l3-3m0 0l-3-3m3 3H9" />
-                                        </svg>
-                                        Logout
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </header>
-
-                <div className="flex gap-2 rounded-2xl border border-slate-200/80 bg-white p-2">
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('devices')}
-                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                            activeTab === 'devices'
-                                ? 'bg-slate-900 text-white'
-                                : 'border border-slate-300 text-slate-700 hover:bg-slate-100'
-                        }`}
-                    >
-                        Devices
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setActiveTab('account');
-                            setSelectedDeviceId(null);
-                        }}
-                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                            activeTab === 'account'
-                                ? 'bg-slate-900 text-white'
-                                : 'border border-slate-300 text-slate-700 hover:bg-slate-100'
-                        }`}
-                    >
-                        Account
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setActiveTab('activity');
-                            setSelectedDeviceId(null);
-                        }}
-                        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                            activeTab === 'activity'
-                                ? 'bg-slate-900 text-white'
-                                : 'border border-slate-300 text-slate-700 hover:bg-slate-100'
-                        }`}
-                    >
-                        Activity
-                    </button>
-                </div>
+                <DashboardTabNav
+                    activeTab={activeTab}
+                    unreadActivityCount={unreadActivityCount}
+                    onChangeTab={handleChangeTab}
+                />
 
                 <section className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto lg:flex-row lg:overflow-hidden">
                     {activeTab === 'devices' ? (
-                    hasDevices ? (
-                        <>
-                    {!selectedDevice && (
-                        <aside className="h-80 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:h-full lg:w-[30%]">
-                            <div className="border-b border-slate-200 px-4 py-3">
-                                <h2 className="text-lg font-bold text-slate-900">Your Devices</h2>
-                                <p className="text-sm text-slate-500">Select a card to view details on the right.</p>
-                            </div>
-
-                            <div className="h-[calc(100%-4.25rem)] space-y-3 overflow-y-auto p-3">
-                                {isDeviceLoading && (
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">Loading devices...</div>
-                                )}
-
-                                {!isDeviceLoading && devices.map((device) => (
-                                    <button
-                                        key={device.id}
-                                        type="button"
-                                        onClick={() => setSelectedDeviceId(device.id)}
-                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50"
-                                    >
-                                        <div className="flex items-center justify-between gap-2">
-                                            <p className="font-semibold text-slate-900">{device.name}</p>
-                                            <span
-                                                className={`rounded-full px-2 py-1 text-xs font-bold ${
-                                                    device.status === 'ONLINE'
-                                                        ? 'bg-emerald-100 text-emerald-700'
-                                                        : 'bg-slate-200 text-slate-700'
-                                                }`}
-                                            >
-                                                {device.status === 'ONLINE' ? 'online' : 'offline'}
-                                            </span>
-                                        </div>
-                                        <p className="mt-2 text-xs font-medium tracking-wide text-slate-500">MAC: {device.mac}</p>
-                                    </button>
-                                ))}
-                            </div>
-                        </aside>
-                    )}
-
-                    <div className={`relative h-105 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-full ${selectedDevice ? 'w-full lg:w-[60%]' : 'w-full lg:flex-1'}`}>
-                        <DeviceMap
+                        <DevicesTab
+                            hasDevices={hasDevices}
+                            isDeviceLoading={isDeviceLoading}
                             devices={devices}
                             selectedDeviceId={selectedDeviceId}
+                            selectedDevice={selectedDevice}
+                            selectedDeviceTelemetry={selectedDeviceTelemetry}
+                            formatTime={formatTime}
                             onSelectDevice={setSelectedDeviceId}
-                            className="h-full w-full"
+                            onOpenAddDevice={() => setIsAddDevicePopupOpen(true)}
+                            onOpenEditDevice={openEditDevicePopup}
+                            onOpenDeleteDevice={() => setIsDeletePopupOpen(true)}
                         />
-
-                        {selectedDevice && (
-                            <button
-                                type="button"
-                                onClick={() => setSelectedDeviceId(null)}
-                                className="absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/70 bg-white/90 text-slate-700 shadow-sm transition hover:bg-white"
-                                aria-label="Back to map overview"
-                                title="Back to map overview"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />
-                                </svg>
-                            </button>
-                        )}
-
-                        <div className={`absolute top-3 rounded-md bg-black/40 px-3 py-1 text-xs font-semibold text-white ${selectedDevice ? 'left-14' : 'left-3'}`}>
-                            Click a marker or device card
-                        </div>
-                    </div>
-
-                    {selectedDevice && (
-                        <aside className="h-80 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:h-full lg:w-[40%]">
-                            <div className="flex items-start justify-between gap-3">
-                                <div>
-                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Device Detail</p>
-                                    <h3 className="text-xl font-bold text-slate-900">{selectedDevice.name}</h3>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedDeviceId(null)}
-                                    className="rounded-xl border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                                >
-                                    Close
-                                </button>
-                            </div>
-
-                            <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                                <p><span className="font-semibold text-slate-700">Name:</span> {selectedDevice.name}</p>
-                                <p><span className="font-semibold text-slate-700">MAC Address:</span> {selectedDevice.mac}</p>
-                                <p>
-                                    <span className="font-semibold text-slate-700">Location:</span> {selectedDevice.longitude.toFixed(6)},{' '}
-                                    {selectedDevice.latitude.toFixed(6)}
-                                </p>
-                                <p>
-                                    <span className="font-semibold text-slate-700">Status:</span>{' '}
-                                    <span
-                                        className={`rounded-full px-2 py-1 text-xs font-bold ${
-                                            selectedDevice.status === 'ONLINE'
-                                                ? 'bg-emerald-100 text-emerald-700'
-                                                : 'bg-slate-200 text-slate-700'
-                                        }`}
-                                    >
-                                        {selectedDevice.status === 'ONLINE' ? 'online' : 'offline'}
-                                    </span>
-                                </p>
-                                <p><span className="font-semibold text-slate-700">Added Time:</span> {formatTime(selectedDevice.createdDate)}</p>
-                                <div>
-                                    <p className="mb-2 font-semibold text-slate-700">
-                                        Trash Level: {selectedDeviceTelemetry.fillLevel !== null ? `${selectedDeviceTelemetry.fillLevel}%` : 'N/A'}
-                                    </p>
-                                    <div className="h-2 w-full rounded-full bg-slate-200">
-                                        <div
-                                            className={`h-2 rounded-full ${
-                                                (selectedDeviceTelemetry.fillLevel ?? 0) >= 80
-                                                    ? 'bg-red-500'
-                                                    : (selectedDeviceTelemetry.fillLevel ?? 0) >= 50
-                                                        ? 'bg-amber-500'
-                                                        : 'bg-emerald-500'
-                                            }`}
-                                            style={{ width: `${selectedDeviceTelemetry.fillLevel ?? 0}%` }}
-                                        />
-                                    </div>
-                                </div>
-                                <p>
-                                    <span className="font-semibold text-slate-700">Waste Throws:</span>{' '}
-                                    {selectedDeviceTelemetry.thrownCount ?? 'N/A'}
-                                </p>
-                                <p>
-                                    <span className="font-semibold text-slate-700">Last Telemetry:</span>{' '}
-                                    {selectedDeviceTelemetry.sampledAt
-                                        ? formatTime(new Date(selectedDeviceTelemetry.sampledAt).toISOString())
-                                        : 'N/A'}
-                                </p>
-                            </div>
-
-                            <div className="mt-4 flex flex-wrap gap-2">
-                                <Link
-                                    href={`/dashboard/devices/${selectedDevice.id}`}
-                                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                                >
-                                    Open Full Detail Page
-                                </Link>
-
-                                <button
-                                    type="button"
-                                    onClick={openEditDevicePopup}
-                                    className="rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-600"
-                                >
-                                    Edit Device
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setIsDeletePopupOpen(true)}
-                                    className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-                                >
-                                    Delete Device
-                                </button>
-                            </div>
-                        </aside>
-                    )}
-                        </>
+                    ) : activeTab === 'account' ? (
+                        <AccountTab
+                            userInfo={userInfo}
+                            userInitial={userInitial}
+                            isUploading={isUploading}
+                            fullName={fullName}
+                            isEditingName={isEditingName}
+                            editableName={editableName}
+                            hasNameChanged={hasNameChanged}
+                            greeting={greeting}
+                            onPickAvatar={() => fileInputRef.current?.click()}
+                            onStartEditingName={() => setIsEditingName(true)}
+                            onChangeEditableName={setEditableName}
+                            onCancelEditingName={() => {
+                                setEditableName(fullName);
+                                setIsEditingName(false);
+                            }}
+                            onConfirmNameChange={handleConfirmNameChange}
+                            onFeatureComingSoon={() => pushToast('Feature coming soon.', 'success')}
+                        />
                     ) : (
-                        <div className="flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white p-6 md:p-10">
-                            <div className="mx-auto max-w-2xl text-center">
-                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Welcome to Smart Bin</p>
-                                <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
-                                    Keep your city cleaner with smart, connected bins.
-                                </h2>
-                                <p className="mt-4 text-sm leading-relaxed text-slate-600 md:text-base">
-                                    Add your first device to start monitoring fill levels, improving collection efficiency, and getting actionable insights in real time.
-                                </p>
-
-                                <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                                    <Button
-                                        type="button"
-                                        size="lg"
-                                        onClick={() => setIsAddDevicePopupOpen(true)}
-                                    >
-                                        Add Your First Device
-                                    </Button>
-                                    <p className="text-xs text-slate-500">MAC format: AA:BB:CC:DD:EE:FF</p>
-                                </div>
-                            </div>
-                        </div>
-                    )) : activeTab === 'account' ? (
-                        <div className="grid w-full gap-4 lg:grid-cols-3">
-                            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-1">
-                                <div className="flex flex-col items-center text-center">
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="group relative"
-                                        aria-label="Edit account avatar"
-                                    >
-                                        {userInfo?.avatarUrl ? (
-                                            <img
-                                                src={userInfo.avatarUrl}
-                                                alt="User avatar"
-                                                className={`h-24 w-24 rounded-full border border-slate-300 object-cover ${isUploading ? 'opacity-60' : ''}`}
-                                            />
-                                        ) : (
-                                            <div className="flex h-24 w-24 items-center justify-center rounded-full border border-slate-300 bg-slate-200 text-3xl font-bold text-slate-700">
-                                                {userInitial}
-                                            </div>
-                                        )}
-
-                                        <span className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition group-hover:bg-slate-100">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7H4.25A2.25 2.25 0 002 9.25v8.5A2.25 2.25 0 004.25 20h15.5A2.25 2.25 0 0022 17.75v-8.5A2.25 2.25 0 0019.75 7h-.936a2.31 2.31 0 01-1.64-.675l-.759-.759A2.25 2.25 0 0014.824 5h-5.648a2.25 2.25 0 00-1.591.659l-.758.516z" />
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-                                            </svg>
-                                        </span>
-                                    </button>
-
-                                    <div className="mt-4 w-full">
-                                        {!isEditingName ? (
-                                            <div className="flex items-center justify-center gap-1">
-                                                <h2 className="text-xl font-bold text-slate-900">{fullName}</h2>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsEditingName(true)}
-                                                    className="p-0.5 text-slate-500 transition hover:text-slate-900"
-                                                    aria-label="Edit name"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="mx-auto max-w-xs space-y-2 text-left">
-                                                <label htmlFor="account-name-input" className="block text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">
-                                                    Full name
-                                                </label>
-                                                <Input
-                                                    id="account-name-input"
-                                                    value={editableName}
-                                                    onChange={(event) => setEditableName(event.target.value)}
-                                                    placeholder="Enter your full name"
-                                                />
-                                                <div className="flex justify-end gap-2">
-                                                    <Button
-                                                        type="button"
-                                                        variant="secondary"
-                                                        size="sm"
-                                                        onClick={() => {
-                                                            setEditableName(fullName);
-                                                            setIsEditingName(false);
-                                                        }}
-                                                    >
-                                                        Cancel
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        onClick={handleConfirmNameChange}
-                                                        disabled={!hasNameChanged}
-                                                        className={!hasNameChanged ? 'bg-slate-300 text-slate-600 shadow-none hover:bg-slate-300 active:bg-slate-300' : ''}
-                                                    >
-                                                        Confirm
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <p className="mt-1 text-sm text-slate-500">{userInfo?.email}</p>
-                                    <p className="mt-4 rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700">
-                                        {greeting}, welcome back to Smart Bin.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
-                                <div className="mb-4">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Account Settings</p>
-                                    <h3 className="mt-1 text-xl font-bold text-slate-900">Personal Preferences</h3>
-                                    <p className="mt-1 text-sm text-slate-600">Select a setting to configure your account. More features are being prepared.</p>
-                                </div>
-
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    {[
-                                        {
-                                            title: 'Personal Information',
-                                            description: 'Manage your display name, avatar, and account identity settings.',
-                                            icon: (
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
-                                                </svg>
-                                            ),
-                                        },
-                                        {
-                                            title: 'Notification Settings',
-                                            description: 'Manage alert channels and notification frequency.',
-                                            icon: (
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9a6 6 0 10-12 0v.05c0 .238 0 .476.001.714A8.967 8.967 0 013.69 15.77a23.848 23.848 0 005.454 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                                                </svg>
-                                            ),
-                                        },
-                                        {
-                                            title: 'Security & Privacy',
-                                            description: 'Control login security and account protection options.',
-                                            icon: (
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7.5 4.5v4.8c0 5.2-3.4 8.8-7.5 10.2C7.9 21.1 4.5 17.5 4.5 12.3V7.5L12 3z" />
-                                                </svg>
-                                            ),
-                                        },
-                                        {
-                                            title: 'Language & Region',
-                                            description: 'Choose language, timezone, and localization format.',
-                                            icon: (
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.6 9h16.8M3.6 15h16.8M12 3a15.3 15.3 0 010 18M12 3a15.3 15.3 0 000 18" />
-                                                </svg>
-                                            ),
-                                        },
-                                    ].map((setting) => (
-                                        <button
-                                            key={setting.title}
-                                            type="button"
-                                            onClick={() => pushToast('Feature coming soon.', 'success')}
-                                            className="rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-slate-300 hover:bg-slate-50"
-                                        >
-                                            <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
-                                                {setting.icon}
-                                            </div>
-                                            <p className="text-sm font-semibold text-slate-900">{setting.title}</p>
-                                            <p className="mt-1 text-xs leading-relaxed text-slate-600">{setting.description}</p>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white p-8 text-center">
-                            <div className="max-w-lg">
-                                <h2 className="text-2xl font-bold text-slate-900">Activity</h2>
-                                <p className="mt-2 text-sm text-slate-600">Activity timeline is coming soon.</p>
-                            </div>
-                        </div>
+                        <ActivityTab
+                            filteredActivities={filteredActivities}
+                            selectedActivityIds={selectedActivityIds}
+                            markingActivityIds={markingActivityIds}
+                            activityFilter={activityFilter}
+                            unreadActivityCount={unreadActivityCount}
+                            selectedVisibleCount={selectedVisibleCount}
+                            allVisibleSelected={allVisibleSelected}
+                            activityPage={activityPage}
+                            activityTotalPages={activityTotalPages}
+                            isActivityLoading={isActivityLoading}
+                            isBatchUpdatingActivities={isBatchUpdatingActivities}
+                            isMarkingAllActivityRead={isMarkingAllActivityRead}
+                            criticalTypes={CRITICAL_NOTIFICATION_TYPES}
+                            warningTypes={WARNING_NOTIFICATION_TYPES}
+                            formatTime={formatTime}
+                            toNotificationLabel={toNotificationLabel}
+                            onRefresh={() => loadActivities(activityPage)}
+                            onSetFilter={setActivityFilter}
+                            onMarkAllRead={handleMarkAllActivitiesAsRead}
+                            onToggleSelectAllVisible={handleToggleSelectAllVisible}
+                            onToggleActivitySelection={handleToggleActivitySelection}
+                            onMarkActivityRead={handleMarkActivityAsRead}
+                            onBatchUpdateSelected={handleBatchUpdateSelectedActivities}
+                            onPrevPage={handlePrevActivityPage}
+                            onNextPage={handleNextActivityPage}
+                        />
                     )}
                 </section>
             </Surface>
 
-            {isDeletePopupOpen && selectedDevice && (
-                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-                    <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
-                        <h4 className="text-lg font-bold text-slate-900">Delete Device</h4>
-                        <p className="mt-2 text-sm text-slate-600">
-                            Are you sure you want to delete {selectedDevice.name} ({selectedDevice.mac})?
-                        </p>
-
-                        <div className="mt-5 flex justify-end gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsDeletePopupOpen(false)}
-                                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleDeleteDevice}
-                                className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
-                                disabled={isSubmittingDeviceAction}
-                            >
-                                {isSubmittingDeviceAction ? 'Deleting...' : 'Confirm Delete'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isEditDevicePopupOpen && selectedDevice && (
-                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-                    <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
-                        <h2 className="text-lg font-bold text-slate-900">Edit Device</h2>
-                        <p className="mt-2 text-sm text-slate-600">Update device basic information and location.</p>
-
-                        <div className="mt-4 space-y-3">
-                            <div>
-                                <label className="mb-1 block text-sm font-semibold text-slate-700">Device Name</label>
-                                <Input value={editDeviceName} onChange={(event) => setEditDeviceName(event.target.value)} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="mb-1 block text-sm font-semibold text-slate-700">Latitude</label>
-                                    <Input value={editDeviceLatitude} onChange={(event) => setEditDeviceLatitude(event.target.value)} />
-                                </div>
-                                <div>
-                                    <label className="mb-1 block text-sm font-semibold text-slate-700">Longitude</label>
-                                    <Input value={editDeviceLongitude} onChange={(event) => setEditDeviceLongitude(event.target.value)} />
-                                </div>
-                            </div>
-
-                            <div>
-                                <p className="mb-1 block text-sm font-semibold text-slate-700">Pick Location on Map</p>
-                                <LocationPickerMap
-                                    className="h-52 w-full rounded-xl border border-slate-200"
-                                    value={editLocation}
-                                    onChange={(location) => {
-                                        setEditDeviceLatitude(location.latitude.toFixed(6));
-                                        setEditDeviceLongitude(location.longitude.toFixed(6));
-                                    }}
-                                />
-                                <p className="mt-1 text-xs text-slate-500">Click map to set new device location.</p>
-                            </div>
-                        </div>
-
-                        <div className="mt-5 flex justify-end gap-2">
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={() => setIsEditDevicePopupOpen(false)}
-                                disabled={isSubmittingDeviceAction}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={handleUpdateDevice}
-                                disabled={isSubmittingDeviceAction}
-                            >
-                                {isSubmittingDeviceAction ? 'Saving...' : 'Save Changes'}
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isAddDevicePopupOpen && (
-                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4">
-                    <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
-                        <h2 className="text-lg font-bold text-slate-900">Add New Device</h2>
-                        <p className="mt-2 text-sm text-slate-600">Complete both steps to enable Add Device.</p>
-
-                        <div className="mt-4 space-y-3">
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Step 1</p>
-                                <label htmlFor="dashboard-mac-address" className="mb-1 mt-2 block text-sm font-semibold text-slate-700">
-                                    MAC Address
-                                </label>
-                                <Input
-                                    id="dashboard-mac-address"
-                                    type="text"
-                                    value={macAddress}
-                                    onChange={(event) => handleMacAddressChange(event.target.value)}
-                                    placeholder="AA:BB:CC:DD:EE:FF"
-                                    maxLength={17}
-                                    className={macAddress && !isMacValid ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/25' : ''}
-                                />
-                                {macAddress && !isMacValid && (
-                                    <p className="mt-1 text-xs text-rose-600">Invalid MAC format. Use 12 letters/numbers, grouped as AA:BB:CC:DD:EE:FF.</p>
-                                )}
-                                <p className="mt-1 text-xs text-slate-500">You only type letters/numbers, the : separator is added automatically every 2 characters.</p>
-                            </div>
-
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Step 2</p>
-                                <p className="mb-2 mt-2 text-sm font-semibold text-slate-700">Pick Device Location</p>
-                                <LocationPickerMap
-                                    className="h-52 w-full rounded-xl border border-slate-200"
-                                    value={addLocation}
-                                    onChange={(location) => {
-                                        setAddDeviceLatitude(location.latitude.toFixed(6));
-                                        setAddDeviceLongitude(location.longitude.toFixed(6));
-                                    }}
-                                />
-                                <div className="mt-2 grid grid-cols-2 gap-2">
-                                    <Input
-                                        value={addDeviceLatitude}
-                                        onChange={(event) => setAddDeviceLatitude(event.target.value)}
-                                        placeholder="Latitude"
-                                    />
-                                    <Input
-                                        value={addDeviceLongitude}
-                                        onChange={(event) => setAddDeviceLongitude(event.target.value)}
-                                        placeholder="Longitude"
-                                    />
-                                </div>
-                                {!addLocation && (addDeviceLatitude || addDeviceLongitude) && (
-                                    <p className="mt-1 text-xs text-rose-600">Invalid coordinates. Latitude: -90..90, Longitude: -180..180.</p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="mt-5 flex justify-end gap-2">
-                            <Button
-                                type="button"
-                                onClick={() => {
-                                    setIsAddDevicePopupOpen(false);
-                                    setMacAddress('');
-                                    setAddDeviceLatitude('');
-                                    setAddDeviceLongitude('');
-                                }}
-                                variant="secondary"
-                                disabled={isSubmittingDeviceAction}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={handleAddDevice}
-                                disabled={!canSubmitAddDevice}
-                            >
-                                {isSubmittingDeviceAction ? 'Adding...' : 'Add Device'}
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {imageSrc && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-                    <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
-                        <h3 className="text-lg font-bold text-slate-900">Update Avatar</h3>
-
-                        <div className="relative mt-4 h-72 w-full overflow-hidden rounded-lg bg-slate-100">
-                            <Cropper
-                                image={imageSrc}
-                                crop={crop}
-                                zoom={zoom}
-                                aspect={1}
-                                cropShape="round"
-                                onCropChange={setCrop}
-                                onZoomChange={setZoom}
-                                onCropComplete={onCropComplete}
-                            />
-                        </div>
-
-                        <div className="mt-4">
-                            <label className="mb-1 block text-sm font-semibold text-slate-700">Zoom</label>
-                            <input
-                                type="range"
-                                min={1}
-                                max={3}
-                                step={0.1}
-                                value={zoom}
-                                onChange={(event) => setZoom(Number(event.target.value))}
-                                className="w-full"
-                            />
-                        </div>
-
-                        <div className="mt-5 flex justify-end gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setImageSrc(null)}
-                                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                                disabled={isUploading}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleSaveCroppedImage}
-                                className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
-                                disabled={isUploading}
-                            >
-                                {isUploading ? 'Updating...' : 'Save Avatar'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <DashboardOverlays
+                isDeletePopupOpen={isDeletePopupOpen}
+                isEditDevicePopupOpen={isEditDevicePopupOpen}
+                isAddDevicePopupOpen={isAddDevicePopupOpen}
+                imageSrc={imageSrc}
+                selectedDevice={selectedDevice}
+                isSubmittingDeviceAction={isSubmittingDeviceAction}
+                editDeviceName={editDeviceName}
+                editDeviceLatitude={editDeviceLatitude}
+                editDeviceLongitude={editDeviceLongitude}
+                editLocation={editLocation}
+                macAddress={macAddress}
+                isMacValid={isMacValid}
+                addDeviceLatitude={addDeviceLatitude}
+                addDeviceLongitude={addDeviceLongitude}
+                addLocation={addLocation}
+                canSubmitAddDevice={canSubmitAddDevice}
+                isUploading={isUploading}
+                crop={crop}
+                zoom={zoom}
+                onSetImageSrc={setImageSrc}
+                onCloseDeletePopup={() => setIsDeletePopupOpen(false)}
+                onConfirmDeleteDevice={handleDeleteDevice}
+                onCloseEditPopup={() => setIsEditDevicePopupOpen(false)}
+                onEditDeviceNameChange={setEditDeviceName}
+                onEditDeviceLatitudeChange={setEditDeviceLatitude}
+                onEditDeviceLongitudeChange={setEditDeviceLongitude}
+                onEditLocationChange={(location) => {
+                    setEditDeviceLatitude(location.latitude.toFixed(6));
+                    setEditDeviceLongitude(location.longitude.toFixed(6));
+                }}
+                onSaveDeviceChanges={handleUpdateDevice}
+                onCloseAddPopup={closeAddDevicePopup}
+                onMacAddressChange={handleMacAddressChange}
+                onAddLatitudeChange={setAddDeviceLatitude}
+                onAddLongitudeChange={setAddDeviceLongitude}
+                onAddLocationChange={(location) => {
+                    setAddDeviceLatitude(location.latitude.toFixed(6));
+                    setAddDeviceLongitude(location.longitude.toFixed(6));
+                }}
+                onAddDevice={handleAddDevice}
+                onSetCrop={setCrop}
+                onSetZoom={setZoom}
+                onCropComplete={onCropComplete}
+                onSaveCroppedImage={handleSaveCroppedImage}
+            />
 
             <ToastStack toasts={toasts} />
         </div>

@@ -1,6 +1,7 @@
 package com.soict.smart_bin.service;
 
 import com.soict.smart_bin.common.NotificationType;
+import com.soict.smart_bin.dto.notification.MarkNotiRequest;
 import com.soict.smart_bin.dto.notification.NotificationDto;
 import com.soict.smart_bin.entity.Notification;
 import com.soict.smart_bin.entity.User;
@@ -13,6 +14,8 @@ import com.soict.smart_bin.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -49,7 +52,17 @@ public class NotificationService {
                 () -> new ApiException(UserErrorCode.USER_NOT_FOUND)
         );
 
-        return repository.findAllByUserOrderByCreatedDateDesc(user);
+        // 1. Set fallbacks for null or invalid (<= 0) values
+        long actualPage = (page != null && page > 0) ? page : 1L;   // Default to page 1
+        long actualSize = (size != null && size > 0) ? size : 10L;  // Default to 10 items per page
+
+        // 2. Convert to integers and adjust for Spring's 0-indexed pages
+        int pageNumber = (int) (actualPage - 1);
+        int pageSize = (int) actualSize;
+
+        // 3. Create Pageable and query
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        return repository.findAllByUserOrderByCreatedDateDesc(user, pageable);
     }
 
     public Long getUnreadCount(String keycloakId){
@@ -74,6 +87,17 @@ public class NotificationService {
                 () -> new ApiException(UserErrorCode.USER_NOT_FOUND)
         );
         repository.markAllAsReadByUser(user);
+        return 1L;
+    }
+
+    @Transactional
+    public Long markNotifications(MarkNotiRequest request, String keycloakId){
+        User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId).orElseThrow(
+                () -> new ApiException(UserErrorCode.USER_NOT_FOUND)
+        );
+
+        repository.markNotification(request.ids(), request.isRead(), user);
+
         return 1L;
     }
 
