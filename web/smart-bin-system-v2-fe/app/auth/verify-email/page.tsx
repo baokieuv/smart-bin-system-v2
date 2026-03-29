@@ -9,6 +9,7 @@ import { AuthShell } from '@/components/ui/auth-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusMessage } from '@/components/ui/status-message';
+import { getRecaptchaToken } from '@/lib/recaptcha';
 
 type VerifyStatus = 'loading' | 'success' | 'error';
 
@@ -71,7 +72,8 @@ function VerifyEmailContent() {
 
         try {
             setIsResending(true);
-            await authApi.resendVerification(targetEmail);
+            const captcha = await getRecaptchaToken('RESEND_VERIFICATION');
+            await authApi.resendVerification({ email: targetEmail, captcha: captcha });
 
             setCountdown(5);
             setStatus('success');

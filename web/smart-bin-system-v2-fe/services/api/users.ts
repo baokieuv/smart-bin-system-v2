@@ -1,16 +1,11 @@
 // Service layer for user profile and avatar endpoints.
 
 import { api } from "@/lib/api-client";
-import { UserDto } from "@/types/user";
+import { CreateUserRequest, UserDto } from "@/types/user";
 
 export const usersApi = {
     // Register does not require auth; skip refresh-token mechanism
-    register: async (formData: {
-        email: string;
-        password: string;
-        firstName: string;
-        lastName: string;
-    }) => {
+    register: async (formData: CreateUserRequest) => {
         return api.post<UserDto>('/users/', formData, { skipAuthRefresh: true });
     },
 

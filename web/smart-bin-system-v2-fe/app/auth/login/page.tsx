@@ -13,22 +13,30 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { StatusMessage } from '@/components/ui/status-message';
 import { PasswordVisibilityButton } from '@/components/ui/password-visibility-button';
+import { getRecaptchaToken } from '@/lib/recaptcha';
 
 export default function LoginPage() {
     const router = useRouter();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
     // Password visibility state
     const [showPassword, setShowPassword] = useState(false);
 
     const handlePasswordLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isLoading) {
+            return;
+        }
+
         setError('');
+        setIsLoading(true);
 
         try {
-            const data = await authApi.loginPassword({ email, password })
+            const captcha = await getRecaptchaToken('LOGIN');
+            const data = await authApi.loginPassword({ email, password, captcha });
 
             if (data.success) {
                 localStorage.setItem('access_token', data.data.access_token);
@@ -40,6 +48,8 @@ export default function LoginPage() {
         } catch (err: unknown) {
             const systemMessage = err instanceof Error ? err.message : '';
             setError(systemMessage || 'Failed to connect to the server');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -108,8 +118,8 @@ export default function LoginPage() {
                     </div>
                 </div>
 
-                <Button type="submit" className="w-full" size="lg">
-                    Sign In
+                <Button type="submit" disabled={isLoading} className="w-full" size="lg">
+                    {isLoading ? 'Signing in...' : 'Sign In'}
                 </Button>
             </form>
 

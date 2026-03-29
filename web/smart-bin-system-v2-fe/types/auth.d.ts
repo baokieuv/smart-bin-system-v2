@@ -3,6 +3,7 @@
 export interface LoginRequest {
   email: string;
   password: string;
+  captcha: string;
 }
 
 export interface LoginGoogleRequest {
@@ -19,6 +20,7 @@ export interface LogoutRequest {
 
 export interface ResendVerificationRequest {
   email: string;
+  captcha: string;
 }
 
 export interface ChangePasswordRequest {

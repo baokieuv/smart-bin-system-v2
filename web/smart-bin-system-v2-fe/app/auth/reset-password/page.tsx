@@ -9,6 +9,7 @@ import { AuthShell } from '@/components/ui/auth-shell';
 import { StatusMessage } from '@/components/ui/status-message';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { getRecaptchaToken } from '@/lib/recaptcha';
 
 export default function ResetPasswordPage() {
     const router = useRouter();
@@ -22,7 +23,8 @@ export default function ResetPasswordPage() {
         setMessage('');
 
         try {
-            const data = await authApi.resetPassword(email);
+            const captcha = await getRecaptchaToken('RESET_PASSWORD');
+            const data = await authApi.resetPassword(email, captcha);
             setStatus('success');
             setMessage(data.data || 'If the email is valid, password reset instructions have been sent.');
         } catch {

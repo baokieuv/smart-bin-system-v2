@@ -16,5 +16,6 @@ export interface CreateUserRequest {
   password: string;
   firstName: string;
   lastName: string;
+  captcha: string;
 }
 

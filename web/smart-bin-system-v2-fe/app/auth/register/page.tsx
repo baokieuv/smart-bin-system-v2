@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { StatusMessage } from '@/components/ui/status-message';
 import { PasswordVisibilityButton } from '@/components/ui/password-visibility-button';
 import { PASSWORD_MIN_LENGTH, getPasswordRules, getPasswordStrengthScore, isPasswordStrongEnough } from '@/lib/password-policy';
+import { getRecaptchaToken } from '@/lib/recaptcha';
 
 export default function RegisterPage() {
     const router = useRouter();
@@ -58,7 +59,8 @@ export default function RegisterPage() {
         setIsLoading(true);
 
         try {
-            const data = await usersApi.register(formData);
+            const captcha = await getRecaptchaToken('REGISTER');
+            const data = await usersApi.register({ ...formData, captcha });
 
             if (data.success) {
                 setStatus({

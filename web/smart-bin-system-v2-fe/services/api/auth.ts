@@ -1,20 +1,20 @@
 // Service layer for authentication API endpoints.
 
-import { ChangePasswordRequest, ConfirmResetPassword, LoginGoogleRequest, LoginRequest } from "@/types/auth";
+import { ChangePasswordRequest, ConfirmResetPassword, LoginGoogleRequest, LoginRequest, ResendVerificationRequest, TokenResponse } from "@/types/auth";
 import { api } from "@/lib/api-client";
 
 export const authApi = {
     // Login does not require auth; skip refresh-token mechanism
     loginPassword: async (request: LoginRequest) => {
-        return api.post('/auth/login-password', 
-            { username: request.email, password: request.password },
+        return api.post<TokenResponse>('/auth/login-password', 
+            { username: request.email, password: request.password, captcha: request.captcha },
             { skipAuthRefresh: true }
         );
     },
 
     // Google login does not require auth; skip refresh-token mechanism
     loginGoogle: async (request: LoginGoogleRequest) => {
-        return api.post('/auth/login-google',
+        return api.post<TokenResponse>('/auth/login-google',
             { token: request.token },
             { skipAuthRefresh: true }
         );
@@ -51,9 +51,9 @@ export const authApi = {
     },
 
     // Reset password does not require auth; skip refresh-token mechanism
-    resetPassword: async (email: string) => {
-        return api.post('/auth/reset-password',
-            { email },
+    resetPassword: async (email: string, captcha: string) => {
+        return api.post<string>('/auth/reset-password',
+            { email, captcha },
             { skipAuthRefresh: true }
         );
     },
@@ -74,9 +74,9 @@ export const authApi = {
     },
 
     // Resend verification does not require auth; skip refresh-token mechanism
-    resendVerification: async (email: string) => {
+    resendVerification: async (request: ResendVerificationRequest) => {
         return api.post('/auth/resend-verification',
-            { email },
+            { email: request.email, captcha: request.captcha },
             { skipAuthRefresh: true }
         );
     }
