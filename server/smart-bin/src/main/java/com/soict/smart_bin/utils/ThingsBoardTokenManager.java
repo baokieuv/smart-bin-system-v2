@@ -58,7 +58,7 @@ public class ThingsBoardTokenManager {
     private void login() {
         JsonNode response = authClient.post()
                 .uri("/api/auth/login")
-                .body(new LoginRequest(email, password))
+                .body(new LoginRequest(email, password, null))
                 .retrieve()
                 .body(JsonNode.class);
 

@@ -110,7 +110,7 @@ public class AuthService {
 
         // 3. Xác thực mật khẩu cũ
         try {
-            LoginRequest loginRequest = new LoginRequest(user.getEmail(), request.currentPassword());
+            LoginRequest loginRequest = new LoginRequest(user.getEmail(), request.currentPassword(), null);
             keycloakService.login(loginRequest);
         } catch (Exception e) {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Mật khẩu hiện tại không chính xác.");

@@ -10,7 +10,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-public class ThingsBoardConfig {
+public class RestClientConfig {
 
     @Value("${things-board.url}")
     private String baseUrl;

@@ -1,7 +1,10 @@
 package com.soict.smart_bin.common;
 
+import lombok.Getter;
+
 import java.util.stream.Stream;
 
+@Getter
 public enum TokenType {
     VERIFY_EMAIL(0),
     RESET_PASSWORD(1);
@@ -10,10 +13,6 @@ public enum TokenType {
 
     TokenType(int value) {
         this.value = value;
-    }
-
-    public int getValue() {
-        return value;
     }
 
     public static TokenType fromValue(int value) {

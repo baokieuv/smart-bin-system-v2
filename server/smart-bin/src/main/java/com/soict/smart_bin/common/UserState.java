@@ -1,7 +1,10 @@
 package com.soict.smart_bin.common;
 
+import lombok.Getter;
+
 import java.util.stream.Stream;
 
+@Getter
 public enum UserState {
     PENDING(0),
     ACTIVE(1),
@@ -12,10 +15,6 @@ public enum UserState {
 
     UserState(int value) {
         this.value = value;
-    }
-
-    public int getValue() {
-        return value;
     }
 
     public static UserState fromValue(int value) {

@@ -1,9 +1,17 @@
 package com.soict.smart_bin.dto.auth;
 
+import com.soict.smart_bin.utils.CaptchaPayload;
 import jakarta.validation.constraints.NotBlank;
 
 public record ResendVerificationRequest(
         @NotBlank(message = "Email is required")
-        String email
-) {
+        String email,
+
+        @NotBlank(message = "Captcha is required")
+        String captcha
+) implements CaptchaPayload {
+        @Override
+        public String getCaptchaToken() {
+                return captcha;
+        }
 }

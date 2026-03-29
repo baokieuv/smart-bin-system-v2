@@ -1,6 +1,7 @@
 package com.soict.smart_bin.controller;
 
 import com.soict.smart_bin.dto.user.UpdateUserRequest;
+import com.soict.smart_bin.utils.RequireCaptcha;
 import com.soict.smart_bin.utils.ResponseFactory;
 import com.soict.smart_bin.common.SuccessCode;
 import com.soict.smart_bin.dto.core.ApiResponseFormat;
@@ -23,6 +24,7 @@ public class UserController {
     private final UserService userService;
 
     @PostMapping("/")
+    @RequireCaptcha(action = "REGISTER")
     public ResponseEntity<ApiResponseFormat<Object>> createUser(@Valid @RequestBody CreateUserRequest request){
         var user = userService.createUser(request);
         return responseFactory.response(SuccessCode.CREATED, user);

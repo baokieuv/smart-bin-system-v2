@@ -1,7 +1,10 @@
 package com.soict.smart_bin.common;
 
+import lombok.Getter;
+
 import java.util.stream.Stream;
 
+@Getter
 public enum NotificationType {
     THRESHOLD_WARNING(0),
     THRESHOLD_CRITICAL(1),
@@ -24,10 +27,6 @@ public enum NotificationType {
 
     NotificationType(int value) {
         this.value = value;
-    }
-
-    public int getValue() {
-        return value;
     }
 
     public static NotificationType fromValue(int value) {

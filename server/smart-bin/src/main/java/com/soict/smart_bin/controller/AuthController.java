@@ -1,5 +1,6 @@
 package com.soict.smart_bin.controller;
 
+import com.soict.smart_bin.utils.RequireCaptcha;
 import com.soict.smart_bin.utils.ResponseFactory;
 import com.soict.smart_bin.common.SuccessCode;
 import com.soict.smart_bin.dto.auth.*;
@@ -24,6 +25,7 @@ public class AuthController {
     private final UserService userService;
 
     @PostMapping("/login-password")
+    @RequireCaptcha(action = "LOGIN")
     public ResponseEntity<ApiResponseFormat<Object>> loginPassword(@Valid @RequestBody LoginRequest request) {
         var token = authService.loginPassword(request);
         return responseFactory.response(SuccessCode.OK, token);
@@ -64,28 +66,40 @@ public class AuthController {
             @AuthenticationPrincipal Jwt jwt
     ){
         String keycloakId = jwt.getSubject();
-        return responseFactory.response(SuccessCode.OK, authService.changePassword(keycloakId, request));
+
+        var response = authService.changePassword(keycloakId, request);
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
     @PostMapping("/reset-password")
+    @RequireCaptcha(action = "RESET_PASSWORD")
     public ResponseEntity<ApiResponseFormat<Object>> requestPasswordReset(@Valid @RequestBody ResetPasswordRequest request){
-        return responseFactory.response(SuccessCode.OK, authService.requestPasswordReset(request));
+
+        var response = authService.requestPasswordReset(request);
+
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
     @PostMapping("/confirm-reset")
     public ResponseEntity<ApiResponseFormat<Object>> confirmPasswordReset(@Valid @RequestBody ConfirmPasswordReset request){
-        return responseFactory.response(SuccessCode.OK, authService.confirmPasswordReset(request));
+        var response = authService.confirmPasswordReset(request);
+
+        return responseFactory.response(SuccessCode.OK, response);
     }
 
     @GetMapping("/verify-email")
     public ResponseEntity<ApiResponseFormat<Object>> verifyEmail(@RequestParam String token) {
         String message = userService.verifyEmail(token);
+
         return responseFactory.response(SuccessCode.OK, message);
     }
 
     @PostMapping("/resend-verification")
+    @RequireCaptcha(action = "RESEND_VERIFICATION")
     public ResponseEntity<ApiResponseFormat<Object>> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+
         userService.resendVerificationEmail(request);
+
         return responseFactory.response(SuccessCode.OK, "Verification email sent successfully");
     }
 }

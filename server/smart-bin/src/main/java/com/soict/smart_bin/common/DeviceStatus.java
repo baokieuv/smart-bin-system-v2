@@ -1,7 +1,10 @@
 package com.soict.smart_bin.common;
 
+import lombok.Getter;
+
 import java.util.stream.Stream;
 
+@Getter
 public enum DeviceStatus {
     ONLINE(0),
     OFFLINE(1);
@@ -10,10 +13,6 @@ public enum DeviceStatus {
 
     DeviceStatus(int value) {
         this.value = value;
-    }
-
-    public int getValue() {
-        return value;
     }
 
     public static DeviceStatus fromValue(int value) {
