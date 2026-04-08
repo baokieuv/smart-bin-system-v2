@@ -1,17 +1,25 @@
 import sys
 from PyQt6.QtWidgets import QApplication
 
-from src.controllers.main_ctrl import MainController
+from src.services.detection_worker import DetectionWorker
+from src.viewmodels.main_viewmodel import MainViewModel
 from src.views.main_window import MainWindow
 
 def main():
     app = QApplication(sys.argv)
     
-    controller = MainController()
+    # 1. Khởi tạo Service (Luồng ngầm chạy Camera & AI)
+    worker = DetectionWorker()
     
-    window = MainWindow(controller)
+    # 2. Khởi tạo ViewModel (Truyền Worker vào)
+    viewmodel = MainViewModel(worker)
     
+    # 3. Khởi tạo View (Truyền ViewModel vào)
+    window = MainWindow(viewmodel)
     window.show()
+    
+    # 4. Bắt đầu hệ thống
+    viewmodel.start_system()
     
     sys.exit(app.exec())
     
