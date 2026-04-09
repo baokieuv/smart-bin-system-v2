@@ -1,5 +1,6 @@
 import cv2
 import time
+import uuid
 from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -22,6 +23,10 @@ class DetectionWorker(QThread):
 
         self.model_hand_detection = YOLO(str(hand_model_path), task='detect')
         self.model_trash_classification = YOLO(str(trash_model_path), task='classify')
+
+        self.detections_dir = Path(__file__).resolve().parent.parent.parent / 'assets' / 'detections'
+        self.images_dir = self.detections_dir / 'images'
+        self.images_dir.mkdir(parents=True, exist_ok=True)
         
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -69,10 +74,22 @@ class DetectionWorker(QThread):
                 cls_results = self.model_trash_classification(frame, verbose=False)
                 top_class_id = cls_results[0].probs.top1
                 top_class_name = cls_results[0].names[top_class_id]
+                top_confidence = float(cls_results[0].probs.top1conf)
+                detection_id = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+                image_path = self._save_detection_image(frame, detection_id)
 
                 # Ánh xạ và tạo Data Object
                 material, item_type, bg_color = self._map_class_to_ui(top_class_name)
-                trash_data = TrashData(material, item_type, bg_color)
+                trash_data = TrashData(
+                    material=material,
+                    item_type=item_type,
+                    bg_color=bg_color,
+                    category=material,
+                    confidence=top_confidence,
+                    label=top_class_name,
+                    image_path=image_path,
+                    detection_id=detection_id,
+                )
                 
                 # Bắn tín hiệu ra ngoài
                 self.trash_detected.emit(trash_data)
@@ -100,3 +117,10 @@ class DetectionWorker(QThread):
         if 'PAPER' in label or 'CARDBOARD' in label: return 'PAPER', f'{label}\nRecyclable', '#38bdf8'
         if 'GLASS' in label: return 'GLASS', f'{label}\nRecyclable', '#4ade80'
         return 'OTHER', f'{label}\nNon-recyclable', '#64748b'
+
+    def _save_detection_image(self, frame, detection_id: str) -> str | None:
+        image_file = self.images_dir / f"{detection_id}.jpg"
+        saved = cv2.imwrite(str(image_file), frame)
+        if not saved:
+            return None
+        return str(image_file)

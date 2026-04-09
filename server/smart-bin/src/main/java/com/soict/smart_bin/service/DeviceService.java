@@ -248,6 +248,10 @@ public class DeviceService {
         Device device = repository.findByMacAndActiveTrue(payload).orElseThrow(() ->
                 new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
+        if (device.getState().equals(DeviceState.ACTIVE)){
+            throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED);
+        }
+
         device.setState(DeviceState.ACTIVE);
 
         Device savedDevice = repository.save(device);
@@ -264,6 +268,38 @@ public class DeviceService {
         );
 
         return mapper.toDto(savedDevice);
+    }
+
+    public DeviceDto getAccessToken(String payload, String signature){
+        try {
+            // 1. Decode the signature from Base64 back to bytes
+            byte[] digitalSignature = Base64.getDecoder().decode(signature);
+
+            // 2. Initialize the Signature object with the Public Key
+            Signature verify = Signature.getInstance("SHA256withRSA");
+            verify.initVerify(serverPublicKey);
+
+            // 3. Input the raw payload
+            verify.update(payload.getBytes("UTF-8"));
+
+            // 4. Verify
+            if (!verify.verify(digitalSignature)) {
+                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
+            }
+
+        }
+        catch (ApiException ex){
+            throw ex;
+        }
+        catch (Exception e) {
+            System.err.println("Verification error: " + e.getMessage());
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, e.getMessage());
+        }
+
+        Device device = repository.findByMacAndActiveTrue(payload).orElseThrow(() ->
+                new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        return mapper.toDto(device);
     }
 
     public JsonNode getTelemetries(String id, String keycloakId, String keys, Long startTs, Long endTs) {

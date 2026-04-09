@@ -75,9 +75,18 @@ public class DeviceController {
     @PostMapping("/activate")
     public ResponseEntity<ApiResponseFormat<Object>> activateDevice(
             @RequestBody String payload,
-            @RequestHeader("signature") String signature
+            @RequestHeader("X-Signature") String signature
     ){
         var response = deviceService.activateDevice(payload, signature);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping("/get-access-token")
+    public ResponseEntity<ApiResponseFormat<Object>> getAccessToken(
+            @RequestBody String payload,
+            @RequestHeader("X-Signature") String signature
+    ){
+        var response = deviceService.getAccessToken(payload, signature);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

@@ -45,5 +45,5 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Đảm bảo tắt luồng ngầm khi người dùng ấn X tắt app"""
-        self.viewmodel.worker.stop()
+        self.viewmodel.shutdown()
         event.accept()
