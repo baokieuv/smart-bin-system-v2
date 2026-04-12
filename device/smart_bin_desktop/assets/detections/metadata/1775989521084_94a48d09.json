@@ -1,0 +1,9 @@
+{
+  "detectionId": "1775989521084_94a48d09",
+  "detectedAt": "2026-04-12T10:25:21.130229+00:00",
+  "image": "D:\\HUST\\soict\\final-project\\smart-bin-v2\\smart-bin-system-v2\\device\\smart_bin_desktop\\assets\\detections\\images\\1775989521084_94a48d09.jpg",
+  "category": "glass",
+  "confidence": 0.662066,
+  "label": "glass",
+  "userFeedback": "khong_danh_gia"
+}

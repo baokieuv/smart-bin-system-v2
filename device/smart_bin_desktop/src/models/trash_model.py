@@ -3,6 +3,7 @@ from typing import Optional
 
 @dataclass
 class TrashData:
+    # Unified payload passed from detector -> ViewModel -> UI.
     material: str
     item_type: str
     bg_color: str

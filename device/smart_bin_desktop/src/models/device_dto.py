@@ -3,6 +3,7 @@ from typing import Optional
 
 @dataclass
 class DeviceDto:
+    # Mirrors device payload returned by backend APIs.
     id: str
     mac: str
     name: Optional[str] = None
@@ -21,7 +22,7 @@ class DeviceDto:
             id=data.get("id", ""),
             mac=data.get("mac", ""),
             name=data.get("name"),
-            # Lưu ý key trong dict phải khớp với JSON của Java (camelCase)
+            # Backend uses camelCase keys.
             access_token=data.get("accessToken"), 
             longitude=data.get("longitude"),
             latitude=data.get("latitude"),

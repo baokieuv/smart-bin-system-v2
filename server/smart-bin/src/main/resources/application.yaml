@@ -56,6 +56,12 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:redisadmin}
 
+  servlet:
+    multipart:
+      enabled: ${MULTIPART_ENABLED:true}
+      max-file-size: ${MAX_FILE_SIZE:5MB}
+      max-request-size: ${MAX_REQUEST_SIZE:50MB}
+
 app:
   secret-key: ${SECRET_KEY:MY_SUPER_SECRET_KEY_1234}
   frontend:

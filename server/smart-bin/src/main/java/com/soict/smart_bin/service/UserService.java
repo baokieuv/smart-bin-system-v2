@@ -36,8 +36,6 @@ public class UserService {
     private final EmailService emailService;
     private final MinioService minioService;
 
-    private static final String FILE_PREFIX = "avatar/image_";
-
     @Value("${minio.url}")
     private String minioUrl;
 
@@ -182,7 +180,7 @@ public class UserService {
                 filename = avatarUrl.substring(avatarUrl.lastIndexOf("/") + 1);
             }
             else {
-                filename = generateFileName(Objects.requireNonNull(file.getContentType()));
+                filename = Constants.generateFileName(Objects.requireNonNull(file.getContentType()), Constants.AVATAR_PREFIX);
             }
 
             String imageUrl = minioService.uploadFile(file, filename);
@@ -195,9 +193,4 @@ public class UserService {
         }
     }
 
-    private String generateFileName(String contentType){
-        String uniqueId = UUID.randomUUID().toString().substring(0, 12);
-
-        return FILE_PREFIX + uniqueId + "." + contentType.substring(contentType.indexOf("/") + 1);
-    }
 }

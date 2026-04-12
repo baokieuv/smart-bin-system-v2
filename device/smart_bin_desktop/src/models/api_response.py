@@ -5,6 +5,7 @@ T = TypeVar('T')
 
 @dataclass
 class ApiResponseFormat(Generic[T]):
+    # Generic wrapper so data can be parsed into DTO when details_class is provided.
     timestamp: int
     success: bool
     code: str
@@ -14,7 +15,7 @@ class ApiResponseFormat(Generic[T]):
 
     @classmethod
     def from_dict(cls, data: dict, details_class: Type[T] = None) -> 'ApiResponseFormat[T]':
-    
+        # Convert nested "data" to typed DTO if parser class exists.
         details_data = data.get("data")
         
         parsed_details = None

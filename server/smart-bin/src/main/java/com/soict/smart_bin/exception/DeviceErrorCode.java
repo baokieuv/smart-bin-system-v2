@@ -20,7 +20,10 @@ public enum DeviceErrorCode implements ApiResponseCode {
     // Lỗi điều khiển (RPC)
     RPC_COMMAND_FAILED(false, "AVT3007", "error.rpc_command_failed", HttpStatus.INTERNAL_SERVER_ERROR),
     DEVICE_BUSY(false, "AVT3008", "error.device_is_busy", HttpStatus.CONFLICT),
-    DEVICE_ALREADY_ACTIVATED(false, "AVT3009", "error.device_already_activated", HttpStatus.BAD_REQUEST);
+    DEVICE_ALREADY_ACTIVATED(false, "AVT3009", "error.device_already_activated", HttpStatus.BAD_REQUEST),
+    DEVICE_NOT_ACTIVE_YET(false, "AVT3010", "error.device_not_active_yet", HttpStatus.BAD_REQUEST),
+    ;
+
 
     private final boolean success;
     private final String code;

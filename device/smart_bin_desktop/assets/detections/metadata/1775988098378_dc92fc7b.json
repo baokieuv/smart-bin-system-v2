@@ -1,0 +1,10 @@
+{
+  "detectionId": "1775988098378_dc92fc7b",
+  "detectedAt": "2026-04-12T10:01:38.427504+00:00",
+  "image": "D:\\HUST\\soict\\final-project\\smart-bin-v2\\smart-bin-system-v2\\device\\smart_bin_desktop\\assets\\detections\\images\\1775988098378_dc92fc7b.jpg",
+  "category": "paper",
+  "confidence": 0.754218,
+  "label": "paper",
+  "userFeedback": "sai",
+  "feedbackAt": "2026-04-12T10:01:45.142918+00:00"
+}

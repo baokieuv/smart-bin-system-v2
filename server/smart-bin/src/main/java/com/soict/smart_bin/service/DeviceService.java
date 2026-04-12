@@ -1,8 +1,15 @@
 package com.soict.smart_bin.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nimbusds.jose.shaded.gson.JsonObject;
+import com.nimbusds.jose.shaded.gson.JsonParser;
 import com.soict.smart_bin.common.DeviceStatus;
 import com.soict.smart_bin.common.NotificationType;
+import com.soict.smart_bin.dto.device.DetectionResultDto;
+import com.soict.smart_bin.entity.DeviceDetectionResult;
+import com.soict.smart_bin.repository.DetectionResultRepository;
 import org.springframework.core.io.Resource;
 import com.soict.smart_bin.common.Constants;
 import com.soict.smart_bin.common.DeviceState;
@@ -26,9 +33,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.security.PublicKey;
 import java.security.Signature;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -40,9 +49,12 @@ public class DeviceService {
     private final DeviceRepository repository;
     private final DeviceMapper mapper;
     private final ThingsBoardService thingsBoardService;
+    private final MinioService minioService;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final RedisTemplate<String, String> redisTemplate;
+    private final ObjectMapper objectMapper;
+    private final DetectionResultRepository detectionRepository;
 
     @Value("classpath:public_key.pem")
     private Resource publicKeyResource;
@@ -220,32 +232,9 @@ public class DeviceService {
     }
 
     public DeviceDto activateDevice(String payload, String signature){
-        try {
-            // 1. Decode the signature from Base64 back to bytes
-            byte[] digitalSignature = Base64.getDecoder().decode(signature);
+        String mac = verifySignature(payload, signature);
 
-            // 2. Initialize the Signature object with the Public Key
-            Signature verify = Signature.getInstance("SHA256withRSA");
-            verify.initVerify(serverPublicKey);
-
-            // 3. Input the raw payload
-            verify.update(payload.getBytes("UTF-8"));
-
-            // 4. Verify
-            if (!verify.verify(digitalSignature)) {
-                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
-            }
-
-        }
-        catch (ApiException ex){
-            throw ex;
-        }
-        catch (Exception e) {
-            System.err.println("Verification error: " + e.getMessage());
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, e.getMessage());
-        }
-
-        Device device = repository.findByMacAndActiveTrue(payload).orElseThrow(() ->
+        Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
                 new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
         if (device.getState().equals(DeviceState.ACTIVE)){
@@ -271,33 +260,14 @@ public class DeviceService {
     }
 
     public DeviceDto getAccessToken(String payload, String signature){
-        try {
-            // 1. Decode the signature from Base64 back to bytes
-            byte[] digitalSignature = Base64.getDecoder().decode(signature);
+        String mac = verifySignature(payload, signature);
 
-            // 2. Initialize the Signature object with the Public Key
-            Signature verify = Signature.getInstance("SHA256withRSA");
-            verify.initVerify(serverPublicKey);
-
-            // 3. Input the raw payload
-            verify.update(payload.getBytes("UTF-8"));
-
-            // 4. Verify
-            if (!verify.verify(digitalSignature)) {
-                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
-            }
-
-        }
-        catch (ApiException ex){
-            throw ex;
-        }
-        catch (Exception e) {
-            System.err.println("Verification error: " + e.getMessage());
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, e.getMessage());
-        }
-
-        Device device = repository.findByMacAndActiveTrue(payload).orElseThrow(() ->
+        Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
                 new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        if (device.getState() != DeviceState.ACTIVE){
+            throw new ApiException(DeviceErrorCode.DEVICE_NOT_ACTIVE_YET);
+        }
 
         return mapper.toDto(device);
     }
@@ -310,6 +280,82 @@ public class DeviceService {
     public JsonNode getAttributes(String id, String keycloakId, String keys) {
         Device device = getDeviceAndVerifyOwnership(id, keycloakId);
         return thingsBoardService.getAttributes(device.getDeviceId(), keys);
+    }
+
+    public List<String> uploadDetectionResult(
+            MultipartFile[] files,
+            String metadata,
+            String payload,
+            String signature
+    ){
+        // 1. Xác thực thiết bị
+        String mac = verifySignature(payload, signature);
+        Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
+                new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        List<String> successfulUploads = new ArrayList<>();
+
+        try {
+            // 2. Parse metadata JSON
+            List<DetectionResultDto> metadatas = objectMapper.readValue(
+                    metadata,
+                    new TypeReference<List<DetectionResultDto>>() {}
+            );
+
+            // 3. TỐI ƯU: Chuyển List thành Map để tra cứu O(1) thay vì O(n^2) trong vòng lặp
+            Map<String, DetectionResultDto> metadataMap = metadatas.stream()
+                    .collect(Collectors.toMap(DetectionResultDto::filename, meta -> meta));
+
+            // 4. Xử lý từng file
+            for (MultipartFile file : files){
+                String originalFilename = file.getOriginalFilename();
+
+                if (originalFilename == null || originalFilename.isBlank()) {
+                    continue;
+                }
+
+                DetectionResultDto fileInfo = metadataMap.get(originalFilename);
+
+                if (fileInfo != null){
+                    // Đưa try-catch vào TỪNG FILE để nếu 1 file lỗi, các file khác vẫn được xử lý
+                    try {
+                        String filename = Constants.generateFileName(
+                                Objects.requireNonNull(file.getContentType()),
+                                Constants.DETECTION_RESULT_PREFIX
+                        );
+
+                        // Upload lên MinIO
+                        String filepath = minioService.uploadFile(file, filename);
+
+                        // Lưu xuống Database
+                        DeviceDetectionResult result = new DeviceDetectionResult();
+                        result.setConfidence(fileInfo.confidence());
+                        result.setFeedback(fileInfo.feedback());
+                        result.setDevice(device);
+                        result.setType(fileInfo.type());
+                        result.setImageUrl(filepath);
+
+                        detectionRepository.save(result);
+
+                        // Lưu thành công toàn bộ thì mới add vào danh sách trả về
+                        successfulUploads.add(originalFilename);
+                        log.info("Successfully uploaded and saved result for file: {}", originalFilename);
+
+                    } catch (Exception fileEx) {
+                        // Log lại lỗi của file cụ thể này (có thể do MinIO rớt mạng hoặc DB lỗi)
+                        log.error("Failed to process file: {}", originalFilename, fileEx);
+                    }
+                } else {
+                    log.warn("No metadata found for file: {}", originalFilename);
+                }
+            }
+        } catch (Exception e) {
+            // Log lại lỗi chung (ví dụ: lỗi parse JSON metadata)
+            log.error("Error parsing metadata or processing batch upload for device MAC: {}", mac, e);
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata format");
+        }
+
+        return successfulUploads;
     }
 
     private Device getDeviceAndVerifyOwnership(String deviceIdStr, String keycloakId) {
@@ -328,5 +374,44 @@ public class DeviceService {
             throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
         }
         return device;
+    }
+
+    private String verifySignature(String payload, String signature){
+        try {
+            // 1. Decode the signature from Base64 back to bytes
+            byte[] digitalSignature = Base64.getDecoder().decode(signature);
+
+            // 2. Initialize the Signature object with the Public Key
+            Signature verify = Signature.getInstance("SHA256withRSA");
+            verify.initVerify(serverPublicKey);
+
+            // 3. Input the raw payload
+            verify.update(payload.getBytes("UTF-8"));
+
+            // 4. Verify
+            if (!verify.verify(digitalSignature)) {
+                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
+            }
+
+            JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
+
+            String mac = obj.get("mac").getAsString();
+            long timestamp = obj.get("timestamp").getAsLong();
+
+            long now = Instant.now().toEpochMilli();
+
+            if (now - timestamp > Constants.TIMESTAMP_EXPIRY) {
+                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
+            }
+
+            return mac;
+        }
+        catch (ApiException ex){
+            throw ex;
+        }
+        catch (Exception e) {
+            System.err.println("Verification error: " + e.getMessage());
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, e.getMessage());
+        }
     }
 }

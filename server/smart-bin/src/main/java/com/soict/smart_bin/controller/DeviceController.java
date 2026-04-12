@@ -8,11 +8,14 @@ import com.soict.smart_bin.dto.device.CreateDeviceRequest;
 import com.soict.smart_bin.dto.device.UpdateDeviceRequest;
 import com.soict.smart_bin.service.DeviceService;
 import jakarta.validation.Valid;
+import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/devices")
@@ -111,6 +114,17 @@ public class DeviceController {
     ){
         String keycloakId = jwt.getSubject();
         var response = deviceService.getAttributes(deviceId, keycloakId, keys);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping(value = "/upload-detection-result", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponseFormat<Object>> uploadDetectionResult(
+            @RequestPart("files") MultipartFile[] files,
+            @RequestParam("metadata") String metadata,
+            @RequestParam("payload") String payload,
+            @RequestHeader("X-Signature") String signature
+    ) {
+        var response = deviceService.uploadDetectionResult(files, metadata, payload, signature);
         return responseFactory.response(SuccessCode.OK, response);
     }
 }

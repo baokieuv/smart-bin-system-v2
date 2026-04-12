@@ -1,45 +1,233 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QHBoxLayout
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QPoint, QRect
+from PyQt6.QtGui import QPainter, QLinearGradient, QColor, QBrush, QPen
+import random
+import math
+
+
+class ConfettiParticle:
+    def __init__(self, x, y):
+        colors = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#fb7185"]
+        self.x = float(x)
+        self.y = float(y)
+        self.color = QColor(random.choice(colors))
+        self.vx = random.uniform(-3, 3)
+        self.vy = random.uniform(-8, -2)
+        self.gravity = 0.25
+        self.size = random.randint(6, 12)
+        self.rotation = random.uniform(0, 360)
+        self.rot_speed = random.uniform(-5, 5)
+        self.alpha = 1.0
+        self.shape = random.choice(["rect", "circle"])
+
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += self.gravity
+        self.rotation += self.rot_speed
+        if self.y > 500:
+            self.alpha -= 0.05
+        return self.alpha > 0
+
+
+class ConfettiWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.particles = []
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+
+    def burst(self, cx, cy):
+        # Create a short burst, then timer drives particle simulation frames.
+        for _ in range(60):
+            self.particles.append(ConfettiParticle(cx, cy))
+        self._timer.start(16)
+
+    def _tick(self):
+        self.particles = [p for p in self.particles if p.update()]
+        self.update()
+        if not self.particles:
+            self._timer.stop()
+
+    def paintEvent(self, event):
+        if not self.particles:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for p in self.particles:
+            color = QColor(p.color)
+            color.setAlphaF(p.alpha)
+            painter.setBrush(QBrush(color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.save()
+            painter.translate(p.x, p.y)
+            painter.rotate(p.rotation)
+            if p.shape == "rect":
+                painter.drawRect(-p.size // 2, -p.size // 4, p.size, p.size // 2)
+            else:
+                painter.drawEllipse(-p.size // 2, -p.size // 2, p.size, p.size)
+            painter.restore()
+
 
 class ScreenThanks(QWidget):
     def __init__(self):
         super().__init__()
-        
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #121212;
-                font-family: 'Segoe UI', Arial, sans-serif;
-            }
-        """)
-        layout = QVBoxLayout()
+        self._build_ui()
+
+    def _build_ui(self):
+        self.setStyleSheet("font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 28, 28, 28)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
+
+        # Main card
         self.card = QWidget()
         self.card.setStyleSheet("""
             QWidget {
-                background-color: #1e293b;
-                border-radius: 30px;
+                background: rgba(255,255,255,0.96);
+                border-radius: 32px;
+                border: none;
             }
         """)
+        card_shadow = QGraphicsDropShadowEffect()
+        card_shadow.setBlurRadius(40)
+        card_shadow.setColor(QColor(59, 130, 246, 60))
+        card_shadow.setOffset(0, 12)
+        self.card.setGraphicsEffect(card_shadow)
+
         card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(60, 60, 60, 60)
-        card_layout.setSpacing(20)
-        
-        icon = QLabel("💖")
-        icon.setStyleSheet("font-size: 80px; background: transparent;")
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.setContentsMargins(60, 52, 60, 52)
+        card_layout.setSpacing(16)
+        card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        msg_title = QLabel("CẢM ƠN BẠN!")
-        msg_title.setStyleSheet("font-size: 40px; font-weight: 900; color: #38bdf8; background: transparent;")
-        msg_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Checkmark icon with gradient bg
+        self.icon_widget = QWidget()
+        self.icon_widget.setFixedSize(100, 100)
+        self.icon_widget.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
+                    stop:0 #a7f3d0, stop:1 #6ee7b7);
+                border-radius: 50px;
+                border: none;
+            }
+        """)
+        icon_shadow = QGraphicsDropShadowEffect()
+        icon_shadow.setBlurRadius(24)
+        icon_shadow.setColor(QColor(52, 211, 153, 120))
+        icon_shadow.setOffset(0, 8)
+        self.icon_widget.setGraphicsEffect(icon_shadow)
 
-        msg_sub = QLabel("Phản hồi của bạn giúp AI\nhọc hỏi và thông minh hơn từng ngày.")
-        msg_sub.setStyleSheet("font-size: 20px; color: #cbd5e1; background: transparent;")
-        msg_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        card_layout.addWidget(icon)
-        card_layout.addWidget(msg_title)
-        card_layout.addWidget(msg_sub)
+        icon_inner = QVBoxLayout(self.icon_widget)
+        icon_inner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        check = QLabel("✓")
+        check.setStyleSheet("font-size: 52px; font-weight: 900; color: #065f46; background: transparent;")
+        check.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_inner.addWidget(check)
+
+        icon_wrap = QHBoxLayout()
+        icon_wrap.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_wrap.addWidget(self.icon_widget)
+
+        # Title
+        self.title = QLabel("Cảm ơn bạn! 🎉")
+        self.title.setStyleSheet("""
+            font-size: 40px;
+            font-weight: 900;
+            color: #0d3580;
+            background: transparent;
+            letter-spacing: 1px;
+        """)
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Subtitle
+        subtitle = QLabel("Phản hồi của bạn giúp AI thông minh hơn mỗi ngày")
+        subtitle.setStyleSheet("""
+            font-size: 18px;
+            color: #4a72b0;
+            background: transparent;
+            font-weight: 500;
+        """)
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Stats row
+        stats_row = QWidget()
+        stats_row.setStyleSheet("""
+            QWidget {
+                background: #f0f7ff;
+                border-radius: 16px;
+                border: none;
+            }
+        """)
+        stats_layout = QHBoxLayout(stats_row)
+        stats_layout.setContentsMargins(20, 14, 20, 14)
+        stats_layout.setSpacing(0)
+
+        def make_stat(icon, value, label):
+            w = QWidget()
+            w.setStyleSheet("background: transparent;")
+            vl = QVBoxLayout(w)
+            vl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            vl.setSpacing(2)
+            ico = QLabel(icon)
+            ico.setStyleSheet("font-size: 22px; background: transparent;")
+            ico.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            val = QLabel(value)
+            val.setStyleSheet("font-size: 18px; font-weight: 800; color: #1e40af; background: transparent;")
+            val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl = QLabel(label)
+            lbl.setStyleSheet("font-size: 11px; color: #64748b; background: transparent;")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            vl.addWidget(ico)
+            vl.addWidget(val)
+            vl.addWidget(lbl)
+            return w
+
+        sep = QWidget()
+        sep.setFixedWidth(1)
+        sep.setStyleSheet("background: #cbd5e1;")
+
+        stats_layout.addWidget(make_stat("🤖", "+1", "Mẫu huấn luyện"), 1)
+        stats_layout.addWidget(sep)
+        stats_layout.addWidget(make_stat("📈", "AI", "Đang học"), 1)
+
+        card_layout.addLayout(icon_wrap)
+        card_layout.addWidget(self.title)
+        card_layout.addWidget(subtitle)
+        card_layout.addSpacing(8)
+        card_layout.addWidget(stats_row)
 
         layout.addWidget(self.card)
-        self.setLayout(layout)
+
+        # Confetti overlay (covers whole widget)
+        self._confetti = ConfettiWidget(self)
+        self._confetti.resize(800, 480)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Trigger confetti after a brief delay
+        QTimer.singleShot(200, self._fire_confetti)
+
+        card_shadow = QGraphicsDropShadowEffect()
+        card_shadow.setBlurRadius(40)
+        card_shadow.setColor(QColor(59, 130, 246, 60))
+        card_shadow.setOffset(0, 12)
+        self.card.setGraphicsEffect(card_shadow)
+
+    def _fire_confetti(self):
+        # Overlay is raised so particles render above the thank-you card.
+        cx = self.width() // 2
+        cy = self.height() // 2
+        self._confetti.resize(self.width(), self.height())
+        self._confetti.burst(cx, cy)
+        self._confetti.raise_()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        gradient = QLinearGradient(0, 0, self.width(), self.height())
+        gradient.setColorAt(0.0, QColor("#eafff7"))
+        gradient.setColorAt(0.5, QColor("#f0faff"))
+        gradient.setColorAt(1.0, QColor("#f0f7ff"))
+        painter.fillRect(self.rect(), gradient)

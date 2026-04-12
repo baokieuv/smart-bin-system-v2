@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -6,26 +7,32 @@ from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 from src.models.trash_model import TrashData
 from src.repository.device_repository import DeviceClient
 from src.repository.thingsboard_repository import ThingsboardClient
+from src.utils.config import APP_CONFIG
 
 class MainViewModel(QObject):
-    # Các tín hiệu (StateFlow) để View lắng nghe
+    # State signals consumed by MainWindow for screen transitions.
+    state_loading = pyqtSignal(str)
     state_welcome = pyqtSignal()
     state_feedback = pyqtSignal(TrashData)
     state_thanks = pyqtSignal()
+    state_activation_required = pyqtSignal(bool, str)
+    state_toast = pyqtSignal(str, bool)
 
     def __init__(self, worker):
         super().__init__()
+        self.logger = logging.getLogger("smart_bin.main_viewmodel")
         self.worker = worker
         self.device_client = DeviceClient()
         self.thingsboard_client = ThingsboardClient()
         self.access_token = None
-        self.telemetry_interval_ms = 5 * 60 * 1000
+        self.telemetry_interval_ms = APP_CONFIG.viewmodel.telemetry_interval_ms
         self.current_detection_metadata_path = None
-        self.metadata_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "detections" / "metadata"
+        self.metadata_dir = APP_CONFIG.paths.detection_metadata_dir
         self.metadata_dir.mkdir(parents=True, exist_ok=True)
         
         # Kết nối Worker với ViewModel
         self.worker.trash_detected.connect(self._on_trash_detected)
+        self.worker.worker_ready.connect(self._on_worker_ready)
 
         # Quản lý thời gian ở ViewModel
         self.feedback_timer = QTimer()
@@ -41,36 +48,69 @@ class MainViewModel(QObject):
         self.telemetry_timer.setInterval(self.telemetry_interval_ms)
         self.telemetry_timer.timeout.connect(self._send_periodic_telemetry)
 
+        self.access_token_retry_timer = QTimer()
+        self.access_token_retry_timer.setSingleShot(False)
+        self.access_token_retry_timer.setInterval(self.telemetry_interval_ms)
+        self.access_token_retry_timer.timeout.connect(self._retry_get_access_token)
+        self.logger.info("MainViewModel khoi tao xong")
+
     def start_system(self):
         """Khởi động toàn bộ hệ thống"""
+        self.state_loading.emit("Dang khoi tao model AI va camera...")
         self.worker.start() # Bật luồng Camera + AI chạy ngầm
+        self.logger.info("start_system da duoc goi")
+
+    def _on_worker_ready(self, ready: bool, message: str):
+        if not ready:
+            self.state_loading.emit(f"Khoi tao that bai: {message}")
+            self.state_toast.emit("Khoi tao AI that bai", False)
+            return
+
+        self.state_loading.emit("Khoi tao xong. Dang ket noi he thong...")
         self.reset_to_welcome()
-        self._initialize_telemetry_loop()
+        self._refresh_access_token(reason="startup")
 
     def _on_trash_detected(self, trash_data: TrashData):
         """Khi AI nhận diện có rác"""
+        self.logger.info(
+            "Nhan ket qua detect: category=%s label=%s conf=%.3f id=%s",
+            trash_data.category,
+            trash_data.label,
+            trash_data.confidence,
+            trash_data.detection_id,
+        )
+        # Persist raw result first so feedback can patch the same metadata file later.
         self.current_detection_metadata_path = self._save_detection_metadata(trash_data, "khong_danh_gia")
         self.worker.pause_detection() # Tạm dừng AI trong lúc hỏi người dùng
         self.state_feedback.emit(trash_data) # Báo cho View hiện màn Feedback
-        self.feedback_timer.start(10000) # Đợi 10s
+        self.feedback_timer.start(APP_CONFIG.viewmodel.feedback_timeout_ms)
+        self.logger.info(
+            "Chuyen sang man feedback, timeout=%sms",
+            APP_CONFIG.viewmodel.feedback_timeout_ms,
+        )
 
     def handle_feedback(self, is_correct: bool):
         """Khi người dùng bấm nút Đúng/Sai từ View"""
         self.feedback_timer.stop()
+        # Update feedback on the current detection metadata.
         self._update_current_feedback("dung" if is_correct else "sai")
-        
-        # TODO: Sau này gọi API lưu database ở đây
-        print(f"Ghi nhận phản hồi: {'Đúng' if is_correct else 'Sai'}")
+        self.logger.info("Nguoi dung feedback: %s", "dung" if is_correct else "sai")
         
         self.state_thanks.emit() # Báo cho View hiện màn Thanks
-        self.thanks_timer.start(5000) # Đợi 5s
+        self.thanks_timer.start(APP_CONFIG.viewmodel.thanks_timeout_ms)
+        self.logger.info(
+            "Chuyen sang man thanks, timeout=%sms",
+            APP_CONFIG.viewmodel.thanks_timeout_ms,
+        )
 
     def reset_to_welcome(self):
         """Đưa hệ thống về trạng thái sẵn sàng"""
+        # Any timeout or manual action routes back to welcome + resumes detector.
         self.feedback_timer.stop()
         self.thanks_timer.stop()
         self.worker.resume_detection() # Bật lại AI
         self.state_welcome.emit() # Báo View về màn Welcome
+        self.logger.info("Reset ve man welcome")
 
 
     def get_access_token(self):
@@ -85,39 +125,94 @@ class MainViewModel(QObject):
 
         return self.thingsboard_client.send_telemetry(self.access_token)
 
+    def get_device_mac_address(self) -> str:
+        return self.device_client.get_mac_address()
+
     def _initialize_telemetry_loop(self):
+        # Backward-compatible wrapper; real flow is handled by _refresh_access_token.
+        self._refresh_access_token(reason="initialize_telemetry")
+
+    def _refresh_access_token(self, reason: str):
+        self.logger.info("Thu get-access-token, reason=%s", reason)
         success, result = self.get_access_token()
         if not success:
-            print(f"Khong lay duoc access token, bo qua telemetry: {result}")
+            self.logger.warning("Khong lay duoc access token, bo qua telemetry: %s", result)
             self.telemetry_timer.stop()
             self.access_token = None
+
+            error_code = self._extract_error_code(result)
+            if error_code == "AVT3010":
+                self.state_activation_required.emit(True, "Thiết bị chưa kích hoạt. Nhấn nút Kích hoạt để tiếp tục.")
+            else:
+                self.state_activation_required.emit(False, "")
+
+            if not self.access_token_retry_timer.isActive():
+                self.access_token_retry_timer.start()
+                self.logger.info("Bat retry get-access-token moi %sms", self.telemetry_interval_ms)
             return
 
         token = result.data.access_token if result and result.data else None
         if not token:
-            print("Khong co access token trong response, bo qua telemetry")
+            self.logger.warning("Khong co access token trong response, bo qua telemetry")
             self.telemetry_timer.stop()
             self.access_token = None
+            if not self.access_token_retry_timer.isActive():
+                self.access_token_retry_timer.start()
             return
 
+        self.access_token_retry_timer.stop()
         self.access_token = token
+        self.state_activation_required.emit(False, "")
         self.telemetry_timer.start()
-        print("Da lay access token. Bat dau gui telemetry moi 5 phut")
+        self.logger.info("Da lay access token, bat dau gui telemetry moi 5 phut")
+
+    def _retry_get_access_token(self):
+        self._refresh_access_token(reason="retry_timer")
 
     def _send_periodic_telemetry(self):
         success, message = self.send_telemetry()
         if not success:
-            print(f"Gui telemetry that bai, dung vong lap telemetry: {message}")
+            self.logger.warning("Gui telemetry that bai, dung vong lap telemetry: %s", message)
             self.telemetry_timer.stop()
             return
 
-        print("Gui telemetry thanh cong")
+        self.logger.info("Gui telemetry thanh cong")
 
     def shutdown(self):
         self.telemetry_timer.stop()
+        self.access_token_retry_timer.stop()
         self.worker.stop()
+        self.logger.info("MainViewModel shutdown hoan tat")
+
+    def on_back_from_device_link(self):
+        self._refresh_access_token(reason="back_from_device_link")
+
+    def activate_device_manually(self):
+        self.logger.info("Nguoi dung bam kich hoat thiet bi")
+        success, result = self.activate_device()
+        if success:
+            self.state_toast.emit("Kích hoạt thiết bị thành công", True)
+            self._refresh_access_token(reason="activate_success")
+            return
+
+        message = self._extract_error_message(result)
+        self.state_toast.emit(f"Kích hoạt thất bại: {message}", False)
+
+    def _extract_error_code(self, result) -> str | None:
+        if isinstance(result, dict):
+            code = result.get("code")
+            return str(code).upper() if code else None
+        if isinstance(result, str) and "AVT3010" in result.upper():
+            return "AVT3010"
+        return None
+
+    def _extract_error_message(self, result) -> str:
+        if isinstance(result, dict):
+            return str(result.get("message") or result.get("code") or "Loi khong xac dinh")
+        return str(result)
 
     def _save_detection_metadata(self, trash_data: TrashData, feedback: str) -> Path:
+        # Mỗi kết quả detect được lưu metadata riêng để trace và upload sau này.
         detected_at = datetime.now(timezone.utc).isoformat()
         metadata = {
             "detectionId": trash_data.detection_id,
@@ -134,6 +229,8 @@ class MainViewModel(QObject):
 
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, ensure_ascii=True, indent=2)
+
+        self.logger.info("Da luu metadata: %s", metadata_path.name)
 
         return metadata_path
 
@@ -154,5 +251,6 @@ class MainViewModel(QObject):
 
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, ensure_ascii=True, indent=2)
+            self.logger.info("Da cap nhat feedback=%s cho %s", feedback, metadata_path.name)
         except (OSError, json.JSONDecodeError) as e:
-            print(f"Khong cap nhat duoc feedback metadata: {e}")
+            self.logger.exception("Khong cap nhat duoc feedback metadata: %s", e)
