@@ -1,19 +1,19 @@
 """
 dialog_wifi_config.py
 ---------------------
-Dialog cấu hình Wi-Fi cho Smart Bin.
+Wi-Fi configuration dialog for Smart Bin.
 
-Luồng kết nối được thiết kế để luôn xác minh thực sự:
-  1. Gọi connect (saved profile hoặc with password).
-  2. Sau khi hàm connect trả về, KHÔNG tin ngay vào ok/msg.
-  3. Quét lại danh sách wifi và gọi get_connected_ssid() để kiểm tra
-     thiết bị có thực sự đang kết nối đúng SSID hay không.
-  4. Cập nhật UI theo kết quả xác minh thực tế.
+The connection flow always verifies actual connectivity:
+    1. Call connect (saved profile or with password).
+    2. After connect returns, do NOT trust ok/msg immediately.
+    3. Rescan networks and call get_connected_ssid() to verify
+         whether the device is truly connected to the target SSID.
+    4. Update UI based on verified network state.
 
-UI được thiết kế theo hướng native/clean:
-  - Không dùng emoji AI (thay bằng ký hiệu Unicode đơn giản hoặc text).
-  - Màu sắc nhất quán, dùng icon SVG-style thay vì emoji phức tạp.
-  - Trạng thái loading, kết nối rõ ràng, tránh nhầm lẫn.
+UI direction focuses on native/clean behavior:
+    - Avoid complex emoji icons in controls.
+    - Keep consistent colors and icon style.
+    - Make loading/connection status explicit to avoid confusion.
 """
 
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint, QPropertyAnimation, QEasingCurve
@@ -40,8 +40,8 @@ from src.services.wifi_service import WifiService
 
 class _BaseButton(QPushButton):
     """
-    QPushButton với hiệu ứng nhấn nhẹ (dịch chuyển 1px theo chiều dọc).
-    Dùng làm base class để tránh lặp code animation.
+    QPushButton with subtle press animation (moves 1px vertically).
+    Used as a base class to avoid animation code duplication.
     """
     def __init__(self, text: str, parent=None):
         super().__init__(text, parent)
@@ -52,7 +52,7 @@ class _BaseButton(QPushButton):
         return super().mousePressEvent(event)
 
     def _play_press_anim(self):
-        """Tạo animation nhấn nhẹ: dịch chuyển xuống 1px rồi trở lại."""
+        """Play subtle press animation: move down 1px then back."""
         origin = self.pos()
         pressed = QPoint(origin.x(), origin.y() + 1)
         anim = QPropertyAnimation(self, b"pos", self)
@@ -62,11 +62,11 @@ class _BaseButton(QPushButton):
         anim.setEndValue(origin)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         anim.start()
-        self._anim = anim  # Giữ tham chiếu để tránh bị GC thu hồi
+        self._anim = anim  # Keep reference to prevent garbage collection.
 
 
 def _make_divider() -> QFrame:
-    """Tạo đường kẻ ngang nhẹ nhàng dùng làm divider giữa các card."""
+    """Create a subtle horizontal divider between cards."""
     line = QFrame()
     line.setFrameShape(QFrame.Shape.HLine)
     line.setStyleSheet("color: #e2e8f0; background: #e2e8f0; max-height: 1px;")
@@ -79,8 +79,8 @@ def _make_divider() -> QFrame:
 
 class WifiPasswordDialog(QDialog):
     """
-    Dialog nhập mật khẩu Wi-Fi.
-    Hiển thị SSID đang kết nối và cho phép toggle hiện/ẩn mật khẩu.
+    Wi-Fi password input dialog.
+    Displays selected SSID and allows toggling password visibility.
     """
     def __init__(self, ssid: str, parent=None):
         super().__init__(parent)
@@ -120,11 +120,11 @@ class WifiPasswordDialog(QDialog):
         root.setContentsMargins(20, 18, 20, 18)
         root.setSpacing(14)
 
-        # --- Tiêu đề ---
+        # --- Header ---
         header = QHBoxLayout()
         header.setSpacing(10)
 
-        # Icon mạng (dùng text ký tự thay vì emoji phức tạp)
+        # Network icon (text symbol instead of complex emoji).
         icon_box = QLabel("W")
         icon_box.setFixedSize(36, 36)
         icon_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -151,7 +151,7 @@ class WifiPasswordDialog(QDialog):
 
         root.addWidget(_make_divider())
 
-        # --- Input mật khẩu ---
+        # --- Password input ---
         pw_row = QHBoxLayout()
         pw_row.setSpacing(8)
 
@@ -161,7 +161,7 @@ class WifiPasswordDialog(QDialog):
         self.password_input.returnPressed.connect(self._accept)
         pw_row.addWidget(self.password_input, 1)
 
-        # Nút toggle: dùng text "Hiện" / "Ẩn" thay vì emoji mắt
+        # Toggle uses text labels instead of an eye emoji.
         self.eye_btn = _BaseButton("Hiện")
         self.eye_btn.setFixedWidth(54)
         self.eye_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -180,7 +180,7 @@ class WifiPasswordDialog(QDialog):
         pw_row.addWidget(self.eye_btn)
         root.addLayout(pw_row)
 
-        # --- Nút hành động ---
+        # --- Action buttons ---
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
 
@@ -222,14 +222,14 @@ class WifiPasswordDialog(QDialog):
         root.addLayout(btn_row)
 
     def _toggle_pw_visibility(self):
-        """Toggle hiện/ẩn mật khẩu."""
+        """Toggle password visibility."""
         self._pw_visible = not self._pw_visible
         mode = QLineEdit.EchoMode.Normal if self._pw_visible else QLineEdit.EchoMode.Password
         self.password_input.setEchoMode(mode)
         self.eye_btn.setText("Ẩn" if self._pw_visible else "Hiện")
 
     def _accept(self):
-        """Xác nhận kết nối — đánh dấu đỏ ô nếu mật khẩu trống."""
+        """Confirm connection; highlight input red when password is empty."""
         pw = self.password_input.text().strip()
         if not pw:
             self.password_input.setStyleSheet("""
@@ -249,34 +249,34 @@ class WifiPasswordDialog(QDialog):
 
 
 # ---------------------------------------------------------------------------
-# WifiCard  — một hàng mạng trong danh sách
+# WifiCard - one network row in the list
 # ---------------------------------------------------------------------------
 
 class WifiCard(QWidget):
     """
-    Widget hiển thị một mạng Wi-Fi trong danh sách.
+    Widget representing one Wi-Fi network in the list.
 
-    Cấu trúc layout:
-      WifiCard (outer — chỉ chứa border + background, KHÔNG có padding/content)
-        └── _inner (QWidget — chứa toàn bộ nội dung, background transparent)
+        Layout structure:
+            WifiCard (outer - border + background only, no padding/content)
+                └── _inner (QWidget - all content, transparent background)
               └── QHBoxLayout: [icon | info_col | badge | btn_connect | btn_forget]
 
-    Tách outer/inner như vậy để border chỉ áp dụng lên card ngoài,
-    không cascade xuống các child widget bên trong.
+    Outer/inner split ensures border styles apply only to the outer card,
+    without cascading into inner child widgets.
 
-    Hiệu ứng click: QPropertyAnimation trên maximumHeight (co lại nhẹ rồi bung ra)
-    kết hợp QGraphicsOpacityEffect flash nhẹ.
+    Click effect: QPropertyAnimation on maximumHeight (squeeze then release)
+    with a light flash effect.
 
     Signals:
-        selected(ssid): Người dùng click vào card này.
-        connect_requested(ssid): Người dùng bấm nút Kết nối.
-        forget_requested(ssid): Người dùng bấm nút Quên.
+        selected(ssid): user clicked this card.
+        connect_requested(ssid): user clicked Connect.
+        forget_requested(ssid): user clicked Forget.
     """
     selected = pyqtSignal(str)
     connect_requested = pyqtSignal(str)
     forget_requested = pyqtSignal(str)
 
-    # Chiều cao bình thường của card
+    # Default card height
     _CARD_H = 60
 
     def __init__(self, network: dict, parent=None):
@@ -287,9 +287,8 @@ class WifiCard(QWidget):
         self._build_ui()
 
     def _build_ui(self):
-        # ── Outer wrapper: chỉ chịu trách nhiệm vẽ border + background ────────
-        # KHÔNG set padding ở đây — padding nằm trong _inner để border không bị
-        # che khuất bởi content và không ảnh hưởng tới child stylesheet.
+        # ── Outer wrapper: only draws border + background ─────────────────────
+        # Do not set padding here; keep padding in _inner so border remains clean.
         self.setObjectName("wifiCardOuter")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(self._CARD_H)
@@ -298,8 +297,8 @@ class WifiCard(QWidget):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
 
-        # ── Inner container: chứa toàn bộ nội dung, background transparent ────
-        # Dùng objectName riêng để style không bị nhầm với outer.
+        # ── Inner container: holds all content, transparent background ─────────
+        # Use a dedicated objectName so styles do not collide with outer.
         self._inner = QWidget()
         self._inner.setObjectName("wifiCardInner")
         self._inner.setStyleSheet("QWidget#wifiCardInner { background: transparent; }")
@@ -309,10 +308,10 @@ class WifiCard(QWidget):
         row.setContentsMargins(12, 10, 12, 10)
         row.setSpacing(12)
 
-        # ── Icon: chữ "W" + badge bảo mật ở góc dưới phải ───────────────────
+        # ── Icon: "W" + security badge at bottom-right ───────────────────────
         icon_wrap = QWidget()
         icon_wrap.setFixedSize(40, 40)
-        # Background transparent — để outer card quyết định màu nền
+        # Keep transparent so outer card controls background color.
         icon_wrap.setStyleSheet("background: transparent;")
 
         icon_lbl = QLabel("W", icon_wrap)
@@ -341,7 +340,7 @@ class WifiCard(QWidget):
 
         row.addWidget(icon_wrap)
 
-        # ── Thông tin mạng: SSID + trạng thái bảo mật ───────────────────────
+        # ── Network info: SSID + security status ─────────────────────────────
         info_col = QVBoxLayout()
         info_col.setSpacing(2)
 
@@ -361,7 +360,7 @@ class WifiCard(QWidget):
         info_col.addWidget(self.meta_lbl)
         row.addLayout(info_col, 1)
 
-        # ── Badge "Đang kết nối" ─────────────────────────────────────────────
+        # ── "Connected" badge ────────────────────────────────────────────────
         self.connected_badge = QLabel("Đang kết nối")
         self.connected_badge.setStyleSheet(
             "font-size: 11px; font-weight: 600; color: #065f46; "
@@ -370,7 +369,7 @@ class WifiCard(QWidget):
         self.connected_badge.setVisible(bool(self.network.get("connected")))
         row.addWidget(self.connected_badge)
 
-        # ── Nút Kết nối ──────────────────────────────────────────────────────
+        # ── Connect button ────────────────────────────────────────────────────
         self.btn_connect = _BaseButton("Kết nối")
         self.btn_connect.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_connect.setFixedHeight(32)
@@ -394,7 +393,7 @@ class WifiCard(QWidget):
         self.btn_connect.setVisible(not bool(self.network.get("connected")))
         row.addWidget(self.btn_connect)
 
-        # ── Nút Quên ─────────────────────────────────────────────────────────
+        # ── Forget button ─────────────────────────────────────────────────────
         self.btn_forget = _BaseButton("Quên")
         self.btn_forget.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_forget.setFixedHeight(32)
@@ -418,7 +417,7 @@ class WifiCard(QWidget):
         self.btn_forget.setVisible(bool(self.network.get("saved", False)))
         row.addWidget(self.btn_forget)
 
-        # Áp dụng style ban đầu (unselected)
+        # Apply initial style (unselected).
         self._apply_style()
 
     # -------------------------------------------------------------------------
@@ -426,21 +425,20 @@ class WifiCard(QWidget):
     # -------------------------------------------------------------------------
 
     def set_selected(self, selected: bool):
-        """Cập nhật trạng thái visual khi card được chọn / bỏ chọn."""
+        """Update visual state when card is selected/unselected."""
         self._is_selected = selected
         self._apply_style()
 
     # -------------------------------------------------------------------------
-    # Style — chỉ áp dụng lên outer widget, KHÔNG dùng wildcard selector
+    # Style: apply only to outer widget, DO NOT use wildcard selector
     # -------------------------------------------------------------------------
 
     def _apply_style(self):
         """
-        Áp dụng border + background LÊN ĐÚNG outer card.
+        Apply border + background strictly to outer card.
 
-        Dùng selector 'QWidget#wifiCardOuter' thay vì 'QWidget' (wildcard)
-        để tránh cascade border xuống các child widget bên trong như
-        icon_wrap, ssid_lbl, meta_lbl, v.v.
+        Use selector 'QWidget#wifiCardOuter' instead of wildcard 'QWidget'
+        to avoid style cascading into inner child widgets.
         """
         if self._is_selected:
             self.setStyleSheet("""
@@ -469,11 +467,11 @@ class WifiCard(QWidget):
 
     def _play_click_animation(self):
         """
-        Hiệu ứng khi click: card co nhẹ rồi bung trở lại (squeeze effect).
-        Dùng animation trên maximumHeight + minimumHeight đồng thời.
+        Click effect: card squeezes then expands back.
+        Animate maximumHeight + minimumHeight together.
         """
         normal_h = self._CARD_H
-        pressed_h = int(normal_h * 0.88)  # Co lại ~12%
+        pressed_h = int(normal_h * 0.88)  # Shrink ~12%
 
         # Animate maximumHeight: normal → pressed → normal
         anim = QPropertyAnimation(self, b"maximumHeight", self)
@@ -483,7 +481,7 @@ class WifiCard(QWidget):
         anim.setEndValue(normal_h)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
-        # Animate minimumHeight song song để card không bị "vỡ" layout
+        # Animate minimumHeight in parallel to keep layout stable.
         anim2 = QPropertyAnimation(self, b"minimumHeight", self)
         anim2.setDuration(160)
         anim2.setStartValue(normal_h)
@@ -493,7 +491,7 @@ class WifiCard(QWidget):
 
         anim.start()
         anim2.start()
-        # Giữ tham chiếu để tránh bị GC thu hồi giữa chừng
+        # Keep references to avoid garbage collection mid-animation.
         self._click_anim = anim
         self._click_anim2 = anim2
 
@@ -502,23 +500,23 @@ class WifiCard(QWidget):
     # -------------------------------------------------------------------------
 
     def mousePressEvent(self, event):
-        """Phát signal selected và kích hoạt hiệu ứng click."""
+        """Emit selected signal and trigger click animation."""
         self._play_click_animation()
         self.selected.emit(self.network["ssid"])
         return super().mousePressEvent(event)
 
 
 # ---------------------------------------------------------------------------
-# Status bar  —  thanh trạng thái bên dưới danh sách
+# Status bar - strip shown beneath the network list
 # ---------------------------------------------------------------------------
 
 class _StatusBar(QWidget):
     """
-    Widget hiển thị trạng thái: idle / loading / success / error.
-    Dùng indicator màu + text thay vì emoji.
+    Widget displaying idle/loading/success/error state.
+    Uses colored indicator + text (no emoji).
     """
 
-    # Màu cho từng trạng thái
+    # Colors per state
     _STYLES = {
         "idle":    ("#64748b", "#f8fafc", "#e2e8f0"),   # text, bg, border
         "loading": ("#2563eb", "#eff6ff", "#bfdbfe"),
@@ -535,7 +533,7 @@ class _StatusBar(QWidget):
         root.setContentsMargins(12, 7, 12, 7)
         root.setSpacing(8)
 
-        # Indicator chấm tròn màu
+        # Colored dot indicator
         self._dot = QLabel("●")
         self._dot.setStyleSheet("font-size: 8px; background: transparent;")
         root.addWidget(self._dot)
@@ -547,7 +545,7 @@ class _StatusBar(QWidget):
         self._set_state("idle", "")
 
     def _set_state(self, state: str, message: str):
-        """Áp dụng trạng thái (idle/loading/success/error) với message tương ứng."""
+        """Apply state (idle/loading/success/error) with matching message."""
         text_c, bg_c, border_c = self._STYLES.get(state, self._STYLES["idle"])
         self.setStyleSheet(f"""
             QWidget {{
@@ -579,18 +577,16 @@ class _StatusBar(QWidget):
 
 class WifiConfigDialog(QDialog):
     """
-    Dialog quản lý Wi-Fi toàn diện.
+     End-to-end Wi-Fi management dialog.
 
-    Quy trình kết nối (tránh hiển thị thành công sai):
-      1. Gọi wifi_service.connect_*() — hàm này có thể trả về ok=True sai
-         nếu OS/driver không báo lỗi ngay lập tức.
-      2. Sau khi hàm trả về, gọi _verify_connection_and_update() với delay
-         ngắn để OS kịp cập nhật trạng thái mạng.
-      3. Trong hàm verify: quét lại danh sách + gọi get_connected_ssid(),
-         chỉ hiển thị "kết nối thành công" khi kết quả verify khớp SSID.
+     Connection flow (prevents false success UI states):
+        1. Call wifi_service.connect_*() - some OS/drivers may report success early.
+        2. After connect returns, wait briefly before verification.
+        3. Verify by rescanning + checking get_connected_ssid().
+        4. Show success only when verified SSID matches expected SSID.
 
-    Điều này đảm bảo: dù mật khẩu sai, hệ thống fallback, hay OS delay —
-    UI luôn phản ánh trạng thái thực tế.
+     This guarantees UI reflects actual connectivity even with wrong passwords,
+     fallback behavior, or delayed OS state updates.
     """
 
     def __init__(self, parent=None):
@@ -600,7 +596,7 @@ class WifiConfigDialog(QDialog):
         self.networks: list[dict] = []
         self.cards: list[WifiCard] = []
 
-        # SSID đang chờ xác minh sau khi gọi connect
+        # SSID pending post-connect verification.
         self._pending_verify_ssid: str | None = None
 
         # Spinner animation frames
@@ -635,7 +631,7 @@ class WifiConfigDialog(QDialog):
         header = QHBoxLayout()
         header.setSpacing(12)
 
-        # Icon tiêu đề (dùng chữ thay emoji)
+        # Header icon (text glyph instead of emoji)
         title_icon = QLabel("Wi-Fi")
         title_icon.setFixedHeight(32)
         title_icon.setStyleSheet("""
@@ -655,7 +651,7 @@ class WifiConfigDialog(QDialog):
         header.addWidget(title_lbl)
         header.addStretch()
 
-        # Badge nền tảng hệ điều hành
+        # Platform badge
         self.platform_badge = QLabel("")
         self.platform_badge.setStyleSheet("""
             font-size: 11px;
@@ -686,7 +682,7 @@ class WifiConfigDialog(QDialog):
         self._loading_row.addWidget(self._loading_msg)
         root.addLayout(self._loading_row)
 
-        # ── Scroll area chứa danh sách card mạng ─────────────────────────────
+        # ── Scroll area containing network cards ─────────────────────────────
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -781,8 +777,8 @@ class WifiConfigDialog(QDialog):
 
     def refresh_networks(self):
         """
-        Quét lại danh sách mạng Wi-Fi khả dụng và làm mới toàn bộ danh sách card.
-        Cập nhật trạng thái kết nối dựa trên get_connected_ssid() thực tế.
+        Rescan available Wi-Fi networks and rebuild the card list.
+        Update connected states based on actual get_connected_ssid() value.
         """
         self._start_loading("Đang quét Wi-Fi...")
         QApplication.processEvents()
@@ -800,16 +796,16 @@ class WifiConfigDialog(QDialog):
         platform_name = self.wifi_service.current_platform()
         self.platform_badge.setText(platform_name)
 
-        # Lấy danh sách mạng
+        # Read network list.
         self.networks = self.wifi_service.scan_network_details()
 
-        # Lấy SSID đang kết nối thực tế từ hệ thống
+        # Read actual connected SSID from system.
         current_connected = self.wifi_service.get_connected_ssid()
 
         for n in self.networks:
-            # Kiểm tra có profile lưu sẵn không
+            # Check whether a saved profile exists.
             n["saved"] = self.wifi_service.has_saved_profile(n["ssid"])
-            # Cập nhật trạng thái kết nối theo thực tế hệ thống
+            # Sync connected state from real system status.
             n["connected"] = (n["ssid"] == current_connected)
 
         if not self.networks:
@@ -819,7 +815,7 @@ class WifiConfigDialog(QDialog):
             self._status.setVisible(True)
             return
 
-        # Render các card mạng
+        # Render network cards.
         for network in self.networks:
             card = WifiCard(network)
             card.selected.connect(self._on_card_selected)
@@ -841,12 +837,12 @@ class WifiConfigDialog(QDialog):
     # -------------------------------------------------------------------------
 
     def _on_card_selected(self, ssid: str):
-        """Xử lý khi người dùng click vào một card mạng."""
+        """Handle user click on a network card."""
         self.selected_ssid = ssid
         for card in self.cards:
             card.set_selected(card.network["ssid"] == ssid)
 
-        # Cập nhật hint theo trạng thái profile
+        # Update hint based on saved-profile state.
         has_profile = self.wifi_service.has_saved_profile(ssid)
         if has_profile:
             self._status.set_idle(f"'{ssid}' đã có profile lưu — bấm Kết nối để kết nối lại")
@@ -856,13 +852,13 @@ class WifiConfigDialog(QDialog):
 
     def _on_connect_requested(self, ssid: str):
         """
-        Xử lý yêu cầu kết nối đến một SSID cụ thể.
+                Handle connection request for a specific SSID.
 
-        Quy trình:
-          - Nếu có profile lưu sẵn: kết nối trực tiếp.
-          - Nếu là mạng bảo mật mới: mở dialog nhập mật khẩu, sau đó kết nối.
-          - Nếu là mạng mở: kết nối không cần mật khẩu.
-          - Sau mọi trường hợp: gọi _schedule_verify() để xác minh thực tế.
+                Flow:
+                    - If a saved profile exists: reconnect directly.
+                    - If this is a new secure network: ask for password then connect.
+                    - If this is an open network: connect without password.
+                    - In all cases: run _schedule_verify() for actual-state verification.
         """
         network = next((n for n in self.networks if n["ssid"] == ssid), None)
         is_secure = True if not network else bool(network.get("secure", True))
@@ -873,16 +869,16 @@ class WifiConfigDialog(QDialog):
         QApplication.processEvents()
 
         if self.wifi_service.has_saved_profile(ssid):
-            # Có profile lưu sẵn: thử kết nối trực tiếp
+            # Saved profile exists: attempt direct reconnect.
             ok, msg = self.wifi_service.connect_saved_profile(ssid)
             self._stop_loading()
             self._schedule_verify(ssid, msg)
         elif is_secure:
-            # Mạng mới có bảo mật: cần nhập mật khẩu
+            # New secure network: prompt for password.
             self._stop_loading()
             pwd_dlg = WifiPasswordDialog(ssid, self)
             if pwd_dlg.exec() != QDialog.DialogCode.Accepted:
-                # Người dùng hủy — khôi phục trạng thái
+                # User cancelled; restore idle state.
                 self._status.set_idle("Đã hủy kết nối")
                 self._status.setVisible(True)
                 return
@@ -896,13 +892,13 @@ class WifiConfigDialog(QDialog):
             self._stop_loading()
             self._schedule_verify(ssid, msg)
         else:
-            # Mạng mở: kết nối không mật khẩu
+            # Open network: connect without password.
             ok, msg = self.wifi_service.connect_with_password(ssid, "", secure=False)
             self._stop_loading()
             self._schedule_verify(ssid, msg)
 
     def _on_forget_requested(self, ssid: str):
-        """Xóa profile Wi-Fi đã lưu và làm mới danh sách."""
+        """Delete saved Wi-Fi profile and refresh network list."""
         ok, msg = self.wifi_service.forget_saved_profile(ssid)
         if ok:
             self._status.set_success(f"Đã xóa profile '{ssid}'")
@@ -912,18 +908,17 @@ class WifiConfigDialog(QDialog):
         self.refresh_networks()
 
     # -------------------------------------------------------------------------
-    # Connection verification  — logic trung tâm để tránh báo sai thành công
+    # Connection verification - core logic to prevent false-success status
     # -------------------------------------------------------------------------
 
     def _schedule_verify(self, ssid: str, connect_msg: str, delay_ms: int = 1800):
         """
-        Lên lịch xác minh kết nối sau một khoảng delay.
+        Schedule connection verification after a short delay.
 
-        Không tin ngay vào giá trị ok/msg từ wifi_service.connect_*(),
-        vì một số hệ điều hành/driver báo thành công trước khi thực sự kết nối
-        (hoặc thậm chí khi mật khẩu sai).
+        Do not trust wifi_service.connect_*() result immediately because some
+        OS/driver stacks report success before real connectivity is established.
 
-        delay_ms: thời gian chờ để OS cập nhật trạng thái network interface.
+        delay_ms: wait time for OS network interface state to settle.
         """
         self._pending_verify_ssid = ssid
         self._start_loading(f"Đang xác minh kết nối đến '{ssid}'...")
@@ -934,20 +929,20 @@ class WifiConfigDialog(QDialog):
 
     def _verify_connection(self, ssid: str):
         """
-        Xác minh thực tế xem thiết bị có đang kết nối đúng SSID không.
+        Verify whether device is truly connected to the expected SSID.
 
-        Quét lại wifi và so sánh kết quả get_connected_ssid() với ssid mong đợi.
-        Chỉ hiển thị thành công nếu khớp, ngược lại hiển thị lỗi.
+        Rescan and compare get_connected_ssid() against target SSID.
+        Show success only on exact match; otherwise show error.
         """
         if self._pending_verify_ssid != ssid:
-            # Đã có yêu cầu kết nối mới khi đang chờ verify — bỏ qua lần này
+            # A newer request is pending while waiting for verify; ignore this run.
             return
 
-        # Lấy SSID đang kết nối thực tế từ hệ thống
+        # Read actual connected SSID from system.
         actual_connected = self.wifi_service.get_connected_ssid()
         is_connected = (actual_connected == ssid)
 
-        # Làm mới danh sách card để cập nhật badge "Đang kết nối"
+        # Refresh cards to update "Connected" badge state.
         self._refresh_cards_silent()
 
         self._stop_loading()
@@ -968,8 +963,8 @@ class WifiConfigDialog(QDialog):
 
     def _refresh_cards_silent(self):
         """
-        Làm mới toàn bộ danh sách card mà không hiển thị trạng thái loading.
-        Dùng sau khi verify để cập nhật badge kết nối mà không gây confuse cho user.
+        Refresh all cards without showing loading state.
+        Used after verification to update connection badge without UI flicker.
         """
         self._clear_cards()
         self.networks = self.wifi_service.scan_network_details()
@@ -992,7 +987,7 @@ class WifiConfigDialog(QDialog):
     # -------------------------------------------------------------------------
 
     def _start_loading(self, text: str):
-        """Bắt đầu hiển thị spinner và text loading, vô hiệu hóa nút Quét lại."""
+        """Show spinner/loading text and disable Refresh button."""
         self._loading_msg.setText(text)
         self._spinner_lbl.setVisible(True)
         self._loading_msg.setVisible(True)
@@ -1000,14 +995,14 @@ class WifiConfigDialog(QDialog):
         self._spinner_timer.start(100)
 
     def _stop_loading(self):
-        """Dừng spinner, ẩn indicator loading, kích hoạt lại nút Quét lại."""
+        """Stop spinner, hide loading indicator, and enable Refresh button."""
         self._spinner_timer.stop()
         self._spinner_lbl.setVisible(False)
         self._loading_msg.setVisible(False)
         self.btn_refresh.setEnabled(True)
 
     def _tick_spinner(self):
-        """Cập nhật frame spinner animation."""
+        """Update spinner animation frame."""
         self._spinner_lbl.setText(self._spinner_frames[self._spinner_idx])
         self._spinner_idx = (self._spinner_idx + 1) % len(self._spinner_frames)
 
@@ -1016,7 +1011,7 @@ class WifiConfigDialog(QDialog):
     # -------------------------------------------------------------------------
 
     def _clear_cards(self):
-        """Xóa toàn bộ card trong danh sách và reset danh sách nội bộ."""
+        """Remove all cards from list and reset internal card collection."""
         self.cards.clear()
         while self._card_layout.count():
             item = self._card_layout.takeAt(0)

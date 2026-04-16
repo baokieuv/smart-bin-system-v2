@@ -6,6 +6,8 @@ import math
 
 
 class ConfettiParticle:
+    """Small particle model used by confetti overlay animation."""
+
     def __init__(self, x, y):
         colors = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#fb7185"]
         self.x = float(x)
@@ -31,6 +33,8 @@ class ConfettiParticle:
 
 
 class ConfettiWidget(QWidget):
+    """Transparent overlay widget that renders celebration particles."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -71,11 +75,14 @@ class ConfettiWidget(QWidget):
 
 
 class ScreenThanks(QWidget):
+    """Thank-you screen shown after user sends correctness feedback."""
+
     def __init__(self):
         super().__init__()
         self._build_ui()
 
     def _build_ui(self):
+        """Build centered card UI and initialize confetti overlay."""
         self.setStyleSheet("font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;")
 
         layout = QVBoxLayout(self)
@@ -165,13 +172,13 @@ class ScreenThanks(QWidget):
         stats_layout.setSpacing(0)
 
         def make_stat(badge_text, value, label):
-            """Stat block: pill badge trên cùng, số lớn ở giữa, label nhỏ dưới."""
+            """Stat block: top pill badge, large value in middle, small label below."""
             w = QWidget()
             w.setStyleSheet("background: transparent;")
             vl = QVBoxLayout(w)
             vl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             vl.setSpacing(4)
-            # Pill badge — chữ ngắn trên nền xanh nhẹ
+            # Pill badge with short text on a soft blue background.
             badge = QLabel(badge_text)
             badge.setFixedHeight(22)
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -182,11 +189,11 @@ class ScreenThanks(QWidget):
             badge_wrap = QHBoxLayout()
             badge_wrap.setAlignment(Qt.AlignmentFlag.AlignCenter)
             badge_wrap.addWidget(badge)
-            # Value số lớn
+            # Large numeric/text value.
             val = QLabel(value)
             val.setStyleSheet("font-size: 18px; font-weight: 800; color: #1e40af; background: transparent;")
             val.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            # Label mô tả
+            # Descriptive caption label.
             lbl = QLabel(label)
             lbl.setStyleSheet("font-size: 11px; color: #64748b; background: transparent;")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -216,6 +223,7 @@ class ScreenThanks(QWidget):
         self._confetti.resize(800, 480)
 
     def showEvent(self, event):
+        """Start confetti sequence whenever this screen becomes visible."""
         super().showEvent(event)
         # Trigger confetti after a brief delay
         QTimer.singleShot(200, self._fire_confetti)
@@ -235,6 +243,7 @@ class ScreenThanks(QWidget):
         self._confetti.raise_()
 
     def paintEvent(self, event):
+        """Paint soft celebratory background gradient."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         gradient = QLinearGradient(0, 0, self.width(), self.height())

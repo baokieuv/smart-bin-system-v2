@@ -6,6 +6,8 @@ import qrcode
 
 
 class ScreenDeviceLink(QWidget):
+    """Device pairing screen that displays MAC address and QR payload."""
+
     back_requested = pyqtSignal()
 
     def __init__(self):
@@ -13,6 +15,7 @@ class ScreenDeviceLink(QWidget):
         self._build_ui()
 
     def _build_ui(self):
+        """Build dual-card UI: QR on left and MAC/instructions on right."""
         self.setStyleSheet("font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;")
 
         root = QVBoxLayout(self)
@@ -208,7 +211,7 @@ class ScreenDeviceLink(QWidget):
         """)
         mac_box_layout.addWidget(self.mac_label)
 
-        # Info items — icon là chữ cái ngắn trong pill badge nhỏ, trông native và đồng đều
+        # Info items: short letter icons in small pill badges for a native look.
         def info_row(icon, label, value_style=""):
             row = QWidget()
             row.setStyleSheet("""
@@ -221,7 +224,7 @@ class ScreenDeviceLink(QWidget):
             rl = QHBoxLayout(row)
             rl.setContentsMargins(12, 8, 12, 8)
             rl.setSpacing(8)
-            # Badge icon: fixed-size pill với màu nhẹ — nhất quán với nhau
+            # Badge icon: fixed-size pill with soft color for visual consistency.
             ico = QLabel(icon)
             ico.setFixedSize(20, 20)
             ico.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -247,6 +250,7 @@ class ScreenDeviceLink(QWidget):
         root.addLayout(content, 1)
 
     def paintEvent(self, event):
+        """Draw gradient background for visual depth."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         gradient = QLinearGradient(0, 0, self.width(), self.height())
@@ -255,6 +259,7 @@ class ScreenDeviceLink(QWidget):
         painter.fillRect(self.rect(), gradient)
 
     def update_mac_and_qr(self, mac_address: str):
+        """Refresh MAC label and regenerate QR image from provided address."""
         # QR content is exactly MAC so mobile app can bind this desktop device.
         self.mac_label.setText(mac_address)
         pixmap = self._build_qr_pixmap(mac_address)

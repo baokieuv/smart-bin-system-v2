@@ -42,6 +42,8 @@ class AnimatedDot(QWidget):
 
 
 class GlowButton(QToolButton):
+    """Small utility button with glow shadow for top-right menu trigger."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         shadow = QGraphicsDropShadowEffect()
@@ -52,6 +54,8 @@ class GlowButton(QToolButton):
 
 
 class ScreenWelcome(QWidget):
+    """Landing screen showing system status and entry points for setup flows."""
+
     open_device_link_requested = pyqtSignal()
     open_wifi_config_requested = pyqtSignal()
     activate_requested = pyqtSignal()
@@ -62,6 +66,7 @@ class ScreenWelcome(QWidget):
         self._start_entrance_animation()
 
     def _build_ui(self):
+        """Create welcome layout, menu actions, activation CTA and toast area."""
         self.setStyleSheet("""
             QWidget {
                 font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
@@ -349,6 +354,7 @@ class ScreenWelcome(QWidget):
         self._setup_arrow_bounce(arrow_label)
 
     def _setup_arrow_bounce(self, label):
+        """Register periodic arrow motion to keep the idle screen lively."""
         # Keep welcome screen lively with subtle periodic arrow movement.
         self._arrow_label = label
         self._arrow_pos = 0
@@ -367,6 +373,7 @@ class ScreenWelcome(QWidget):
         )
 
     def _start_entrance_animation(self):
+        """Prepare minimal entrance animation while avoiding heavy opacity effects."""
         # Keep entrance animation light to avoid stacking opacity effects on page root.
         self._enter_anim = QPropertyAnimation(self, b"windowOpacity")
         self._enter_anim.setDuration(1)
@@ -375,6 +382,7 @@ class ScreenWelcome(QWidget):
         self._enter_anim.start()
 
     def set_activation_prompt_visible(self, visible: bool, tooltip_text: str = ""):
+        """Toggle activation hint/button and pulse effect from backend state."""
         self.activation_hint.setText(tooltip_text or "Thiết bị chưa kích hoạt. Nhấn nút bên dưới để kích hoạt.")
         self.activation_hint.setVisible(visible)
         self.btn_activate.setVisible(visible)
@@ -386,6 +394,7 @@ class ScreenWelcome(QWidget):
             self._activate_pulse_on = False
 
     def _tick_activate_pulse(self):
+        """Pulse activation button size so CTA remains noticeable."""
         self._activate_pulse_on = not self._activate_pulse_on
         if self._activate_pulse_on:
             self.btn_activate.setFixedSize(236, 56)
@@ -393,6 +402,7 @@ class ScreenWelcome(QWidget):
             self.btn_activate.setFixedSize(230, 52)
 
     def show_toast(self, message: str, is_success: bool):
+        """Show transient bottom toast for success/error user feedback."""
         bg = "rgba(16,185,129,0.95)" if is_success else "rgba(239,68,68,0.95)"
         self.toast_label.setStyleSheet(
             "QLabel {"
@@ -413,6 +423,7 @@ class ScreenWelcome(QWidget):
         self._toast_hide_timer.start(2800)
 
     def resizeEvent(self, event):
+        """Keep toast pinned near bottom-center after resize."""
         super().resizeEvent(event)
         if self.toast_label.isVisible():
             x = (self.width() - self.toast_label.width()) // 2
@@ -420,6 +431,7 @@ class ScreenWelcome(QWidget):
             self.toast_label.move(max(12, x), max(12, y))
 
     def paintEvent(self, event):
+        """Paint screen background gradient."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 

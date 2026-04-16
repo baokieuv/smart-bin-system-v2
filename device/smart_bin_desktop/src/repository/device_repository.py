@@ -4,10 +4,11 @@ import json
 import time
 import logging
 from pathlib import Path
+from typing import Any
 
-import requests
 from src.models.api_response import ApiResponseFormat
 from src.models.device_dto import DeviceDto
+from src.repository.http_client import HttpClient, HttpResponse, RequestsHttpClient
 from src.utils.config import APP_CONFIG
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -15,11 +16,18 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 
 class DeviceClient:
-    def __init__(self):
+    """Backend gateway for device activation/auth and detection result upload.
+
+    Public methods intentionally stay stable for ViewModel usage.
+    Internal helpers centralize signature and HTTP flow to reduce duplication.
+    """
+
+    def __init__(self, http_client: HttpClient | None = None):
         self.logger = logging.getLogger("smart_bin.device_repository")
         self.base_url = APP_CONFIG.api.device_base_url
         self.timeout = APP_CONFIG.api.request_timeout_seconds
         self.private_key_path = APP_CONFIG.paths.private_key_path
+        self.http_client = http_client or RequestsHttpClient()
 
     @staticmethod
     def get_mac_address() -> str:
@@ -28,14 +36,10 @@ class DeviceClient:
         return ':'.join(mac_num[i: i + 2] for i in range(0, 11, 2))
         
     def _generate_payload_and_signature(self) -> tuple[bool, str, str]:
-        """
-        Tạo payload JSON (chứa mac và timestamp) và ký payload đó.
-        Trả về: (success, payload_string, signature_string)
-        """
+        """Create compact JSON payload and corresponding RSA signature."""
         mac = self.get_mac_address()
-        timestamp = int(time.time() * 1000)  # Lấy timestamp hiện tại (milliseconds)
+        timestamp = int(time.time() * 1000)
         
-        # Tạo dict payload
         payload_dict = {
             "mac": mac,
             "timestamp": timestamp
@@ -44,74 +48,92 @@ class DeviceClient:
         # Compact JSON string ensures signature consistency with server-side verification.
         payload_str = json.dumps(payload_dict, separators=(',', ':'))
         
-        # Ký chuỗi payload JSON này
         ok, signature_or_error = self._encrypt_data(payload_str)
         
         return ok, payload_str, signature_or_error
 
-    def activate_device(self) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
-        url = f"{self.base_url}/activate"
-        self.logger.info("Call activate_device")
-        
+    def _signed_json_headers(self, signature: str) -> dict[str, str]:
+        """Build standard headers for signed backend requests."""
+        return {
+            "X-Signature": signature,
+            "Content-Type": "application/json",
+        }
+
+    def _post_signed_request(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[bool, HttpResponse | str]:
+        """Send signed POST request where body must match signed payload exactly."""
         ok, payload_str, signature_or_error = self._generate_payload_and_signature()
         if not ok:
             return False, signature_or_error
-        
-        # Gửi header X-Signature và Content-Type là application/json vì body bây giờ là JSON
-        # TODO check lại xem là text hay json
-        headers = {"X-Signature": signature_or_error, "Content-Type": "application/json"}
-        
+
+        headers = self._signed_json_headers(signature_or_error)
+        url = f"{self.base_url}/{path}"
+
         try:
-            response = requests.post(url, data=payload_str, headers=headers, timeout=self.timeout)
-            self.logger.info("activate_device status_code=%s", response.status_code)
+            response = self.http_client.post(
+                url,
+                params=params,
+                data=payload_str,
+                headers=headers,
+                timeout=self.timeout,
+            )
+            self.logger.info("%s status_code=%s", path, response.status_code)
+            return True, response
+        except Exception as e:
+            self.logger.warning("%s network error: %s", path, e)
+            return False, f"Network error: {str(e)}"
+
+    @staticmethod
+    def _parse_device_api_response(
+        response_json: dict[str, Any],
+    ) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
+        """Parse backend wrapper JSON into typed ApiResponseFormat[DeviceDto]."""
+        api_response = ApiResponseFormat.from_dict(response_json, details_class=DeviceDto)
+        if api_response.success:
+            return True, api_response
+        return False, api_response.message
+
+    def activate_device(self) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
+        """Activate current device by signed MAC/timestamp payload."""
+        self.logger.info("Call activate_device")
+
+        ok, response_or_error = self._post_signed_request("activate")
+        if not ok:
+            return False, response_or_error
+
+        response = response_or_error
+        try:
             if not response.ok:
                 return False, self._parse_error_response(response)
-            
-            json_data = response.json()
-            api_response = ApiResponseFormat.from_dict(json_data, details_class=DeviceDto)
-            
-            if api_response.success:
-                return True, api_response
-            else:
-                return False, api_response.message
-        except requests.exceptions.RequestException as e:
-            self.logger.warning("activate_device network error: %s", e)
-            return False, f"Lỗi Network: {str(e)}"
+
+            return self._parse_device_api_response(response.json())
         except ValueError:
             self.logger.warning("activate_device parse response error")
-            return False, "Lỗi parse response từ server"
+            return False, "Failed to parse server response"
         
     def get_access_token(self) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
-        url = f"{self.base_url}/get-access-token"
+        """Get access token for telemetry and secure backend operations."""
         self.logger.info("Call get_access_token")
-        
-        ok, payload_str, signature_or_error = self._generate_payload_and_signature()
+
+        ok, response_or_error = self._post_signed_request("get-access-token")
         if not ok:
-            return False, signature_or_error
-        
-        headers = {"X-Signature": signature_or_error, "Content-Type": "application/json"}
-        
+            return False, response_or_error
+
+        response = response_or_error
         try:
-            response = requests.post(url, data=payload_str, headers=headers, timeout=self.timeout)
-            self.logger.info("get_access_token status_code=%s", response.status_code)
             if not response.ok:
                 return False, self._parse_error_response(response)
-            
-            json_data = response.json()
-            api_response = ApiResponseFormat.from_dict(json_data, details_class=DeviceDto)
-            
-            if api_response.success:
-                return True, api_response
-            else:
-                return False, api_response.message
-        except requests.exceptions.RequestException as e:
-            self.logger.warning("get_access_token network error: %s", e)
-            return False, f"Lỗi Network: {str(e)}"
+
+            return self._parse_device_api_response(response.json())
         except ValueError:
             self.logger.warning("get_access_token parse response error")
-            return False, "Lỗi parse response từ server"
+            return False, "Failed to parse server response"
 
-    def _parse_error_response(self, response: requests.Response) -> dict:
+    def _parse_error_response(self, response: HttpResponse) -> dict:
+        """Normalize backend error payload into one predictable dict schema."""
         try:
             data = response.json()
             code = data.get("code")
@@ -129,16 +151,16 @@ class DeviceClient:
             "trace_id": trace_id,
         }
              
-    def send_report_classification(self, image_path: str, metadata: dict) -> tuple[bool, any]:
+    def send_report_classification(self, image_path: str, metadata: dict) -> tuple[bool, Any]:
         """
-        Luồng gửi 1 ảnh detection:
-        1) Gọi backend lấy presigned URL (kèm metadata)
-        2) Upload ảnh lên MinIO bằng presigned URL
-        3) Gọi backend xác nhận upload thành công
+        Upload one detection image using a presigned-url workflow:
+        1) Request presigned URL from backend.
+        2) Upload image to object storage via the presigned URL.
+        3) Confirm upload completion to backend.
         """
         image_file = Path(image_path)
         if not image_file.exists():
-            return False, f"Không tìm thấy file ảnh: {image_path}"
+            return False, f"Image file not found: {image_path}"
 
         filename = str(metadata.get("filename") or image_file.name)
         content_type = "image/jpeg"
@@ -178,24 +200,17 @@ class DeviceClient:
         file_size: int,
         content_type: str,
     ) -> tuple[bool, dict | str]:
-        url = f"{self.base_url}/get-presigned-url"
-        ok, payload_str, signature_or_error = self._generate_payload_and_signature()
+        """Request a presigned URL from backend to upload one detection image."""
+        ok, response_or_error = self._post_signed_request(
+            "get-presigned-url",
+            params={"metadata": json.dumps(metadata)},
+        )
         if not ok:
-            return False, signature_or_error
+            return False, response_or_error
 
-        # Truyền metadata qua URL Params 
-        params = {"metadata": json.dumps(metadata)}
-        
-        headers = {
-            "X-Signature": signature_or_error,
-            "Content-Type": "application/json",
-        }
+        response = response_or_error
 
         try:
-            # Dùng data=payload_str để giữ nguyên vẹn chuỗi JSON đã ký
-            response = requests.post(url, params=params, data=payload_str, headers=headers, timeout=self.timeout)
-            self.logger.info("request_presigned_url status_code=%s file=%s", response.status_code, filename)
-            
             if not response.ok:
                 return False, self._parse_error_response(response)
 
@@ -203,15 +218,13 @@ class DeviceClient:
             data = json_data.get("data")
             
             if isinstance(data, str):
-                # Bọc lại thành dict để hàm _upload_file_via_presigned_url dùng được
+                # Normalize string response to dict format expected by upload helper.
                 return True, {"presignedUrl": data, "method": "PUT"}
                 
-            return False, "Response presigned URL khong hop le (khong phai string)"
+            return False, "Invalid presigned URL response format"
             
-        except requests.exceptions.RequestException as e:
-            return False, f"Lỗi Network khi lấy presigned URL: {str(e)}"
         except ValueError:
-            return False, "Lỗi parse response khi lấy presigned URL"
+            return False, "Failed to parse presigned URL response"
 
     def _upload_file_via_presigned_url(
         self,
@@ -221,7 +234,7 @@ class DeviceClient:
     ) -> tuple[bool, dict | str]:
         presigned_url = presigned_data.get("presignedUrl") or presigned_data.get("url")
         if not presigned_url:
-            return False, "Backend khong tra ve presignedUrl"
+            return False, "Backend did not return presignedUrl"
 
         method = str(presigned_data.get("method") or "PUT").upper()
         upload_headers = presigned_data.get("headers") if isinstance(presigned_data.get("headers"), dict) else {}
@@ -233,7 +246,7 @@ class DeviceClient:
                 if method == "POST":
                     fields = presigned_data.get("fields") if isinstance(presigned_data.get("fields"), dict) else {}
                     files = {"file": (Path(image_path).name, f, content_type)}
-                    response = requests.post(
+                    response = self.http_client.post(
                         presigned_url,
                         data=fields,
                         files=files,
@@ -241,7 +254,7 @@ class DeviceClient:
                         timeout=self.timeout,
                     )
                 else:
-                    response = requests.put(
+                    response = self.http_client.put(
                         presigned_url,
                         data=f,
                         headers=upload_headers,
@@ -256,12 +269,12 @@ class DeviceClient:
                 "etag": response.headers.get("ETag") or response.headers.get("etag"),
                 "requestId": response.headers.get("x-amz-request-id"),
             }
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             self.logger.warning("upload_presigned_url network error: %s", e)
-            return False, f"Lỗi upload ảnh qua presigned URL: {str(e)}"
+            return False, f"Failed to upload image via presigned URL: {str(e)}"
         except OSError as e:
             self.logger.warning("upload_presigned_url read file error: %s", e)
-            return False, f"Lỗi đọc file ảnh: {str(e)}"
+            return False, f"Failed to read image file: {str(e)}"
 
     def _confirm_detection_upload(
         self,
@@ -270,34 +283,27 @@ class DeviceClient:
         presigned_data: dict,
         upload_info: dict,
     ) -> tuple[bool, dict | str]:
-        url = f"{self.base_url}/confirm-upload"
-        ok, payload_str, signature_or_error = self._generate_payload_and_signature()
+        """Confirm to backend that file upload via presigned URL completed."""
+        ok, response_or_error = self._post_signed_request(
+            "confirm-upload",
+            params={"metadata": json.dumps(metadata)},
+        )
         if not ok:
-            return False, signature_or_error
+            return False, response_or_error
 
-        params = {"metadata": json.dumps(metadata)}
-        
-        headers = {
-            "X-Signature": signature_or_error,
-            "Content-Type": "application/json",
-        }
+        response = response_or_error
 
         try:
-            # Vẫn dùng data=payload_str để backend verify chữ ký thành công
-            response = requests.post(url, params=params, data=payload_str, headers=headers, timeout=self.timeout)
-            self.logger.info("confirm_upload status_code=%s file=%s", response.status_code, filename)
-            
             if not response.ok:
                 return False, self._parse_error_response(response)
 
             return True, response.json()
             
-        except requests.exceptions.RequestException as e:
-            return False, f"Lỗi Network khi xác nhận upload: {str(e)}"
         except ValueError:
-            return False, "Lỗi parse response khi xác nhận upload"
+            return False, "Failed to parse upload confirmation response"
         
     def _encrypt_data(self, payload: str) -> tuple[bool, str]:
+        """Sign payload using local RSA private key and return base64 signature."""
         try:
             with open(self.private_key_path, "rb") as key_file:
                 private_key = load_pem_private_key(key_file.read(), password=None)
@@ -311,11 +317,11 @@ class DeviceClient:
 
             return True, signature_b64
         except FileNotFoundError:
-            self.logger.warning("Khong tim thay private key: %s", self.private_key_path)
-            return False, f"Lỗi: Không tìm thấy file private_key.pem tại {self.private_key_path}"
+            self.logger.warning("Private key file not found: %s", self.private_key_path)
+            return False, f"Private key file not found at {self.private_key_path}"
         except ValueError as e:
-            self.logger.warning("Loi doc key/tao chu ky: %s", e)
-            return False, f"Lỗi đọc Key/Tạo chữ ký: {str(e)}"
+            self.logger.warning("Failed to read key or generate signature: %s", e)
+            return False, f"Failed to read key or generate signature: {str(e)}"
         except Exception as e:
-            self.logger.exception("Loi khong xac dinh khi ky payload: %s", e)
-            return False, f"Lỗi không xác định: {str(e)}"
+            self.logger.exception("Unexpected error while signing payload: %s", e)
+            return False, f"Unexpected signing error: {str(e)}"

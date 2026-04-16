@@ -33,7 +33,7 @@ def main():
     _configure_runtime_noise()
     _configure_logging()
     logger = logging.getLogger("smart_bin.main")
-    logger.info("Khoi dong Smart Bin Desktop")
+    logger.info("Starting Smart Bin Desktop")
 
     # Delayed import keeps env-based runtime flags effective for TensorFlow/Ultralytics.
     from src.services.detection_worker import DetectionWorker
@@ -42,22 +42,22 @@ def main():
 
     app = QApplication(sys.argv)
     
-    # 1) Worker chạy camera + AI trên luồng riêng.
+    # 1) Worker runs camera + AI pipeline on background thread.
     worker = DetectionWorker()
-    logger.info("DetectionWorker da khoi tao")
+    logger.info("DetectionWorker initialized")
     
-    # 2) ViewModel điều phối state giữa worker và UI.
+    # 2) ViewModel orchestrates state between worker and UI.
     viewmodel = MainViewModel(worker)
-    logger.info("MainViewModel da khoi tao")
+    logger.info("MainViewModel initialized")
     
-    # 3) MainWindow subscribe state từ ViewModel.
+    # 3) MainWindow subscribes to ViewModel state.
     window = MainWindow(viewmodel)
     window.show()
-    logger.info("MainWindow da hien thi")
+    logger.info("MainWindow displayed")
     
-    # 4) Bắt đầu pipeline detect + telemetry.
+    # 4) Start detection + telemetry pipeline.
     viewmodel.start_system()
-    logger.info("He thong da start")
+    logger.info("System started")
     
     sys.exit(app.exec())
     

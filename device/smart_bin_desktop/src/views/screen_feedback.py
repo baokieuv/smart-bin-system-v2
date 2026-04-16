@@ -5,6 +5,8 @@ from PyQt6.QtGui import QPainter, QLinearGradient, QColor, QBrush, QFont, QRadia
 
 
 class PulseButton(QPushButton):
+    """Rounded button with simple hover scale effect."""
+
     def __init__(self, text, base_color, hover_color, press_color, parent=None):
         super().__init__(text, parent)
         self.base_color = base_color
@@ -59,11 +61,14 @@ class PulseButton(QPushButton):
 
 
 class ScreenFeedback(QWidget):
+    """Feedback screen showing AI classification and user confirmation actions."""
+
     def __init__(self):
         super().__init__()
         self._build_ui()
 
     def _build_ui(self):
+        """Build two-panel layout: result summary (left) and feedback actions (right)."""
         self.setStyleSheet("font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;")
 
         layout = QHBoxLayout(self)
@@ -116,7 +121,7 @@ class ScreenFeedback(QWidget):
         chip_wrap.setAlignment(Qt.AlignmentFlag.AlignCenter)
         chip_wrap.addWidget(self.chip)
 
-        # Item label — hiển thị chữ viết tắt vật liệu, cập nhật qua update_ui()
+        # Item label shows a short material code and is updated via update_ui().
         self.lbl_item_image = QLabel("RC")
         self.lbl_item_image.setStyleSheet("""
             font-size: 40px;
@@ -346,6 +351,7 @@ class ScreenFeedback(QWidget):
         layout.addWidget(self.right_panel, stretch=1)
 
     def paintEvent(self, event):
+        """Paint a soft blue gradient background under the cards."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         gradient = QLinearGradient(0, 0, self.width(), self.height())
@@ -354,15 +360,16 @@ class ScreenFeedback(QWidget):
         painter.fillRect(self.rect(), gradient)
 
     def update_ui(self, material, item_type, bg_color):
-        # Gọi mỗi lần detector phát hiện vật liệu mới — cập nhật toàn bộ left panel.
+        """Update visual content based on current classification result."""
+        # Called whenever detector emits a new material result; refresh left panel.
         self.lbl_material.setText(material.upper())
         self.lbl_type.setText(item_type)
         self.left_panel.setStyleSheet(
             f"QWidget {{ background-color: {bg_color}; border-radius: 26px; }}"
         )
 
-        # Ánh xạ vật liệu → chữ viết tắt hiển thị + nhãn chip phân loại.
-        # Dùng text thay emoji để đồng đều trên mọi font/OS.
+        # Map material -> short code + category chip label.
+        # Text labels are used instead of emoji for cross-platform consistency.
         mat_upper = material.upper()
         if "BATTERY" in mat_upper:
             self.lbl_item_image.setText("PIN")

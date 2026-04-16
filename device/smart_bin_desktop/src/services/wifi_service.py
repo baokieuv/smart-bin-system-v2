@@ -11,6 +11,8 @@ from xml.sax.saxutils import escape
 
 
 class WifiService:
+    """Cross-platform Wi-Fi operations abstraction for Windows/Linux desktop app."""
+
     def __init__(self):
         self.logger = logging.getLogger("smart_bin.wifi_service")
         self.last_error: str = ""
@@ -24,9 +26,11 @@ class WifiService:
         return platform.system()
 
     def scan_networks(self) -> List[str]:
+        """Return only SSID names from detailed scan results."""
         return [n["ssid"] for n in self.scan_network_details()]
 
     def scan_network_details(self) -> List[dict]:
+        """Scan available Wi-Fi networks with platform-specific implementations."""
         self.last_error = ""
         if not self.is_supported():
             self.last_error = "He dieu hanh hien tai khong ho tro cau hinh Wi-Fi"
@@ -43,6 +47,7 @@ class WifiService:
         return networks
 
     def has_saved_profile(self, ssid: str) -> bool:
+        """Check whether a connection profile already exists for given SSID."""
         if not self.is_supported():
             return False
 
@@ -57,6 +62,7 @@ class WifiService:
         return ssid in profiles
 
     def connect_saved_profile(self, ssid: str) -> tuple[bool, str]:
+        """Connect using existing profile; verify final connected SSID afterwards."""
         if not self.is_supported():
             return False, "He dieu hanh hien tai khong ho tro cau hinh Wi-Fi"
 
@@ -88,6 +94,7 @@ class WifiService:
         return False, msg
 
     def connect_with_password(self, ssid: str, password: str, secure: bool = True) -> tuple[bool, str]:
+        """Connect to network by creating/using credentials based on platform."""
         if not self.is_supported():
             return False, "He dieu hanh hien tai khong ho tro cau hinh Wi-Fi"
 

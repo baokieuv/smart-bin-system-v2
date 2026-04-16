@@ -4,6 +4,8 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
 
 
 class ScreenLoading(QWidget):
+    """Loading screen shown during runtime and backend initialization."""
+
     def __init__(self):
         super().__init__()
         self._spinner_frames = ["|", "/", "-", "\\"]
@@ -15,6 +17,7 @@ class ScreenLoading(QWidget):
         self._timer.start(120)
 
     def _build_ui(self):
+        """Create spinner + title + message layout."""
         self.setStyleSheet("font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;")
 
         layout = QVBoxLayout(self)
@@ -38,13 +41,16 @@ class ScreenLoading(QWidget):
         layout.addWidget(self.message)
 
     def set_message(self, text: str):
+        """Update loading text from ViewModel progress messages."""
         self.message.setText(text or "Dang khoi tao he thong AI...")
 
     def _tick_spinner(self):
+        """Rotate text-based spinner frame."""
         self.spinner.setText(self._spinner_frames[self._spinner_index])
         self._spinner_index = (self._spinner_index + 1) % len(self._spinner_frames)
 
     def paintEvent(self, event):
+        """Paint subtle loading background gradient."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         gradient = QLinearGradient(0, 0, self.width(), self.height())
