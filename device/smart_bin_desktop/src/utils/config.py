@@ -80,6 +80,8 @@ class ViewModelConfig:
 	telemetry_interval_ms: int = _env_int("SMART_BIN_TELEMETRY_INTERVAL_MS", 5 * 60 * 1000)
 	feedback_timeout_ms: int = _env_int("SMART_BIN_FEEDBACK_TIMEOUT_MS", 10000)
 	thanks_timeout_ms: int = _env_int("SMART_BIN_THANKS_TIMEOUT_MS", 5000)
+	upload_interval_ms: int = _env_int("SMART_BIN_UPLOAD_INTERVAL_MS", 30 * 60 * 1000)
+	upload_batch_size: int = _env_int("SMART_BIN_UPLOAD_BATCH_SIZE", 10)
 
 
 @dataclass(frozen=True)

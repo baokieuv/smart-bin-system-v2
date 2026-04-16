@@ -121,8 +121,8 @@ class ScreenThanks(QWidget):
 
         icon_inner = QVBoxLayout(self.icon_widget)
         icon_inner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        check = QLabel("✓")
-        check.setStyleSheet("font-size: 52px; font-weight: 900; color: #065f46; background: transparent;")
+        check = QLabel("OK")
+        check.setStyleSheet("font-size: 28px; font-weight: 900; color: #065f46; background: transparent; font-family: 'Segoe UI', sans-serif; letter-spacing: 1px;")
         check.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_inner.addWidget(check)
 
@@ -131,7 +131,7 @@ class ScreenThanks(QWidget):
         icon_wrap.addWidget(self.icon_widget)
 
         # Title
-        self.title = QLabel("Cảm ơn bạn! 🎉")
+        self.title = QLabel("Cảm ơn bạn!")
         self.title.setStyleSheet("""
             font-size: 40px;
             font-weight: 900;
@@ -164,22 +164,33 @@ class ScreenThanks(QWidget):
         stats_layout.setContentsMargins(20, 14, 20, 14)
         stats_layout.setSpacing(0)
 
-        def make_stat(icon, value, label):
+        def make_stat(badge_text, value, label):
+            """Stat block: pill badge trên cùng, số lớn ở giữa, label nhỏ dưới."""
             w = QWidget()
             w.setStyleSheet("background: transparent;")
             vl = QVBoxLayout(w)
             vl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            vl.setSpacing(2)
-            ico = QLabel(icon)
-            ico.setStyleSheet("font-size: 22px; background: transparent;")
-            ico.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            vl.setSpacing(4)
+            # Pill badge — chữ ngắn trên nền xanh nhẹ
+            badge = QLabel(badge_text)
+            badge.setFixedHeight(22)
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.setStyleSheet(
+                "font-size: 11px; font-weight: 800; color: #1d4ed8; "
+                "background: #dbeafe; border-radius: 6px; padding: 0 8px; border: none;"
+            )
+            badge_wrap = QHBoxLayout()
+            badge_wrap.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge_wrap.addWidget(badge)
+            # Value số lớn
             val = QLabel(value)
             val.setStyleSheet("font-size: 18px; font-weight: 800; color: #1e40af; background: transparent;")
             val.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            # Label mô tả
             lbl = QLabel(label)
             lbl.setStyleSheet("font-size: 11px; color: #64748b; background: transparent;")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            vl.addWidget(ico)
+            vl.addLayout(badge_wrap)
             vl.addWidget(val)
             vl.addWidget(lbl)
             return w
@@ -188,9 +199,9 @@ class ScreenThanks(QWidget):
         sep.setFixedWidth(1)
         sep.setStyleSheet("background: #cbd5e1;")
 
-        stats_layout.addWidget(make_stat("🤖", "+1", "Mẫu huấn luyện"), 1)
+        stats_layout.addWidget(make_stat("MẪU", "+1", "Huấn luyện"), 1)
         stats_layout.addWidget(sep)
-        stats_layout.addWidget(make_stat("📈", "AI", "Đang học"), 1)
+        stats_layout.addWidget(make_stat("AI", "HỌC", "Đang cải thiện"), 1)
 
         card_layout.addLayout(icon_wrap)
         card_layout.addWidget(self.title)

@@ -66,8 +66,8 @@ class ScreenDeviceLink(QWidget):
         s_lay = QHBoxLayout(status_w)
         s_lay.setContentsMargins(10, 5, 10, 5)
         s_lay.setSpacing(5)
-        dot = QLabel("●")
-        dot.setStyleSheet("color: #16a34a; font-size: 9px; background: transparent;")
+        dot = QLabel("▪")
+        dot.setStyleSheet("color: #16a34a; font-size: 10px; background: transparent;")
         s_lbl = QLabel("Sẵn sàng")
         s_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #15803d; background: transparent;")
         s_lay.addWidget(dot)
@@ -104,8 +104,11 @@ class ScreenDeviceLink(QWidget):
         qr_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         qr_title_row = QHBoxLayout()
-        qr_icon = QLabel("📱")
-        qr_icon.setStyleSheet("font-size: 20px; background: transparent;")
+        qr_icon = QLabel("QR")
+        qr_icon.setStyleSheet("""
+            font-size: 10px; font-weight: 800; background: #dbeafe;
+            color: #1d4ed8; border-radius: 6px; padding: 2px 5px;
+        """)
         qr_title_lbl = QLabel("Quét mã QR")
         qr_title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #1e3a6e; background: transparent;")
         qr_title_row.addStretch()
@@ -167,8 +170,11 @@ class ScreenDeviceLink(QWidget):
         info_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         mac_title_row = QHBoxLayout()
-        mac_icon = QLabel("🔗")
-        mac_icon.setStyleSheet("font-size: 20px; background: transparent;")
+        mac_icon = QLabel("MAC")
+        mac_icon.setStyleSheet("""
+            font-size: 10px; font-weight: 800; background: #dbeafe;
+            color: #1d4ed8; border-radius: 6px; padding: 2px 5px;
+        """)
         mac_title_lbl = QLabel("Địa chỉ MAC")
         mac_title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #1e3a6e; background: transparent;")
         mac_title_row.addStretch()
@@ -202,7 +208,7 @@ class ScreenDeviceLink(QWidget):
         """)
         mac_box_layout.addWidget(self.mac_label)
 
-        # Info items
+        # Info items — icon là chữ cái ngắn trong pill badge nhỏ, trông native và đồng đều
         def info_row(icon, label, value_style=""):
             row = QWidget()
             row.setStyleSheet("""
@@ -215,19 +221,25 @@ class ScreenDeviceLink(QWidget):
             rl = QHBoxLayout(row)
             rl.setContentsMargins(12, 8, 12, 8)
             rl.setSpacing(8)
+            # Badge icon: fixed-size pill với màu nhẹ — nhất quán với nhau
             ico = QLabel(icon)
-            ico.setStyleSheet("font-size: 16px; background: transparent;")
+            ico.setFixedSize(20, 20)
+            ico.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            ico.setStyleSheet(
+                "font-size: 11px; font-weight: 700; color: #1d4ed8; "
+                "background: #dbeafe; border-radius: 5px; border: none;"
+            )
             lbl = QLabel(label)
-            lbl.setStyleSheet(f"font-size: 13px; color: #4a6590; background: transparent; {value_style}")
+            lbl.setStyleSheet(f"font-size: 13px; color: #4a6590; background: transparent; border: none; {value_style}")
             rl.addWidget(ico)
             rl.addWidget(lbl, 1)
             return row
 
         info_layout.addLayout(mac_title_row)
         info_layout.addWidget(mac_box)
-        info_layout.addWidget(info_row("📡", "Kết nối qua Bluetooth / Wi-Fi"))
-        info_layout.addWidget(info_row("🔒", "Mã hóa TLS bảo mật"))
-        info_layout.addWidget(info_row("ℹ️", "Nội dung QR = địa chỉ MAC"))
+        info_layout.addWidget(info_row("~", "Kết nối qua Bluetooth / Wi-Fi"))
+        info_layout.addWidget(info_row("#", "Mã hóa TLS bảo mật"))
+        info_layout.addWidget(info_row("i", "Nội dung QR = địa chỉ MAC"))
         info_layout.addStretch()
 
         content.addWidget(qr_card, 1)

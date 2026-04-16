@@ -102,8 +102,11 @@ class ScreenFeedback(QWidget):
         chip_layout.setContentsMargins(14, 6, 14, 6)
         chip_layout.setSpacing(6)
 
-        self.chip_icon = QLabel("♻")
-        self.chip_icon.setStyleSheet("font-size: 14px; color: white; background: transparent;")
+        self.chip_icon = QLabel("RC")
+        self.chip_icon.setStyleSheet(
+            "font-size: 10px; font-weight: 800; color: white; background: transparent; "
+            "border: 1px solid rgba(255,255,255,0.5); border-radius: 5px; padding: 1px 4px;"
+        )
         self.chip_text = QLabel("RECYCLABLE")
         self.chip_text.setStyleSheet("font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.95); background: transparent; letter-spacing: 1px;")
         chip_layout.addWidget(self.chip_icon)
@@ -113,15 +116,19 @@ class ScreenFeedback(QWidget):
         chip_wrap.setAlignment(Qt.AlignmentFlag.AlignCenter)
         chip_wrap.addWidget(self.chip)
 
-        # Item emoji
-        self.lbl_item_image = QLabel("🥤")
+        # Item label — hiển thị chữ viết tắt vật liệu, cập nhật qua update_ui()
+        self.lbl_item_image = QLabel("RC")
         self.lbl_item_image.setStyleSheet("""
-            font-size: 88px;
+            font-size: 40px;
+            font-weight: 900;
+            font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+            color: rgba(255,255,255,0.95);
             background: rgba(255,255,255,0.15);
             border-radius: 28px;
             padding: 12px;
             min-width: 130px; max-width: 130px;
             min-height: 130px; max-height: 130px;
+            letter-spacing: 2px;
         """)
         self.lbl_item_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -211,15 +218,16 @@ class ScreenFeedback(QWidget):
         self.right_layout.setContentsMargins(28, 28, 28, 28)
 
         # AI icon + question
-        ai_badge = QLabel("🤖 AI nhận diện")
+        ai_badge = QLabel("AI  Nhận diện")
         ai_badge.setStyleSheet("""
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 12px;
+            font-weight: 700;
             color: #3b82f6;
             background: #eff6ff;
             border-radius: 10px;
             padding: 5px 14px;
             border: none;
+            letter-spacing: 0.5px;
         """)
         ai_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -249,7 +257,7 @@ class ScreenFeedback(QWidget):
         self.btn_layout.setSpacing(28)
         self.btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.btn_wrong = QPushButton("✕")
+        self.btn_wrong = QPushButton("X")
         self.btn_wrong.setFixedSize(120, 120)
         self.btn_wrong.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_wrong.setStyleSheet("""
@@ -277,7 +285,7 @@ class ScreenFeedback(QWidget):
         wrong_shadow.setOffset(0, 6)
         self.btn_wrong.setGraphicsEffect(wrong_shadow)
 
-        self.btn_correct = QPushButton("✓")
+        self.btn_correct = QPushButton("V")
         self.btn_correct.setFixedSize(120, 120)
         self.btn_correct.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_correct.setStyleSheet("""
@@ -346,52 +354,65 @@ class ScreenFeedback(QWidget):
         painter.fillRect(self.rect(), gradient)
 
     def update_ui(self, material, item_type, bg_color):
-        # Called every time detector emits a new classified item.
+        # Gọi mỗi lần detector phát hiện vật liệu mới — cập nhật toàn bộ left panel.
         self.lbl_material.setText(material.upper())
         self.lbl_type.setText(item_type)
         self.left_panel.setStyleSheet(
             f"QWidget {{ background-color: {bg_color}; border-radius: 26px; }}"
         )
 
-        # Map material to emoji + quick semantic badge for user confirmation.
+        # Ánh xạ vật liệu → chữ viết tắt hiển thị + nhãn chip phân loại.
+        # Dùng text thay emoji để đồng đều trên mọi font/OS.
         mat_upper = material.upper()
         if "BATTERY" in mat_upper:
-            self.lbl_item_image.setText("🔋")
+            self.lbl_item_image.setText("PIN")
             self.chip_text.setText("RÁC NGUY HẠI")
-            self.chip_icon.setText("⚠")
+            self._set_chip_icon("!", danger=True)
         elif "BIOLOGICAL" in mat_upper:
-            self.lbl_item_image.setText("🍃")
+            self.lbl_item_image.setText("HC")
             self.chip_text.setText("HỮU CƠ")
-            self.chip_icon.setText("🌱")
+            self._set_chip_icon("BIO")
         elif "CARDBOARD" in mat_upper:
-            self.lbl_item_image.setText("📦")
+            self.lbl_item_image.setText("BÌA")
             self.chip_text.setText("TÁI CHẾ ĐƯỢC")
-            self.chip_icon.setText("♻")
+            self._set_chip_icon("RC")
         elif "CLOTHES" in mat_upper:
-            self.lbl_item_image.setText("👕")
+            self.lbl_item_image.setText("VẢI")
             self.chip_text.setText("TÁI SỬ DỤNG")
-            self.chip_icon.setText("🧵")
+            self._set_chip_icon("RE")
         elif "GLASS" in mat_upper:
-            self.lbl_item_image.setText("🍾")
+            self.lbl_item_image.setText("TT")
             self.chip_text.setText("TÁI CHẾ ĐƯỢC")
-            self.chip_icon.setText("♻")
+            self._set_chip_icon("RC")
         elif "METAL" in mat_upper:
-            self.lbl_item_image.setText("🥫")
+            self.lbl_item_image.setText("KL")
             self.chip_text.setText("TÁI CHẾ ĐƯỢC")
-            self.chip_icon.setText("♻")
+            self._set_chip_icon("RC")
         elif "PAPER" in mat_upper:
-            self.lbl_item_image.setText("📄")
+            self.lbl_item_image.setText("GY")
             self.chip_text.setText("TÁI CHẾ ĐƯỢC")
-            self.chip_icon.setText("♻")
+            self._set_chip_icon("RC")
         elif "PLASTIC" in mat_upper:
-            self.lbl_item_image.setText("🥤")
+            self.lbl_item_image.setText("NHỰ")
             self.chip_text.setText("TÁI CHẾ ĐƯỢC")
-            self.chip_icon.setText("♻")
+            self._set_chip_icon("RC")
         elif "SHOES" in mat_upper:
-            self.lbl_item_image.setText("👟")
+            self.lbl_item_image.setText("GDÉ")
             self.chip_text.setText("TÁI SỬ DỤNG")
-            self.chip_icon.setText("🧵")
+            self._set_chip_icon("RE")
         else:
-            self.lbl_item_image.setText("🗑️")
+            self.lbl_item_image.setText("RÁC")
             self.chip_text.setText("KHÔNG TÁI CHẾ")
-            self.chip_icon.setText("🚯")
+            self._set_chip_icon("X", danger=True)
+
+    def _set_chip_icon(self, text: str, danger: bool = False):
+        """
+        Cập nhật badge icon trong chip phân loại.
+        danger=True dùng viền đỏ để nhấn mạnh rác nguy hại.
+        """
+        border_color = "rgba(255,100,100,0.7)" if danger else "rgba(255,255,255,0.5)"
+        self.chip_icon.setText(text)
+        self.chip_icon.setStyleSheet(
+            f"font-size: 10px; font-weight: 800; color: white; background: transparent; "
+            f"border: 1px solid {border_color}; border-radius: 5px; padding: 1px 4px;"
+        )

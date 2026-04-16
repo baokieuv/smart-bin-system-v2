@@ -90,7 +90,7 @@ class ScreenWelcome(QWidget):
         top_bar.addStretch()
 
         self.btn_settings = GlowButton()
-        self.btn_settings.setText("⚙")
+        self.btn_settings.setText("≡")
         self.btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_settings.setFixedSize(46, 46)
         self.btn_settings.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -123,9 +123,9 @@ class ScreenWelcome(QWidget):
             }
             QMenu::item:selected { background: #eff6ff; color: #1d4ed8; }
         """)
-        link_action = QAction("🔗  Liên kết thiết bị", self)
+        link_action = QAction("  Liên kết thiết bị", self)
         link_action.triggered.connect(self.open_device_link_requested.emit)
-        wifi_action = QAction("📶  Cấu hình Wi-Fi", self)
+        wifi_action = QAction("  Cấu hình Wi-Fi", self)
         wifi_action.triggered.connect(self.open_wifi_config_requested.emit)
         menu.addAction(link_action)
         menu.addAction(wifi_action)
@@ -140,15 +140,19 @@ class ScreenWelcome(QWidget):
         main_layout.addLayout(content, 1)
 
         # Logo / icon area
-        self.icon_label = QLabel("♻")
+        self.icon_label = QLabel("SB")
         self.icon_label.setStyleSheet("""
-            font-size: 64px;
+            font-size: 26px;
+            font-weight: 900;
+            font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
             background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
                 stop:0 #dbeafe, stop:1 #ede9fe);
             border-radius: 36px;
             min-width: 92px; max-width: 92px;
             min-height: 92px; max-height: 92px;
             border: none;
+            color: #1d4ed8;
+            letter-spacing: 3px;
         """)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_shadow = QGraphicsDropShadowEffect()
@@ -246,8 +250,8 @@ class ScreenWelcome(QWidget):
         badge_layout.setContentsMargins(14, 6, 14, 6)
         badge_layout.setSpacing(7)
 
-        dot = QLabel("●")
-        dot.setStyleSheet("font-size: 10px; color: #16a34a; background: transparent;")
+        dot = QLabel("▪")
+        dot.setStyleSheet("font-size: 12px; color: #16a34a; background: transparent;")
         status_lbl = QLabel("Hệ thống đang hoạt động")
         status_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #15803d; background: transparent;")
 

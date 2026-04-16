@@ -26,9 +26,12 @@ class MainViewModel(QObject):
         self.thingsboard_client = ThingsboardClient()
         self.access_token = None
         self.telemetry_interval_ms = APP_CONFIG.viewmodel.telemetry_interval_ms
+        self.upload_interval_ms = APP_CONFIG.viewmodel.upload_interval_ms
+        self.upload_batch_size = APP_CONFIG.viewmodel.upload_batch_size
         self.current_detection_metadata_path = None
         self.metadata_dir = APP_CONFIG.paths.detection_metadata_dir
         self.metadata_dir.mkdir(parents=True, exist_ok=True)
+        self._upload_in_progress = False
         
         # Kết nối Worker với ViewModel
         self.worker.trash_detected.connect(self._on_trash_detected)
@@ -52,6 +55,11 @@ class MainViewModel(QObject):
         self.access_token_retry_timer.setSingleShot(False)
         self.access_token_retry_timer.setInterval(self.telemetry_interval_ms)
         self.access_token_retry_timer.timeout.connect(self._retry_get_access_token)
+
+        self.upload_timer = QTimer()
+        self.upload_timer.setSingleShot(False)
+        self.upload_timer.setInterval(self.upload_interval_ms)
+        self.upload_timer.timeout.connect(self._upload_detection_results_batch)
         self.logger.info("MainViewModel khoi tao xong")
 
     def start_system(self):
@@ -69,6 +77,14 @@ class MainViewModel(QObject):
         self.state_loading.emit("Khoi tao xong. Dang ket noi he thong...")
         self.reset_to_welcome()
         self._refresh_access_token(reason="startup")
+
+        if not self.upload_timer.isActive():
+            self.upload_timer.start()
+            self.logger.info(
+                "Bat dau upload detection theo batch moi %sms, toi da %s anh/lan",
+                self.upload_interval_ms,
+                self.upload_batch_size,
+            )
 
     def _on_trash_detected(self, trash_data: TrashData):
         """Khi AI nhận diện có rác"""
@@ -181,6 +197,7 @@ class MainViewModel(QObject):
     def shutdown(self):
         self.telemetry_timer.stop()
         self.access_token_retry_timer.stop()
+        self.upload_timer.stop()
         self.worker.stop()
         self.logger.info("MainViewModel shutdown hoan tat")
 
@@ -214,10 +231,12 @@ class MainViewModel(QObject):
     def _save_detection_metadata(self, trash_data: TrashData, feedback: str) -> Path:
         # Mỗi kết quả detect được lưu metadata riêng để trace và upload sau này.
         detected_at = datetime.now(timezone.utc).isoformat()
+        filename = Path(trash_data.image_path).name if trash_data.image_path else None
         metadata = {
             "detectionId": trash_data.detection_id,
             "detectedAt": detected_at,
             "image": trash_data.image_path,
+            "filename": filename,
             "category": trash_data.category,
             "confidence": round(float(trash_data.confidence), 6),
             "label": trash_data.label,
@@ -254,3 +273,84 @@ class MainViewModel(QObject):
             self.logger.info("Da cap nhat feedback=%s cho %s", feedback, metadata_path.name)
         except (OSError, json.JSONDecodeError) as e:
             self.logger.exception("Khong cap nhat duoc feedback metadata: %s", e)
+
+    def _upload_detection_results_batch(self):
+        if self._upload_in_progress:
+            self.logger.info("Bo qua tick upload vi batch truoc chua xong")
+            return
+
+        items = self._collect_pending_upload_items()
+        if not items:
+            self.logger.info("Khong co detection pending de upload")
+            return
+
+        self._upload_in_progress = True
+        try:
+            success_count = 0
+            for item in items:
+                ok, response = self.device_client.send_report_classification(
+                    image_path=item["image_path"],
+                    metadata=item["metadata"],
+                )
+                if not ok:
+                    self.logger.warning(
+                        "Upload detection qua presigned URL that bai file=%s: %s",
+                        item["filename"],
+                        response,
+                    )
+                    continue
+
+                self._safe_delete_file(item["image_path"])
+                self._safe_delete_file(item["metadata_path"])
+                success_count += 1
+
+            self.logger.info(
+                "Upload detection qua presigned URL xong: success=%s/%s",
+                success_count,
+                len(items),
+            )
+        finally:
+            self._upload_in_progress = False
+
+    def _collect_pending_upload_items(self) -> list[dict]:
+        candidates: list[dict] = []
+        metadata_files = sorted(self.metadata_dir.glob("*.json"), key=lambda p: p.stat().st_mtime)
+
+        for metadata_path in metadata_files:
+            if len(candidates) >= self.upload_batch_size:
+                break
+
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    metadata = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                self.logger.warning("Bo qua metadata loi %s: %s", metadata_path.name, e)
+                continue
+
+            image_path = metadata.get("image")
+            if not image_path:
+                self.logger.warning("Bo qua metadata khong co image: %s", metadata_path.name)
+                continue
+
+            image_file = Path(image_path)
+            if not image_file.exists():
+                self.logger.warning("Anh khong ton tai, bo qua: %s", image_path)
+                continue
+
+            filename = metadata.get("filename") or image_file.name
+            candidates.append(
+                {
+                    "filename": filename,
+                    "image_path": str(image_file),
+                    "metadata_path": str(metadata_path),
+                    "metadata": metadata,
+                }
+            )
+
+        return candidates
+
+    def _safe_delete_file(self, file_path: str):
+        try:
+            Path(file_path).unlink(missing_ok=True)
+        except OSError as e:
+            self.logger.warning("Khong xoa duoc file %s: %s", file_path, e)

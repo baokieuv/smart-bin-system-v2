@@ -58,6 +58,7 @@ class DeviceClient:
             return False, signature_or_error
         
         # Gửi header X-Signature và Content-Type là application/json vì body bây giờ là JSON
+        # TODO check lại xem là text hay json
         headers = {"X-Signature": signature_or_error, "Content-Type": "application/json"}
         
         try:
@@ -128,54 +129,173 @@ class DeviceClient:
             "trace_id": trace_id,
         }
              
-    def send_report_classification(self, file_paths: list[str], metadata_list: list[dict]) -> tuple[bool, any]:
+    def send_report_classification(self, image_path: str, metadata: dict) -> tuple[bool, any]:
         """
-        Gửi kết quả nhận diện (ảnh + thông tin) lên server bằng multipart/form-data
+        Luồng gửi 1 ảnh detection:
+        1) Gọi backend lấy presigned URL (kèm metadata)
+        2) Upload ảnh lên MinIO bằng presigned URL
+        3) Gọi backend xác nhận upload thành công
         """
-        url = f"{self.base_url}/upload-detection-result"
-        self.logger.info("Call send_report_classification with files=%s", len(file_paths))
-        
+        image_file = Path(image_path)
+        if not image_file.exists():
+            return False, f"Không tìm thấy file ảnh: {image_path}"
+
+        filename = str(metadata.get("filename") or image_file.name)
+        content_type = "image/jpeg"
+
+        ok, presigned_data = self._request_detection_presigned_url(
+            filename=filename,
+            metadata=metadata,
+            file_size=image_file.stat().st_size,
+            content_type=content_type,
+        )
+        if not ok:
+            return False, presigned_data
+
+        ok, upload_info = self._upload_file_via_presigned_url(
+            image_path=str(image_file),
+            presigned_data=presigned_data,
+            content_type=content_type,
+        )
+        if not ok:
+            return False, upload_info
+
+        ok, confirm_result = self._confirm_detection_upload(
+            filename=filename,
+            metadata=metadata,
+            presigned_data=presigned_data,
+            upload_info=upload_info,
+        )
+        if not ok:
+            return False, confirm_result
+
+        return True, confirm_result
+
+    def _request_detection_presigned_url(
+        self,
+        filename: str,
+        metadata: dict,
+        file_size: int,
+        content_type: str,
+    ) -> tuple[bool, dict | str]:
+        url = f"{self.base_url}/get-presigned-url"
         ok, payload_str, signature_or_error = self._generate_payload_and_signature()
         if not ok:
             return False, signature_or_error
 
-        headers = {"X-Signature": signature_or_error}
+        # Truyền metadata qua URL Params 
+        params = {"metadata": json.dumps(metadata)}
         
-        # Keep track of opened files so they are always closed in finally.
-        files_to_send = []
-        opened_files = []
-        
+        headers = {
+            "X-Signature": signature_or_error,
+            "Content-Type": "application/json",
+        }
+
         try:
-            for file_path in file_paths:
-                path_obj = Path(file_path)
-                f = open(path_obj, 'rb')
-                opened_files.append(f)
-                # Tuple format của requests: (field_name, (filename, file_object, content_type))
-                files_to_send.append(('files', (path_obj.name, f, 'image/jpeg'))) 
+            # Dùng data=payload_str để giữ nguyên vẹn chuỗi JSON đã ký
+            response = requests.post(url, params=params, data=payload_str, headers=headers, timeout=self.timeout)
+            self.logger.info("request_presigned_url status_code=%s file=%s", response.status_code, filename)
             
-            # Gửi metadata và payload dưới dạng Text fields trong form-data
-            data_to_send = {
-                'metadata': json.dumps(metadata_list),
-                'payload': payload_str
-            }
-            
-            response = requests.post(url, files=files_to_send, data=data_to_send, headers=headers, timeout=self.timeout)
-            self.logger.info("send_report_classification status_code=%s", response.status_code)
-            response.raise_for_status()
-            
+            if not response.ok:
+                return False, self._parse_error_response(response)
+
             json_data = response.json()
-            return True, json_data
+            data = json_data.get("data")
             
-        except FileNotFoundError as e:
-            self.logger.warning("send_report_classification file not found: %s", e)
-            return False, f"Không tìm thấy file ảnh: {str(e)}"
+            if isinstance(data, str):
+                # Bọc lại thành dict để hàm _upload_file_via_presigned_url dùng được
+                return True, {"presignedUrl": data, "method": "PUT"}
+                
+            return False, "Response presigned URL khong hop le (khong phai string)"
+            
         except requests.exceptions.RequestException as e:
-            self.logger.warning("send_report_classification network error: %s", e)
-            return False, f"Lỗi Network: {str(e)}"
-        finally:
-            # Luôn đảm bảo đóng file sau khi request chạy xong
-            for f in opened_files:
-                f.close()
+            return False, f"Lỗi Network khi lấy presigned URL: {str(e)}"
+        except ValueError:
+            return False, "Lỗi parse response khi lấy presigned URL"
+
+    def _upload_file_via_presigned_url(
+        self,
+        image_path: str,
+        presigned_data: dict,
+        content_type: str,
+    ) -> tuple[bool, dict | str]:
+        presigned_url = presigned_data.get("presignedUrl") or presigned_data.get("url")
+        if not presigned_url:
+            return False, "Backend khong tra ve presignedUrl"
+
+        method = str(presigned_data.get("method") or "PUT").upper()
+        upload_headers = presigned_data.get("headers") if isinstance(presigned_data.get("headers"), dict) else {}
+        upload_headers = {str(k): str(v) for k, v in upload_headers.items()}
+        upload_headers.setdefault("Content-Type", content_type)
+
+        try:
+            with open(image_path, "rb") as f:
+                if method == "POST":
+                    fields = presigned_data.get("fields") if isinstance(presigned_data.get("fields"), dict) else {}
+                    files = {"file": (Path(image_path).name, f, content_type)}
+                    response = requests.post(
+                        presigned_url,
+                        data=fields,
+                        files=files,
+                        headers=upload_headers,
+                        timeout=self.timeout,
+                    )
+                else:
+                    response = requests.put(
+                        presigned_url,
+                        data=f,
+                        headers=upload_headers,
+                        timeout=self.timeout,
+                    )
+
+            self.logger.info("upload_presigned_url status_code=%s file=%s", response.status_code, image_path)
+            response.raise_for_status()
+
+            return True, {
+                "statusCode": response.status_code,
+                "etag": response.headers.get("ETag") or response.headers.get("etag"),
+                "requestId": response.headers.get("x-amz-request-id"),
+            }
+        except requests.exceptions.RequestException as e:
+            self.logger.warning("upload_presigned_url network error: %s", e)
+            return False, f"Lỗi upload ảnh qua presigned URL: {str(e)}"
+        except OSError as e:
+            self.logger.warning("upload_presigned_url read file error: %s", e)
+            return False, f"Lỗi đọc file ảnh: {str(e)}"
+
+    def _confirm_detection_upload(
+        self,
+        filename: str,
+        metadata: dict,
+        presigned_data: dict,
+        upload_info: dict,
+    ) -> tuple[bool, dict | str]:
+        url = f"{self.base_url}/confirm-upload"
+        ok, payload_str, signature_or_error = self._generate_payload_and_signature()
+        if not ok:
+            return False, signature_or_error
+
+        params = {"metadata": json.dumps(metadata)}
+        
+        headers = {
+            "X-Signature": signature_or_error,
+            "Content-Type": "application/json",
+        }
+
+        try:
+            # Vẫn dùng data=payload_str để backend verify chữ ký thành công
+            response = requests.post(url, params=params, data=payload_str, headers=headers, timeout=self.timeout)
+            self.logger.info("confirm_upload status_code=%s file=%s", response.status_code, filename)
+            
+            if not response.ok:
+                return False, self._parse_error_response(response)
+
+            return True, response.json()
+            
+        except requests.exceptions.RequestException as e:
+            return False, f"Lỗi Network khi xác nhận upload: {str(e)}"
+        except ValueError:
+            return False, "Lỗi parse response khi xác nhận upload"
         
     def _encrypt_data(self, payload: str) -> tuple[bool, str]:
         try:
