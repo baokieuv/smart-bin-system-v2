@@ -2,10 +2,8 @@ package com.soict.smart_bin.service;
 
 import com.soict.smart_bin.exception.ApiException;
 import com.soict.smart_bin.exception.CoreErrorCode;
-import io.minio.ListObjectsArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.Result;
+import io.minio.*;
+import io.minio.http.Method;
 import io.minio.messages.Item;
 import org.apache.tika.Tika;
 import org.slf4j.Logger;
@@ -18,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class MinioService {
@@ -82,6 +81,16 @@ public class MinioService {
         );
 
         return String.format("%s/%s/%s", minioUrl, bucketName, filename);
+    }
+
+    public String getPresignedUrl(String filename) throws Exception {
+        return minioClient.getPresignedObjectUrl(
+                GetPresignedObjectUrlArgs.builder()
+                        .method(Method.PUT)
+                        .bucket(bucketName)
+                        .object(filename)
+                        .expiry(15, TimeUnit.MINUTES)
+                        .build());
     }
 
     private void validateFileUpload(MultipartFile file) {

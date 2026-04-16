@@ -1,5 +1,6 @@
 package com.soict.smart_bin.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,6 +40,7 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -356,6 +358,86 @@ public class DeviceService {
         }
 
         return successfulUploads;
+    }
+
+    @Transactional
+    public String getPresignedUrl(String payload, String signature, String metadata) {
+        try {
+            DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
+            String mac = verifySignature(payload, signature);
+
+            // 1. Tạo Unique Object Path trên MinIO
+            String uniqueObjectName = String.format("detections/%s/%d_%s",
+                    mac.replace(":", ""),
+                    fileInfo.timestamp(),
+                    fileInfo.filename());
+
+            // 2. Tạo Presigned URL
+            String url = minioService.getPresignedUrl(uniqueObjectName);
+
+            // 3. Đóng gói lại metadata kèm theo đường dẫn thực tế để lưu vào Redis
+            Map<String, Object> redisData = new HashMap<>();
+            redisData.put("metadata", fileInfo);
+            redisData.put("objectPath", uniqueObjectName);
+
+            // 4. Tạo Key Redis an toàn (Dùng MAC + Timestamp + Tên file)
+            String redisKey = Constants.PENDING_DETECTION_RESULT + mac + ":" + fileInfo.timestamp();
+
+            redisTemplate.opsForValue().set(
+                    redisKey,
+                    objectMapper.writeValueAsString(redisData),
+                    Constants.TIMESTAMP_EXPIRY_20M,
+                    TimeUnit.MINUTES
+            );
+
+            return url;
+        } catch (JsonProcessingException e) {
+            log.error("Lỗi parse metadata: {}", metadata, e);
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata format");
+        } catch (Exception e) {
+            log.error("Lỗi khi tạo Presigned URL: ", e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Cannot generate upload URL");
+        }
+    }
+
+    @Transactional
+    public String confirmUpload(String payload, String signature, String metadata){
+        try {
+            DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
+            String mac = verifySignature(payload, signature);
+
+            Device device = repository.findByMacAndActiveTrue(mac)
+                    .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+            // Lấy đúng Key Redis đã tạo
+            String redisKey = Constants.PENDING_DETECTION_RESULT + mac + ":" + fileInfo.timestamp();
+            String redisValue = redisTemplate.opsForValue().get(redisKey);
+
+            if (redisValue == null || redisValue.isBlank()){
+                throw new ApiException(CoreErrorCode.BAD_REQUEST, "Upload session expired or invalid");
+            }
+
+            // Parse lại cục data từ Redis
+            JsonNode cacheNode = objectMapper.readTree(redisValue);
+            String objectPath = cacheNode.get("objectPath").asText();
+
+            // Lưu vào DB với đường dẫn chuẩn
+            DeviceDetectionResult result = new DeviceDetectionResult();
+            result.setConfidence(fileInfo.confidence());
+            result.setFeedback(fileInfo.feedback());
+            result.setDevice(device);
+            result.setType(fileInfo.type());
+            result.setImageUrl(objectPath);
+
+            detectionRepository.save(result);
+
+            // Xóa key Redis sau khi xử lý thành công để giải phóng RAM
+            redisTemplate.delete(redisKey);
+
+            return "Upload confirmed and saved.";
+        } catch (JsonProcessingException e) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata structure");
+        }
     }
 
     private Device getDeviceAndVerifyOwnership(String deviceIdStr, String keycloakId) {

@@ -28,7 +28,7 @@ public class DeviceDetectionResult extends BaseEntity{
     DetectionFeedback feedback;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "mac")
+    @JoinColumn(name = "device_id")
     @JsonIgnore
     private Device device;
 

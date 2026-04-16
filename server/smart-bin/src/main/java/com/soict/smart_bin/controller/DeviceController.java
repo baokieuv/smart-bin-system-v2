@@ -127,4 +127,24 @@ public class DeviceController {
         var response = deviceService.uploadDetectionResult(files, metadata, payload, signature);
         return responseFactory.response(SuccessCode.OK, response);
     }
+
+    @PostMapping(value = "/get-presigned-url")
+    public ResponseEntity<ApiResponseFormat<Object>> getPresignedUrl(
+            @RequestParam("metadata") String metadata,
+            @RequestBody String payload,
+            @RequestHeader("X-Signature") String signature
+    ){
+        var response = deviceService.getPresignedUrl(payload, signature, metadata);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping(value = "/confirm-upload")
+    public ResponseEntity<ApiResponseFormat<Object>> confirmUpload(
+            @RequestParam("metadata") String metadata,
+            @RequestBody String payload,
+            @RequestHeader("X-Signature") String signature
+    ){
+        var response = deviceService.confirmUpload(payload, signature, metadata);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
 }
