@@ -1,0 +1,64 @@
+server:
+  port: ${SERVER_PORT:2107} # Chạy ở port 2107
+
+spring:
+  application:
+    name: noti-service
+
+  # 1. DATABASE (Lưu lịch sử thông báo, template...)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-notification}
+    username: ${SPRING_DATASOURCE_USERNAME:admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    driver-class-name: org.mariadb.jdbc.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+
+  jpa:
+    database-platform: org.hibernate.dialect.MariaDBDialect
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SHOW_SQL:false}
+
+  # 2. CẤU HÌNH GỬI MAIL (Được dọn từ monolithic sang đây)
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:465}
+    username: ${SPRING_MAIL_USERNAME:kieubao2k4@gmail.com}
+    password: ${SPRING_MAIL_PASSWORD:zwac yohn qmho pdyr}
+    protocol: smtps
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          trust: ${SPRING_MAIL_HOST:smtp.gmail.com}
+
+  # 3. KAFKA CONSUMER (Lắng nghe sự kiện)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      # Tên nhóm để Kafka biết service này thuộc đội Notification
+      group-id: notification-group
+      # Từ đầu bắt đầu đọc tin nhắn (earliest = đọc từ cũ nhất nếu bị miss)
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # Dịch file JSON nhận được thành Object
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        # Quan trọng: Tin tưởng các package để Deserializer không chặn object
+        spring.json.trusted.packages: "*"
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
+
+# 4. APP CUSTOM PROPERTIES
+app:
+  email:
+    from: ${APP_EMAIL_FROM:kieubao2k4@gmail.com}
+    verification:
+      url: ${APP_EMAIL_VERIFICATION_URL:http://localhost:3000/verify-email}

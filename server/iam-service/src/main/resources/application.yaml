@@ -1,0 +1,76 @@
+server:
+  # Thường đổi port mặc định cho các service con để tránh đụng độ (ví dụ: IAM chạy port 8081)
+  port: ${SERVER_PORT:2106}
+
+spring:
+  application:
+    name: iam-service
+
+  # 1. DATABASE (Lưu trữ User Identity nội bộ)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-iam}
+    username: ${SPRING_DATASOURCE_USERNAME:admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    driver-class-name: org.mariadb.jdbc.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      connection-timeout: 20000
+      maximum-pool-size: 10
+      minimum-idle: 5
+      max-lifetime: 1200000
+      idle-timeout: 300000
+      leak-detection-threshold: 60000
+
+  jpa:
+    database-platform: org.hibernate.dialect.MariaDBDialect
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: true
+
+  # 2. CACHE (Dùng để Blacklist Token khi Logout hoặc lưu tạm OTP)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redisadmin}
+
+  # 3. KAFKA (Thêm mới: Dùng để bắn Event sang Notification Service)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Dùng JsonSerializer để tự động parse Object (như UserEvent) thành JSON
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+  # 4. SECURITY (Xác thực Token với Keycloak)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
+
+# 5. KEYCLOAK ADMIN (Để gọi API tạo User, đổi mật khẩu)
+keycloak:
+  server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8180}
+  realm: ${KEYCLOAK_REALM:smart-bin-realm}
+  client-id: ${KEYCLOAK_CLIENT_ID:smart-bin-client}
+  client-secret: ${KEYCLOAK_CLIENT_SECRET:yzWEJ5qP2brO2MZuvMQRgSJhTNFnKe1v}
+  admin-username: ${KEYCLOAK_ADMIN_USERNAME:admin}
+  admin-password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
+
+# 6. APP CUSTOM PROPERTIES
+app:
+  frontend:
+    url: ${APP_FRONTEND_URL:http://localhost:3000}
+
+# 7. GOOGLE RECAPTCHA (Bảo vệ API Login/Register khỏi bị spam)
+google:
+  recaptcha:
+    secret: ${GOOGLE_CAPTCHA_SECRET:6Lc675ssAAAAAPBj08i1ho7E4BkoX-8RkL6EjmoU}
+    # Lưu ý: Mình đã sửa lại URL này cho chuẩn xác với API của Google
+    verify-url: ${GOOGLE_URL:https://www.google.com/recaptcha/api/siteverify}
+    threshold: ${GOOGLE_THRESHOLD:0.5}

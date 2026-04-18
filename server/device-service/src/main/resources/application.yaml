@@ -1,0 +1,49 @@
+server:
+  port: ${SERVER_PORT:2108} # Port riêng biệt
+
+spring:
+  application:
+    name: device-service
+
+  # 1. DATABASE RIÊNG CỦA DEVICE
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-device}
+    username: ${SPRING_DATASOURCE_USERNAME:admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    driver-class-name: org.mariadb.jdbc.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+
+  jpa:
+    database-platform: org.hibernate.dialect.MariaDBDialect
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SHOW_SQL:false}
+
+  # 2. REDIS (Có thể dùng lưu trạng thái online/offline của thiết bị siêu nhanh)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redisadmin}
+
+  # 3. KAFKA (Đóng vai trò Producer)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+  # 4. SECURITY (Xác minh JWT từ người dùng quản lý thùng rác)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
+
+# 5. CẤU HÌNH THINGSBOARD (IOT PLATFORM)
+things-board:
+  url: ${THINGS_BOARD_URL:http://localhost:8080}
+  email: ${THINGS_BOARD_EMAIL:tenant@thingsboard.org}
+  password: ${THINGS_BOARD_PASS:tenant}
+  key: ${THINGS_BOARD_SECRET_KEY:MY_SUPPER_SECRET_KEY}

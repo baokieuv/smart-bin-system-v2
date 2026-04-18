@@ -1,0 +1,56 @@
+server:
+  port: ${SERVER_PORT:2109}
+
+spring:
+  application:
+    name: media-service
+
+#  # 1. DATABASE (Tuỳ chọn: Nếu bạn muốn lưu bảng 'media_records' để quản lý file)
+#  datasource:
+#    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-media}
+#    username: ${SPRING_DATASOURCE_USERNAME:admin}
+#    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+#    driver-class-name: org.mariadb.jdbc.Driver
+#    type: com.zaxxer.hikari.HikariDataSource
+
+#  jpa:
+#    database-platform: org.hibernate.dialect.MariaDBDialect
+#    hibernate:
+#      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+#    show-sql: ${SHOW_SQL:false}
+
+  # 2. CẤU HÌNH MULTIPART (Giới hạn dung lượng file)
+  servlet:
+    multipart:
+      enabled: ${MULTIPART_ENABLED:true}
+      # Giới hạn 1 file tối đa 5MB (rất phù hợp cho ảnh avatar hoặc ảnh thùng rác)
+      max-file-size: ${MAX_FILE_SIZE:5MB}
+      # Giới hạn tổng dung lượng 1 lần request (nếu up nhiều file cùng lúc)
+      max-request-size: ${MAX_REQUEST_SIZE:20MB}
+
+  # 3. SECURITY (Xác minh JWT từ người dùng)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
+
+# 4. CẤU HÌNH MINIO (Kết nối tới Object Storage)
+minio:
+  url: ${MINIO_SERVER_URL:http://localhost:9000}
+  bucket: ${MINIO_BUCKET:smart-bin-system}
+  access_key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret_key: ${MINIO_SECRET_KEY:minioadmin}
+
+media:
+  max-file-size-bytes: ${MEDIA_MAX_FILE_SIZE_BYTES:5242880}
+  upload-url-expiry-minutes: ${MEDIA_UPLOAD_URL_EXPIRY_MINUTES:15}
+  download-url-expiry-minutes: ${MEDIA_DOWNLOAD_URL_EXPIRY_MINUTES:15}
+  allowed-mime-types: ${MEDIA_ALLOWED_MIME_TYPES:image/jpeg,image/png,image/webp,image/gif,application/pdf}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
