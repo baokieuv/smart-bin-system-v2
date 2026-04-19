@@ -1,6 +1,9 @@
 package com.smart_bin.iam_service.serivce;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.smart_bin.core.common.Constants;
+import com.smart_bin.core.common.EmailType;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.iam_service.common.TokenType;
 import com.smart_bin.iam_service.common.UserState;
@@ -30,9 +33,8 @@ public class UserService {
     private final UserRepository userRepository;
     private final KeycloakService keycloakService;
     private final UserMapper mapper;
-
-    @Value("${minio.url}")
-    private String minioUrl;
+    private final KafkaService kafkaService;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public UserDto createUser(CreateUserRequest request) {
@@ -67,8 +69,14 @@ public class UserService {
         // 3. Lưu vào Database
         User savedUser = userRepository.save(user);
 
-        // TODO send email
         // 4. Gửi email xác nhận
+        ObjectNode emailData = objectMapper.createObjectNode();
+        emailData.put("email", savedUser.getEmail());
+        emailData.put("fullName", savedUser.getFirstName());
+        emailData.put("activationCode", savedUser.getActionToken());
+
+        // Gọi KafkaService để gửi
+        kafkaService.sendEmailToUser(emailData, EmailType.VERIFICATION);
 
         // 5. Trả về DTO
         return mapper.toDto(savedUser);
@@ -95,7 +103,13 @@ public class UserService {
         userRepository.save(user);
         keycloakService.enableUser(user.getKeycloakId());
 
-        // TODO send email
+        // 4. Gửi email welcome
+        ObjectNode emailData = objectMapper.createObjectNode();
+        emailData.put("email", user.getEmail());
+        emailData.put("fullName", user.getFirstName());
+
+        // Gọi KafkaService để gửi
+        kafkaService.sendEmailToUser(emailData, EmailType.WELCOME);
 
         return "Email verified successfully";
     }
@@ -152,6 +166,13 @@ public class UserService {
 
         userRepository.save(user);
 
-        // TODO send email
+        // 4. Gửi email xác nhận
+        ObjectNode emailData = objectMapper.createObjectNode();
+        emailData.put("email", user.getEmail());
+        emailData.put("fullName", user.getFirstName());
+        emailData.put("activationCode", user.getActionToken());
+
+        // Gọi KafkaService để gửi
+        kafkaService.sendEmailToUser(emailData, EmailType.VERIFICATION);
     }
 }

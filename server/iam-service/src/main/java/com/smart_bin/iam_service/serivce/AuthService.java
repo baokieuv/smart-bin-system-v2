@@ -1,7 +1,10 @@
 package com.smart_bin.iam_service.serivce;
 
 import com.auth0.jwt.JWT;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.smart_bin.core.common.Constants;
+import com.smart_bin.core.common.EmailType;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.common.TokenType;
@@ -24,6 +27,8 @@ import java.util.UUID;
 public class AuthService {
     private final KeycloakService keycloakService;
     private final UserRepository userRepository;
+    private final ObjectMapper objectMapper;
+    private final KafkaService kafkaService;
 
     private static final SecureRandom random = new SecureRandom();
 
@@ -86,7 +91,13 @@ public class AuthService {
         user.setState(UserState.ACTIVE);
         userRepository.save(user);
 
-        // TODO send email
+        // 4. Gửi email welcome
+        ObjectNode emailData = objectMapper.createObjectNode();
+        emailData.put("email", user.getEmail());
+        emailData.put("fullName", user.getFirstName());
+
+        // Gọi KafkaService để gửi
+        kafkaService.sendEmailToUser(emailData, EmailType.WELCOME);
     }
 
     public TokenResponse refreshToken(RefreshTokenRequest request){
@@ -134,7 +145,12 @@ public class AuthService {
 
             userRepository.save(user);
 
-            // TODO send email
+            ObjectNode emailData = objectMapper.createObjectNode();
+            emailData.put("email", user.getEmail());
+            emailData.put("fullName", user.getFirstName());
+            emailData.put("activationCode", resetToken);
+
+            kafkaService.sendEmailToUser(emailData, EmailType.RESET_PASSWORD);
         }
 
         return "Nếu email hợp lệ và đã được xác thực, một hướng dẫn đặt lại mật khẩu đã được gửi đến bạn.";

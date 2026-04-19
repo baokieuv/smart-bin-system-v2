@@ -4,6 +4,7 @@ import com.smart_bin.core.dto.ApiResponseFormat;
 import com.smart_bin.core.exception.ApiResponseCode;
 import io.micrometer.tracing.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.ResponseEntity;
@@ -21,8 +22,8 @@ public class ResponseFactory {
     private final MessageSource messageSource;
 
     // Inject the Tracer via the constructor
-    public ResponseFactory(Tracer tracer, MessageSource messageSource) {
-        this.tracer = tracer;
+    public ResponseFactory(ObjectProvider<Tracer> tracerProvider, MessageSource messageSource) {
+        this.tracer = tracerProvider.getIfAvailable(); // Sẽ nhận giá trị null nếu chưa cài dependency Tracing
         this.messageSource = messageSource;
     }
 
@@ -99,7 +100,11 @@ public class ResponseFactory {
      * Returns null if no active trace exists.
      */
     private String getCurrentTraceId() {
-        return Optional.ofNullable(tracer.currentSpan())
+        if (this.tracer == null) {
+            return null;
+        }
+
+        return Optional.ofNullable(this.tracer.currentSpan())
                 .map(Span::context)
                 .map(TraceContext::traceId)
                 .orElse(null);

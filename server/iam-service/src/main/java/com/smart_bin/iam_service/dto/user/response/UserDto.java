@@ -1,6 +1,6 @@
 package com.smart_bin.iam_service.dto.user.response;
 
-import com.soict.smart_bin.common.UserState;
+import com.smart_bin.iam_service.common.UserState;
 
 import java.util.UUID;
 

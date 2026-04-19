@@ -1,6 +1,6 @@
 package com.smart_bin.iam_service.dto.user.request;
 
-import com.soict.smart_bin.utils.CaptchaPayload;
+import com.smart_bin.iam_service.utils.CaptchaPayload;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

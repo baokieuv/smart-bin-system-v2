@@ -1,6 +1,5 @@
 package com.smart_bin.iam_service.config;
 
-import com.soict.smart_bin.interceptor.ThingsBoardInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
