@@ -1,4 +1,4 @@
-package com.smart_bin.noti_service.common;
+package com.smart_bin.core.common;
 
 import lombok.Getter;
 
