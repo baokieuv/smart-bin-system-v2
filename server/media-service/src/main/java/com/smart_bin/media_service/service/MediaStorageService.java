@@ -1,5 +1,6 @@
 package com.smart_bin.media_service.service;
 
+import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.media_service.dto.response.MediaFileDto;
@@ -8,7 +9,9 @@ import com.smart_bin.media_service.dto.response.UploadFileResponse;
 import io.minio.*;
 import io.minio.http.Method;
 import io.minio.messages.Item;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.tika.Tika;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,12 +24,13 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MediaStorageService {
 
     private static final String USER_ROOT = "users";
 
     private final MinioClient minioClient;
-    private final Tika tika = new Tika();
+    private final Tika tika;
 
     @Value("${minio.bucket}")
     private String bucketName;
@@ -46,13 +50,31 @@ public class MediaStorageService {
     @Value("${media.allowed-mime-types:image/jpeg,image/png,image/webp,image/gif,application/pdf}")
     private String allowedMimeTypesConfig;
 
+    @PostConstruct
+    public void init() {
+        try {
+            boolean bucketExists = minioClient.bucketExists(
+                    BucketExistsArgs.builder().bucket(bucketName).build()
+            );
+            if (!bucketExists) {
+                minioClient.makeBucket(
+                        MakeBucketArgs.builder().bucket(bucketName).build()
+                );
+                log.info("Created MinIO bucket: {}", bucketName);
+            } else {
+                log.info("ℹMinIO bucket already exists: {}", bucketName);
+            }
+        } catch (Exception e) {
+            log.error("Failed to initialize MinIO bucket: {}", e.getMessage());
+        }
+    }
+
     public UploadFileResponse uploadFile(String keycloakId, MultipartFile file, String folder) {
         validateFile(file);
 
-        String objectName = buildObjectName(keycloakId, folder, file.getOriginalFilename());
+        String objectName = buildObjectName(keycloakId, folder, file.getContentType());
 
         try {
-            ensureBucketExists();
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucketName)
@@ -71,15 +93,18 @@ public class MediaStorageService {
         }
     }
 
-    public PresignedUrlResponse createPresignedUploadUrl(String keycloakId, String fileName, String folder) {
-        if (!StringUtils.hasText(fileName)) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "fileName is required");
+    public PresignedUrlResponse createPresignedUploadUrl(String keycloakId, String fileName, String folder, String contentType) {
+        if (!StringUtils.hasText(fileName) || !StringUtils.hasText(contentType)) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "fileName and contentType are required");
         }
 
-        String objectName = buildObjectName(keycloakId, folder, fileName);
+        if (!allowedMimeTypes().contains(contentType.trim().toLowerCase(Locale.ROOT))) {
+            throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
+        }
+
+        String objectName = buildObjectName(keycloakId, folder, contentType);
 
         try {
-            ensureBucketExists();
             String url = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.PUT)
@@ -95,10 +120,10 @@ public class MediaStorageService {
     }
 
     public PresignedUrlResponse createPresignedDownloadUrl(String keycloakId, String objectName) {
+
         String fullObjectName = resolveUserObjectName(keycloakId, objectName);
 
         try {
-            ensureBucketExists();
             minioClient.statObject(
                     StatObjectArgs.builder()
                             .bucket(bucketName)
@@ -129,8 +154,6 @@ public class MediaStorageService {
         String lookupPrefix = normalizedPrefix.isBlank() ? userPrefix : userPrefix + normalizedPrefix;
 
         try {
-            ensureBucketExists();
-
             Iterable<Result<Item>> items = minioClient.listObjects(
                     ListObjectsArgs.builder()
                             .bucket(bucketName)
@@ -153,7 +176,6 @@ public class MediaStorageService {
     public void deleteFile(String keycloakId, String objectName) {
         String fullObjectName = resolveUserObjectName(keycloakId, objectName);
         try {
-            ensureBucketExists();
             minioClient.removeObject(
                     RemoveObjectArgs.builder()
                             .bucket(bucketName)
@@ -165,17 +187,20 @@ public class MediaStorageService {
         }
     }
 
-    public PresignedUrlResponse createInternalPresignedUploadUrl(String macAddress, String fileName) {
-        if (!StringUtils.hasText(fileName) || !StringUtils.hasText(macAddress)) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "fileName and macAddress are required");
+    public PresignedUrlResponse createInternalPresignedUploadUrl(String macAddress, String fileName, String contentType) {
+        if (!StringUtils.hasText(fileName) || !StringUtils.hasText(macAddress) || !StringUtils.hasText(contentType)) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "fileName, macAddress and contentType are required");
+        }
+
+        if (!allowedMimeTypes().contains(contentType.trim().toLowerCase(Locale.ROOT))) {
+            throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
         }
 
         // Tạo objectName chuẩn: devices/{macAddress}/{uuid}_filename.jpg
         String safeMac = macAddress.replace(":", "").replace("-", "");
-        String objectName = "devices/" + safeMac + "/" + UUID.randomUUID() + "_" + sanitizeFileName(fileName);
+        String objectName = "devices/" + safeMac + "/" + Constants.generateFileName(contentType, "");
 
         try {
-            ensureBucketExists();
             String url = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.PUT)
@@ -187,13 +212,6 @@ public class MediaStorageService {
             return new PresignedUrlResponse(objectName, url, uploadUrlExpiryMinutes * 60);
         } catch (Exception ex) {
             throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Generate internal presigned URL failed");
-        }
-    }
-
-    private void ensureBucketExists() throws Exception {
-        boolean bucketExists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
-        if (!bucketExists) {
-            minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
         }
     }
 
@@ -225,16 +243,11 @@ public class MediaStorageService {
         }
     }
 
-    private String buildObjectName(String keycloakId, String folder, String originalFilename) {
+    private String buildObjectName(String keycloakId, String folder, String contentType) {
         String userPrefix = userPrefix(keycloakId);
         String normalizedFolder = normalizePrefix(folder);
-        String safeFileName = sanitizeFileName(originalFilename);
+        String uniqueName = Constants.generateFileName(contentType, "");
 
-        if (!StringUtils.hasText(safeFileName)) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid file name");
-        }
-
-        String uniqueName = UUID.randomUUID() + "_" + safeFileName;
         if (!normalizedFolder.isBlank()) {
             return userPrefix + normalizedFolder + uniqueName;
         }

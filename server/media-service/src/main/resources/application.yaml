@@ -5,19 +5,19 @@ spring:
   application:
     name: media-service
 
-#  # 1. DATABASE (Tuỳ chọn: Nếu bạn muốn lưu bảng 'media_records' để quản lý file)
-#  datasource:
-#    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-media}
-#    username: ${SPRING_DATASOURCE_USERNAME:admin}
-#    password: ${SPRING_DATASOURCE_PASSWORD:admin}
-#    driver-class-name: org.mariadb.jdbc.Driver
-#    type: com.zaxxer.hikari.HikariDataSource
+  # 1. DATABASE (Tuỳ chọn: Nếu bạn muốn lưu bảng 'media_records' để quản lý file)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
+    username: ${SPRING_DATASOURCE_USERNAME:admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    driver-class-name: org.mariadb.jdbc.Driver
+    type: com.zaxxer.hikari.HikariDataSource
 
-#  jpa:
-#    database-platform: org.hibernate.dialect.MariaDBDialect
-#    hibernate:
-#      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
-#    show-sql: ${SHOW_SQL:false}
+  jpa:
+    database-platform: org.hibernate.dialect.MariaDBDialect
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SHOW_SQL:false}
 
   # 2. CẤU HÌNH MULTIPART (Giới hạn dung lượng file)
   servlet:
@@ -38,7 +38,7 @@ spring:
 
 # 4. CẤU HÌNH MINIO (Kết nối tới Object Storage)
 minio:
-  url: ${MINIO_SERVER_URL:http://localhost:9000}
+  url: ${MINIO_SERVER_URL:https://s3.kvbhust.id.vn}
   bucket: ${MINIO_BUCKET:smart-bin-system}
   access_key: ${MINIO_ACCESS_KEY:minioadmin}
   secret_key: ${MINIO_SECRET_KEY:minioadmin}

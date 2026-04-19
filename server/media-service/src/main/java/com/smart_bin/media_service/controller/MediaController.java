@@ -40,11 +40,12 @@ public class MediaController {
     @PostMapping("/presigned-upload")
     public ResponseEntity<ApiResponseFormat<Object>> createPresignedUploadUrl(
             @RequestParam("fileName") String fileName,
+            @RequestParam("contentType") String contentType,
             @RequestParam(value = "folder", required = false) String folder,
             @AuthenticationPrincipal Jwt jwt
     ) {
         String keycloakId = jwt.getSubject();
-        var response = mediaStorageService.createPresignedUploadUrl(keycloakId, fileName, folder);
+        var response = mediaStorageService.createPresignedUploadUrl(keycloakId, fileName, folder, contentType);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -52,15 +53,14 @@ public class MediaController {
     public ResponseEntity<ApiResponseFormat<Object>> createInternalPresignedUrl(
             @RequestHeader("x-internal-secret") String secret,
             @RequestParam("macAddress") String macAddress,
-            @RequestParam("fileName") String fileName
+            @RequestParam("fileName") String fileName,
+            @RequestParam("contentType") String contentType
     ) {
-        // 1. Kiểm tra khóa bí mật nội bộ
         if (!internalSecret.equals(secret)) {
             throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Invalid internal secret key");
         }
 
-        // 2. Cấp URL
-        var response = mediaStorageService.createInternalPresignedUploadUrl(macAddress, fileName);
+        var response = mediaStorageService.createInternalPresignedUploadUrl(macAddress, fileName, contentType);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
