@@ -5,19 +5,29 @@ spring:
   application:
     name: device-service
 
-  # 1. DATABASE RIÊNG CỦA DEVICE
+  # 1. DATABASE (Lưu trữ User Identity nội bộ)
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-device}
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
     username: ${SPRING_DATASOURCE_USERNAME:admin}
     password: ${SPRING_DATASOURCE_PASSWORD:admin}
     driver-class-name: org.mariadb.jdbc.Driver
     type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      connection-timeout: 20000
+      maximum-pool-size: 10
+      minimum-idle: 5
+      max-lifetime: 1200000
+      idle-timeout: 300000
+      leak-detection-threshold: 60000
 
   jpa:
     database-platform: org.hibernate.dialect.MariaDBDialect
     hibernate:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
     show-sql: ${SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: true
 
   # 2. REDIS (Có thể dùng lưu trạng thái online/offline của thiết bị siêu nhanh)
   data:
@@ -47,3 +57,10 @@ things-board:
   email: ${THINGS_BOARD_EMAIL:tenant@thingsboard.org}
   password: ${THINGS_BOARD_PASS:tenant}
   key: ${THINGS_BOARD_SECRET_KEY:MY_SUPPER_SECRET_KEY}
+
+app:
+  kafka:
+    topics:
+      send-noti: "device-notification-topic"
+  webhook:
+    allowed-ips: 127.0.0.1, 172.16.0.0/12, 192.168.0.0/16

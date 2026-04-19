@@ -1,5 +1,7 @@
 package com.smart_bin.device_service.service;
 
+import com.smart_bin.core.common.NotificationType;
+import com.smart_bin.core.dto.NotificationEventDto;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.DeviceStatus;
@@ -12,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.HmacUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate; // KAFKA thay thế cho NotificationService
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import tools.jackson.core.JacksonException;
@@ -30,9 +31,7 @@ public class ThingsBoardService {
     private final RestClient restClient;
     private final DeviceRepository repository;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    // SỬ DỤNG KAFKA để giao tiếp liên service
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaService kafkaService;
 
     @Value("${things-board.key}")
     private String secretKey;
@@ -40,11 +39,11 @@ public class ThingsBoardService {
     public ThingsBoardService(
             @Qualifier("tbRestClient") RestClient restClient,
             DeviceRepository repository,
-            KafkaTemplate<String, Object> kafkaTemplate
+            KafkaService kafkaService
     ) {
         this.restClient = restClient;
         this.repository = repository;
-        this.kafkaTemplate = kafkaTemplate;
+        this.kafkaService = kafkaService;
     }
 
     public JsonNode addDevice(String name, String type) {
@@ -139,7 +138,7 @@ public class ThingsBoardService {
 
             // GỬI KAFKA EVENT: Thiết bị Online
             sendNotificationEvent(ownerKeycloakId, "Device Online",
-                    "Smart bin " + device.getName() + " is now back online.", "DEVICE_ONLINE");
+                    "Smart bin " + device.getName() + " is now back online.", NotificationType.DEVICE_ONLINE);
 
         } else if (!request.active() && device.getStatus() == DeviceStatus.ONLINE) {
             device.setStatus(DeviceStatus.OFFLINE);
@@ -147,7 +146,7 @@ public class ThingsBoardService {
 
             // GỬI KAFKA EVENT: Thiết bị Offline
             sendNotificationEvent(ownerKeycloakId, "Device Offline",
-                    "Warning: Smart bin " + device.getName() + " has lost connection.", "DEVICE_OFFLINE");
+                    "Warning: Smart bin " + device.getName() + " has lost connection.", NotificationType.DEVICE_OFFLINE);
         }
 
         return "Status Processed";
@@ -187,7 +186,7 @@ public class ThingsBoardService {
                 String message = "Alarm '" + alarmType + "' was triggered for your bin: " + device.getName();
 
                 // GỬI KAFKA EVENT: Báo động (Rác đầy, cháy nổ...)
-                sendNotificationEvent(ownerKeycloakId, title, message, "SYSTEM_INFO");
+                sendNotificationEvent(ownerKeycloakId, title, message, NotificationType.SYSTEM_INFO);
 
                 log.info("Processed active alarm for device {}: {}", deviceId, alarmType);
             } else if (status.startsWith("CLEARED")) {
@@ -203,13 +202,15 @@ public class ThingsBoardService {
     }
 
     // Hàm tiện ích để gói dữ liệu và đẩy lên Kafka sạch sẽ hơn
-    private void sendNotificationEvent(String keycloakId, String title, String message, String type) {
-        Map<String, Object> eventPayload = new HashMap<>();
-        eventPayload.put("keycloakId", keycloakId);
-        eventPayload.put("title", title);
-        eventPayload.put("message", message);
-        eventPayload.put("type", type);
+    private void sendNotificationEvent(String keycloakId, String title, String message, NotificationType type) {
+        NotificationEventDto payload = new NotificationEventDto(
+                keycloakId,
+                title,
+                message,
+                type
+        );
 
-        kafkaTemplate.send("notification-events", eventPayload);
+        kafkaService.publishNotification(payload);
+//        kafkaTemplate.send("notification-events", eventPayload);
     }
 }

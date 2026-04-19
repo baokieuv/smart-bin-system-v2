@@ -1,8 +1,8 @@
 package com.smart_bin.device_service.service;
 
-import com.nimbusds.jose.shaded.gson.JsonObject;
-import com.nimbusds.jose.shaded.gson.JsonParser;
 import com.smart_bin.core.common.Constants;
+import com.smart_bin.core.common.NotificationType;
+import com.smart_bin.core.dto.NotificationEventDto;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.DeviceState;
@@ -18,23 +18,17 @@ import com.smart_bin.device_service.exception.DeviceErrorCode;
 import com.smart_bin.device_service.mapper.DeviceMapper;
 import com.smart_bin.device_service.repository.DetectionResultRepository;
 import com.smart_bin.device_service.repository.DeviceRepository;
-import com.smart_bin.device_service.utils.PemUtils;
-import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.kafka.core.KafkaTemplate; // THÊM KAFKA
+// THÊM KAFKA
 import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.security.PublicKey;
-import java.security.Signature;
-import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -43,7 +37,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class DeviceService {
-
     private final DeviceRepository repository;
     private final DeviceMapper mapper;
     private final ThingsBoardService thingsBoardService;
@@ -51,28 +44,13 @@ public class DeviceService {
     private final RedisTemplate<String, String> redisTemplate;
     private final ObjectMapper objectMapper;
     private final MediaServiceClient mediaServiceClient;
-
-    // THÊM: Dùng Kafka để bắn thông báo thay vì gọi trực tiếp NotificationService
-    private final KafkaTemplate<String, Object> kafkaTemplate;
-
-    @Value("classpath:public_key.pem")
-    private Resource publicKeyResource;
-
+    private final KafkaService kafkaService;
+    private final DeviceSecurityService securityService;
+//
+//    // THÊM: Dùng Kafka để bắn thông báo thay vì gọi trực tiếp NotificationService
+//    private final KafkaTemplate<String, Object> kafkaTemplate;
     @Value("${media-service.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
     private String internalSecret;
-
-    private PublicKey serverPublicKey;
-
-    @PostConstruct
-    public void init() {
-        try {
-            String path = publicKeyResource.getFile().getAbsolutePath();
-            this.serverPublicKey = PemUtils.readPublicKey(path);
-            log.info("RSA Public Key loaded successfully.");
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to load Public Key", e);
-        }
-    }
 
     @Transactional
     public DeviceDto addDevice(CreateDeviceRequest request, String keycloakId) {
@@ -197,18 +175,19 @@ public class DeviceService {
         device.setActive(false);
         repository.save(device);
 
-        // THAY THẾ: Bắn sự kiện lên Kafka để Noti Service nhận và gửi thông báo
-        Map<String, Object> eventPayload = new HashMap<>();
-        eventPayload.put("keycloakId", keycloakId);
-        eventPayload.put("title", "Device Deleted");
-        eventPayload.put("message", "The device " + device.getName() + " has been successfully removed.");
-        eventPayload.put("type", "DEVICE_DELETED");
+        NotificationEventDto payload = new NotificationEventDto(
+                keycloakId,
+                "Device Deleted",
+                "The device " + device.getName() + " has been successfully removed.",
+                NotificationType.DEVICE_DELETED
+        );
 
-        kafkaTemplate.send("notification-events", eventPayload);
+        kafkaService.publishNotification(payload);
+//        kafkaTemplate.send("notification-events", eventPayload);
     }
 
     public DeviceDto activateDevice(String payload, String signature){
-        String mac = verifySignature(payload, signature);
+        String mac = securityService.verifyAndExtractMac(payload, signature);
 
         Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
                 new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
@@ -223,20 +202,20 @@ public class DeviceService {
         String key = Constants.PENDING_DEVICE_PREFIX + savedDevice.getKeycloakId() + ":" + savedDevice.getId();
         redisTemplate.delete(key);
 
-        // THAY THẾ: Bắn sự kiện lên Kafka
-        Map<String, Object> eventPayload = new HashMap<>();
-        eventPayload.put("keycloakId", savedDevice.getKeycloakId());
-        eventPayload.put("title", "Device Created");
-        eventPayload.put("message", "Successfully provisioned new smart bin: " + device.getName());
-        eventPayload.put("type", "DEVICE_CREATED");
+        NotificationEventDto payloadNoti = new NotificationEventDto(
+                savedDevice.getKeycloakId(),
+                "Device Created",
+                "Successfully provisioned new smart bin: " + device.getName(),
+                NotificationType.DEVICE_CREATED
+        );
 
-        kafkaTemplate.send("notification-events", eventPayload);
+        kafkaService.publishNotification(payloadNoti);
 
         return mapper.toDto(savedDevice);
     }
 
     public DeviceDto getAccessToken(String payload, String signature){
-        String mac = verifySignature(payload, signature);
+        String mac = securityService.verifyAndExtractMac(payload, signature);
 
         Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
                 new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
@@ -261,7 +240,7 @@ public class DeviceService {
     public String getPresignedUrl(String payload, String signature, String metadata) {
         try {
             DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
-            String mac = verifySignature(payload, signature);
+            String mac = securityService.verifyAndExtractMac(payload, signature);
 
             JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
                     internalSecret,
@@ -302,7 +281,7 @@ public class DeviceService {
     public String confirmUpload(String payload, String signature, String metadata){
         try {
             DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
-            String mac = verifySignature(payload, signature);
+            String mac = securityService.verifyAndExtractMac(payload, signature);
 
             Device device = repository.findByMacAndActiveTrue(mac)
                     .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
@@ -339,36 +318,5 @@ public class DeviceService {
             throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
         }
         return device;
-    }
-
-    private String verifySignature(String payload, String signature){
-        try {
-            byte[] digitalSignature = Base64.getDecoder().decode(signature);
-            Signature verify = Signature.getInstance("SHA256withRSA");
-            verify.initVerify(serverPublicKey);
-            verify.update(payload.getBytes("UTF-8"));
-
-            if (!verify.verify(digitalSignature)) {
-                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
-            }
-
-            JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
-            String mac = obj.get("mac").getAsString();
-            long timestamp = obj.get("timestamp").getAsLong();
-            long now = Instant.now().toEpochMilli();
-
-            if (now - timestamp > Constants.TIMESTAMP_EXPIRY) {
-                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
-            }
-
-            return mac;
-        }
-        catch (ApiException ex){
-            throw ex;
-        }
-        catch (Exception e) {
-            log.error("Verification error: ", e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Signature verification failed");
-        }
     }
 }
