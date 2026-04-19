@@ -7,6 +7,8 @@ services:
     environment:
         MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
         MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+        MINIO_SERVER_URL: ${MINIO_SERVER_URL}
+        MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL}
     volumes:
         - ./minio_data:/data
     command: server /data --console-address ":9001"
@@ -114,6 +116,7 @@ services:
   kafka:
     image: apache/kafka:3.7.0
     container_name: kafka_smart_bin
+    user: root
     restart: unless-stopped
     ports:
       - "9092:9092"
@@ -124,7 +127,7 @@ services:
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       # Fix lỗi single node khi tạo topic mặc định
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1

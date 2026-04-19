@@ -1,12 +1,16 @@
 package com.smart_bin.noti_service.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smart_bin.core.common.EmailType;
 import com.smart_bin.core.dto.EmailEventDto;
+import com.smart_bin.core.dto.NotificationEventDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
+
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -14,38 +18,35 @@ import org.springframework.stereotype.Service;
 public class KafkaService {
 
     private final EmailService emailService;
+    private final NotificationService notificationService;
+    private final ObjectMapper objectMapper; // ✅ thêm
 
     @KafkaListener(topics = "${app.kafka.topics.send-email}", groupId = "${spring.kafka.consumer.group-id:notification-group}")
-    public void consumeEmailEvent(EmailEventDto emailEventDto) {
-        log.info("Nhận được yêu cầu gửi email. Loại: {}", emailEventDto.emailType());
-
+    public void consumeEmailEvent(@Payload Map<String, Object> raw) { // ✅ thêm @Payload + dùng Map
         try {
+            EmailEventDto emailEventDto = objectMapper.convertValue(raw, EmailEventDto.class);
+
+            log.info("Nhận được yêu cầu gửi email. Loại: {}", emailEventDto.emailType());
+
             EmailType type = emailEventDto.emailType();
-            JsonNode data = emailEventDto.data();
+            Map<String, Object> data = emailEventDto.data();
 
-            // Lấy các trường dữ liệu chung
-            String toEmail = data.get("email").asText();
-            String firstName = data.has("fullName") ? data.get("fullName").asText() : "User";
+            String toEmail = data.get("email").toString();
+            String firstName = data.containsKey("fullName") ? data.get("fullName").toString() : "User";
 
-            // Phân luồng logic gửi email dựa trên EmailType
             switch (type) {
                 case VERIFICATION:
-                    String activationCode = data.get("activationCode").asText();
-                    emailService.sendVerificationEmail(toEmail, firstName, activationCode);
+                    emailService.sendVerificationEmail(toEmail, firstName, data.get("activationCode").toString());
                     break;
-
                 case WELCOME:
                     emailService.sendWelcomeEmail(toEmail, firstName);
                     break;
-
                 case RESET_PASSWORD:
-                    String resetToken = data.get("activationCode").asText();
-                    emailService.sendPasswordResetEmail(toEmail, firstName, resetToken);
+                    emailService.sendPasswordResetEmail(toEmail, firstName, data.get("activationCode").toString());
                     break;
-
                 default:
                     log.warn("Không hỗ trợ loại email này: {}", type);
-                    return; // Thoát nếu không hợp lệ
+                    return;
             }
 
             log.info("Xử lý gửi email {} thành công cho: {}", type, toEmail);
@@ -53,6 +54,18 @@ public class KafkaService {
         } catch (Exception e) {
             log.error("Lỗi khi xử lý event gửi email: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to consume email event", e);
+        }
+    }
+
+    @KafkaListener(topics = "${app.kafka.topics.send-noti}", groupId = "${spring.kafka.consumer.group-id:notification-group}")
+    public void consumeNotificationEvent(@Payload Map<String, Object> raw) { // ✅ thêm @Payload
+        try {
+            NotificationEventDto dto = objectMapper.convertValue(raw, NotificationEventDto.class);
+            log.info("Nhận được yêu cầu gửi thông báo. Loại: {}", dto.type());
+            notificationService.createAndSendNotification(dto.keycloakId(), dto.title(), dto.message(), dto.type());
+        } catch (Exception e) {
+            log.error("Lỗi khi xử lý event gửi thông báo: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to consume notification event", e);
         }
     }
 }

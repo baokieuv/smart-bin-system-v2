@@ -1,7 +1,7 @@
 package com.smart_bin.noti_service.entity;
 
+import com.smart_bin.core.common.NotificationType;
 import com.smart_bin.core.entity.BaseEntity;
-import com.smart_bin.noti_service.common.NotificationType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

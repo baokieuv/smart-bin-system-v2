@@ -1,8 +1,8 @@
 package com.smart_bin.noti_service.service;
 
+import com.smart_bin.core.common.NotificationType;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
-import com.smart_bin.noti_service.common.NotificationType;
 import com.smart_bin.noti_service.dto.request.MarkNotiRequest;
 import com.smart_bin.noti_service.dto.response.NotificationDto;
 import com.smart_bin.noti_service.entity.Notification;

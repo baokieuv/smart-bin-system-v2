@@ -1,28 +1,34 @@
 package com.smart_bin.noti_service.config;
 
-import com.fasterxml.jackson.databind.JsonSerializer;
-import com.fasterxml.jackson.databind.ser.std.StringSerializer;
 import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.*;
+import org.springframework.kafka.support.mapping.DefaultJacksonJavaTypeMapper;
+import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
+import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.TopicBuilder;
-import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.support.converter.RecordMessageConverter;
+import org.springframework.kafka.support.converter.JacksonJsonMessageConverter;
 
 import java.util.HashMap;
 import java.util.Map;
 
-//@EnableKafka
+@EnableKafka
 @Configuration
 public class KafkaConfig {
-    @Value("${app.kafka.topics.send-email}")
-    private String userCreatedTopic;
-
     @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
     private String bootstrapServers;
+
+    @Value("${spring.kafka.consumer.group-id:notification-group}")
+    private String groupId;
 
     @Bean
     public ProducerFactory<String, Object> producerFactory() {
@@ -31,7 +37,7 @@ public class KafkaConfig {
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
 
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JacksonJsonSerializer.class);
 
         return new DefaultKafkaProducerFactory<>(configProps);
     }
@@ -42,10 +48,41 @@ public class KafkaConfig {
     }
 
     @Bean
-    public NewTopic userCreatedTopicBean() {
-        return TopicBuilder.name(userCreatedTopic)
-                .partitions(1)
-                .replicas(1)
-                .build();
+    public RecordMessageConverter converter() {
+        JacksonJsonMessageConverter converter = new JacksonJsonMessageConverter();
+
+        // 1. Tạo một TypeMapper mới
+        DefaultJacksonJavaTypeMapper typeMapper = new DefaultJacksonJavaTypeMapper();
+
+        // 2. Thêm package của bạn vào danh sách tin cậy (Trust List)
+        // Dấu "*" nghĩa là tin tưởng tất cả các package.
+        // Nếu muốn bảo mật hơn, bạn có thể gõ "com.smart_bin.*"
+        typeMapper.addTrustedPackages("*");
+
+        // 3. Gắn TypeMapper vào Converter
+        converter.setTypeMapper(typeMapper);
+
+        return converter;
+    }
+
+    @Bean
+    public ConsumerFactory<String, Object> consumerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JacksonJsonDeserializer.class);
+        props.put(JacksonJsonDeserializer.TRUSTED_PACKAGES, "*");
+        props.put(JacksonJsonDeserializer.USE_TYPE_INFO_HEADERS, false); // ✅ Không dùng type header
+        props.put(JacksonJsonDeserializer.VALUE_DEFAULT_TYPE, "java.lang.Object"); // ✅ Mỗi listener tự cast
+        return new DefaultKafkaConsumerFactory<>(props);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        return factory;
     }
 }

@@ -1,6 +1,6 @@
 package com.smart_bin.noti_service.dto.response;
 
-import com.smart_bin.noti_service.common.NotificationType;
+import com.smart_bin.core.common.NotificationType;
 
 import java.time.Instant;
 
