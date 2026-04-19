@@ -29,23 +29,24 @@ public class MediaController {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponseFormat<Object>> uploadFile(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "folder", required = false) String folder,
+            @RequestParam(value = "folder", required = false, defaultValue = "") String folder,
+            @RequestParam(value = "oldObjectName", required = false) String oldObjectName,
             @AuthenticationPrincipal Jwt jwt
     ) {
         String keycloakId = jwt.getSubject();
-        var response = mediaStorageService.uploadFile(keycloakId, file, folder);
+        var response = mediaStorageService.uploadFile(keycloakId, file, folder, oldObjectName);
         return responseFactory.response(SuccessCode.CREATED, response);
     }
 
     @PostMapping("/presigned-upload")
     public ResponseEntity<ApiResponseFormat<Object>> createPresignedUploadUrl(
-            @RequestParam("fileName") String fileName,
+            @RequestParam(value = "folder", required = false, defaultValue = "") String folder,
+            @RequestParam(value = "oldObjectName", required = false) String oldObjectName,
             @RequestParam("contentType") String contentType,
-            @RequestParam(value = "folder", required = false) String folder,
             @AuthenticationPrincipal Jwt jwt
     ) {
         String keycloakId = jwt.getSubject();
-        var response = mediaStorageService.createPresignedUploadUrl(keycloakId, fileName, folder, contentType);
+        var response = mediaStorageService.createPresignedUploadUrl(keycloakId, folder, oldObjectName, contentType);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

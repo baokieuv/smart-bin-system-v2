@@ -62,30 +62,31 @@ public class MediaStorageService {
                 );
                 log.info("Created MinIO bucket: {}", bucketName);
             } else {
-                log.info("ℹMinIO bucket already exists: {}", bucketName);
+                log.info("ℹ MinIO bucket already exists: {}", bucketName);
             }
         } catch (Exception e) {
             log.error("Failed to initialize MinIO bucket: {}", e.getMessage());
         }
     }
 
-    public UploadFileResponse uploadFile(String keycloakId, MultipartFile file, String folder) {
+    public UploadFileResponse uploadFile(String keycloakId, MultipartFile file, String folder, String oldObjectName) {
         validateFile(file);
 
-        String objectName = buildObjectName(keycloakId, folder, file.getContentType());
+        // Sinh ra tên file hợp lý dựa trên logic
+        String finalObjectName = determineFinalObjectName(keycloakId, folder, oldObjectName, file.getContentType());
 
         try {
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucketName)
-                            .object(objectName)
+                            .object(finalObjectName)
                             .stream(file.getInputStream(), file.getSize(), -1)
                             .contentType(file.getContentType())
                             .build()
             );
 
-            String objectUrl = String.format("%s/%s/%s", minioUrl, bucketName, objectName);
-            return new UploadFileResponse(objectName, objectUrl, file.getContentType(), file.getSize());
+            String objectUrl = String.format("%s/%s/%s", minioUrl, bucketName, finalObjectName);
+            return new UploadFileResponse(finalObjectName, objectUrl, file.getContentType(), file.getSize());
         } catch (ApiException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -93,43 +94,41 @@ public class MediaStorageService {
         }
     }
 
-    public PresignedUrlResponse createPresignedUploadUrl(String keycloakId, String fileName, String folder, String contentType) {
-        if (!StringUtils.hasText(fileName) || !StringUtils.hasText(contentType)) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "fileName and contentType are required");
+    public PresignedUrlResponse createPresignedUploadUrl(String keycloakId, String folder, String oldObjectName, String contentType) {
+        if (!StringUtils.hasText(contentType)) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "contentType is required");
         }
 
         if (!allowedMimeTypes().contains(contentType.trim().toLowerCase(Locale.ROOT))) {
             throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
         }
 
-        String objectName = buildObjectName(keycloakId, folder, contentType);
+        // Sinh ra tên file hợp lý dựa trên logic
+        String finalObjectName = determineFinalObjectName(keycloakId, folder, oldObjectName, contentType);
 
         try {
             String url = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.PUT)
                             .bucket(bucketName)
-                            .object(objectName)
+                            .object(finalObjectName)
                             .expiry(uploadUrlExpiryMinutes, TimeUnit.MINUTES)
                             .build()
             );
-            return new PresignedUrlResponse(objectName, url, uploadUrlExpiryMinutes * 60);
+            return new PresignedUrlResponse(finalObjectName, url, uploadUrlExpiryMinutes * 60);
         } catch (Exception ex) {
             throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Generate presigned upload URL failed");
         }
     }
 
     public PresignedUrlResponse createPresignedDownloadUrl(String keycloakId, String objectName) {
-
         String fullObjectName = resolveUserObjectName(keycloakId, objectName);
 
+        if (!isObjectExist(fullObjectName)) {
+            throw new ApiException(CoreErrorCode.RESOURCE_NOT_FOUND);
+        }
+
         try {
-            minioClient.statObject(
-                    StatObjectArgs.builder()
-                            .bucket(bucketName)
-                            .object(fullObjectName)
-                            .build()
-            );
             String url = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
@@ -139,10 +138,6 @@ public class MediaStorageService {
                             .build()
             );
             return new PresignedUrlResponse(fullObjectName, url, downloadUrlExpiryMinutes * 60);
-        } catch (io.minio.errors.ErrorResponseException ex) {
-            throw new ApiException(CoreErrorCode.RESOURCE_NOT_FOUND);
-        } catch (ApiException ex) {
-            throw ex;
         } catch (Exception ex) {
             throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Generate presigned download URL failed");
         }
@@ -191,12 +186,9 @@ public class MediaStorageService {
         if (!StringUtils.hasText(fileName) || !StringUtils.hasText(macAddress) || !StringUtils.hasText(contentType)) {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "fileName, macAddress and contentType are required");
         }
-
         if (!allowedMimeTypes().contains(contentType.trim().toLowerCase(Locale.ROOT))) {
             throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
         }
-
-        // Tạo objectName chuẩn: devices/{macAddress}/{uuid}_filename.jpg
         String safeMac = macAddress.replace(":", "").replace("-", "");
         String objectName = "devices/" + safeMac + "/" + Constants.generateFileName(contentType, "");
 
@@ -217,41 +209,64 @@ public class MediaStorageService {
 
     private void validateFile(MultipartFile file) {
         try {
-            if (file == null || file.isEmpty()) {
-                throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
-            }
-
-            if (file.getSize() > maxFileSizeBytes) {
-                throw new ApiException(CoreErrorCode.FILE_TOO_LARGE);
-            }
-
+            if (file == null || file.isEmpty()) throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
+            if (file.getSize() > maxFileSizeBytes) throw new ApiException(CoreErrorCode.FILE_TOO_LARGE);
             String originalFileName = sanitizeFileName(file.getOriginalFilename());
-            if (!StringUtils.hasText(originalFileName)) {
-                throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
-            }
-
+            if (!StringUtils.hasText(originalFileName)) throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
             try (InputStream inputStream = file.getInputStream()) {
                 String detectedMimeType = tika.detect(inputStream);
                 if (!allowedMimeTypes().contains(detectedMimeType.toLowerCase(Locale.ROOT))) {
                     throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
                 }
             }
-        } catch (ApiException ex) {
-            throw ex;
-        } catch (Exception ex) {
-            throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
-        }
+        } catch (ApiException ex) { throw ex; }
+        catch (Exception ex) { throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID); }
     }
 
-    private String buildObjectName(String keycloakId, String folder, String contentType) {
-        String userPrefix = userPrefix(keycloakId);
-        String normalizedFolder = normalizePrefix(folder);
-        String uniqueName = Constants.generateFileName(contentType, "");
+    // ==========================================
+    // HÀM XỬ LÝ LOGIC CHÍNH: TẠO MỚI HOẶC GHI ĐÈ
+    // ==========================================
+    private String determineFinalObjectName(String keycloakId, String folder, String oldObjectName, String contentType) {
 
-        if (!normalizedFolder.isBlank()) {
-            return userPrefix + normalizedFolder + uniqueName;
+        // TRƯỜNG HỢP 1: Có truyền tên file cũ -> Kiểm tra tồn tại để ghi đè
+        if (StringUtils.hasText(oldObjectName)) {
+            String safeOldName = resolveUserObjectName(keycloakId, oldObjectName);
+
+            if (isObjectExist(safeOldName)) {
+                log.info("Object exists, generating URL to OVERWRITE: {}", safeOldName);
+                return safeOldName;
+            } else {
+                log.warn("Old object not found, switching to CREATE NEW workflow.");
+            }
         }
-        return userPrefix + uniqueName;
+
+        // TRƯỜNG HỢP 2: Không truyền oldObjectName (hoặc file cũ bị xóa mất) -> TẠO MỚI
+        String userPrefix = userPrefix(keycloakId);
+        String folderPath = "";
+
+        if (StringUtils.hasText(folder)) {
+            folderPath = normalizePrefix(folder);
+            // Thêm dấu "/" vào cuối folder để rẽ nhánh đúng vào thư mục, không bị dính liền tên
+            if (!folderPath.isEmpty() && !folderPath.endsWith("/")) {
+                folderPath += "/";
+            }
+        }
+
+        // Kết quả: users/123/ + avatar/ + uuid.jpg
+        String newObjectName = userPrefix + folderPath + Constants.generateFileName(contentType, "");
+        log.info("Generating URL for NEW file: {}", newObjectName);
+        return newObjectName;
+    }
+
+    private boolean isObjectExist(String objectName) {
+        try {
+            minioClient.statObject(StatObjectArgs.builder().bucket(bucketName).object(objectName).build());
+            return true;
+        } catch (io.minio.errors.ErrorResponseException e) {
+            return false; // Trả về false nếu không tìm thấy file
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private String resolveUserObjectName(String keycloakId, String objectName) {
@@ -260,10 +275,16 @@ public class MediaStorageService {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "objectName is required");
         }
 
+        // Tự động gọt bỏ phần domain hoặc bucket name bị thừa ở phía trước (nếu có)
+        if (normalized.startsWith(bucketName + "/")) {
+            normalized = normalized.substring(bucketName.length() + 1);
+        }
+
         String userPrefix = userPrefix(keycloakId);
         if (normalized.startsWith(userPrefix)) {
             return normalized;
         }
+
         return userPrefix + normalized;
     }
 
@@ -275,35 +296,22 @@ public class MediaStorageService {
     }
 
     private String normalizePrefix(String input) {
-        if (!StringUtils.hasText(input)) {
-            return "";
-        }
+        if (!StringUtils.hasText(input)) return "";
 
         String cleaned = StringUtils.cleanPath(input).replace('\\', '/').trim();
-        if (cleaned.startsWith("/")) {
-            cleaned = cleaned.substring(1);
-        }
-        if (cleaned.contains("..")) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Path traversal is not allowed");
-        }
-        if (!cleaned.isEmpty() && !cleaned.endsWith("/")) {
-            cleaned = cleaned + "/";
-        }
+        if (cleaned.startsWith("/")) cleaned = cleaned.substring(1);
+        if (cleaned.contains("..")) throw new ApiException(CoreErrorCode.BAD_REQUEST, "Path traversal is not allowed");
+
+        // Đã sửa để file và folder xử lý độc lập, không ép buộc thêm dấu "/" cuối cùng
         return cleaned;
     }
 
     private String sanitizeFileName(String fileName) {
-        if (!StringUtils.hasText(fileName)) {
-            return "";
-        }
+        if (!StringUtils.hasText(fileName)) return "";
         String cleaned = StringUtils.cleanPath(Objects.requireNonNull(fileName)).replace('\\', '/');
-        if (cleaned.contains("..")) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid file name");
-        }
+        if (cleaned.contains("..")) throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid file name");
         int slashIndex = cleaned.lastIndexOf('/');
-        if (slashIndex >= 0) {
-            cleaned = cleaned.substring(slashIndex + 1);
-        }
+        if (slashIndex >= 0) cleaned = cleaned.substring(slashIndex + 1);
         return cleaned;
     }
 
@@ -312,9 +320,7 @@ public class MediaStorageService {
         Set<String> result = new HashSet<>();
         for (String value : values) {
             String normalized = value.trim().toLowerCase(Locale.ROOT);
-            if (!normalized.isEmpty()) {
-                result.add(normalized);
-            }
+            if (!normalized.isEmpty()) result.add(normalized);
         }
         return result;
     }

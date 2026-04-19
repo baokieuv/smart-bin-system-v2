@@ -143,6 +143,17 @@ const toNumber = (value: string | undefined) => {
     return Number.isNaN(parsed) ? null : parsed;
 };
 
+const withAvatarCacheBuster = (avatarUrl?: string) => {
+    if (!avatarUrl) return avatarUrl;
+
+    const sanitizedUrl = usersApi.sanitizeAvatarUrl(avatarUrl);
+    if (!sanitizedUrl) return avatarUrl;
+
+    const randomVersion = Math.floor(Math.random() * 1_000_000_000);
+    const separator = sanitizedUrl.includes('?') ? '&' : '?';
+    return `${sanitizedUrl}${separator}v=${randomVersion}`;
+};
+
 const getLatestTelemetryPoint = (telemetries: DeviceTelemetries, keys: string[]) => {
     const points = keys.flatMap((key) => telemetries[key] ?? []);
     if (points.length === 0) return null;
@@ -218,7 +229,10 @@ export default function DashboardPage() {
             try {
                 const response = await usersApi.me();
                 if (response.success) {
-                    setUserInfo(response.data);
+                    setUserInfo({
+                        ...response.data,
+                        avatarUrl: withAvatarCacheBuster(response.data.avatarUrl),
+                    });
 
                     setIsDeviceLoading(true);
                     try {
@@ -376,22 +390,63 @@ export default function DashboardPage() {
             }
 
             const croppedFile = new File([croppedBlob], 'avatar.jpg', { type: 'image/jpeg' });
-            const formData = new FormData();
-            formData.append('file', croppedFile);
+            const hasAvatar = Boolean(userInfo?.avatarUrl?.trim());
+            let newAvatarUrl = '';
 
-            const response = await usersApi.uploadImage(formData);
+            if (!hasAvatar) {
+                const presignedResponse = await usersApi.createAvatarPresignedUploadUrl(croppedFile.type, {
+                    folder: 'avatar',
+                });
+                if (!presignedResponse.success) {
+                    pushToast(presignedResponse.message || 'Failed to update avatar.', 'error');
+                    return;
+                }
 
-            if (response.success) {
-                const newAvatarUrl = response.data.replace(/^"|"$/g, '');
-                const timestamp = Date.now();
-                const separator = newAvatarUrl.includes('?') ? '&' : '?';
-                const finalAvatarUrl = `${newAvatarUrl}${separator}t=${timestamp}`;
+                await usersApi.uploadToPresignedUrl(presignedResponse.data.url, croppedFile, croppedFile.type);
+
+                const persistedAvatarUrl = usersApi.toPublicObjectUrlFromPresignedUrl(presignedResponse.data.url);
+                const updateResponse = await usersApi.update({
+                    firstName: userInfo?.firstName,
+                    lastName: userInfo?.lastName,
+                    avatarUrl: persistedAvatarUrl,
+                });
+
+                if (!updateResponse.success) {
+                    pushToast(updateResponse.message || 'Avatar uploaded but user profile update failed.', 'error');
+                    return;
+                }
+
+                newAvatarUrl = persistedAvatarUrl;
+            } else {
+                const currentAvatarUrl = usersApi.sanitizeAvatarUrl(userInfo?.avatarUrl || '');
+                const objectName = usersApi.toObjectNameFromAvatarUrl(userInfo?.avatarUrl || '');
+
+                if (!objectName) {
+                    pushToast('Invalid avatar path. Please refresh and try again.', 'error');
+                    return;
+                }
+
+                const response = await usersApi.createAvatarPresignedUploadUrl(croppedFile.type, {
+                    folder: 'avatar',
+                    oldObjectName: objectName,
+                });
+                if (!response.success) {
+                    pushToast(response.message || 'Failed to update avatar.', 'error');
+                    return;
+                }
+
+                await usersApi.uploadToPresignedUrl(response.data.url, croppedFile, croppedFile.type);
+                newAvatarUrl = currentAvatarUrl || objectName;
+            }
+
+            if (newAvatarUrl) {
+                const finalAvatarUrl = withAvatarCacheBuster(newAvatarUrl);
 
                 setUserInfo((prev) => (prev ? { ...prev, avatarUrl: finalAvatarUrl } : prev));
                 setImageSrc(null);
                 pushToast('Avatar updated successfully.', 'success');
             } else {
-                pushToast(response.message || 'Failed to update avatar.', 'error');
+                pushToast('Failed to update avatar.', 'error');
             }
         } catch {
             pushToast('Failed to update avatar.', 'error');
