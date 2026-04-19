@@ -22,7 +22,6 @@ public class EmailService {
         this.mailSender = mailSender;
     }
 
-    @Async("emailExecutor")
     public void sendVerificationEmail(String toEmail, String firstName, String token){
         try{
             MimeMessage message = mailSender.createMimeMessage();
@@ -89,7 +88,6 @@ public class EmailService {
            \s""".formatted(firstName, verifyLink, verifyLink);
     }
 
-    @Async("emailExecutor")
     public void sendWelcomeEmail(String toEmail, String firstName) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -154,7 +152,6 @@ public class EmailService {
            \s""".formatted(firstName);
     }
 
-    @Async("emailExecutor")
     public void sendPasswordResetEmail(String toEmail, String firstName, String resetToken){
         try{
             MimeMessage message = mailSender.createMimeMessage();
