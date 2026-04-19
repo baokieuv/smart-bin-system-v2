@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.common.EmailType;
 import com.smart_bin.core.exception.ApiException;
+import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.common.TokenType;
 import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.ResendVerificationRequest;
@@ -134,8 +135,18 @@ public class UserService {
         User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
-        user.setFirstName(request.firstName());
-        user.setLastName(request.lastName());
+        if (request.firstName() != null && !request.firstName().isBlank()) {
+            user.setFirstName(request.firstName());
+        }
+        if (request.lastName() != null) {
+            user.setLastName(request.lastName());
+        }
+        if (request.avatarUrl() != null && !request.avatarUrl().isBlank()) {
+            if (!request.avatarUrl().startsWith("https://s3.kvbhust.id.vn")) {
+                throw new ApiException(CoreErrorCode.BAD_REQUEST, "Avatar URL không hợp lệ");
+            }
+            user.setAvatarUrl(request.avatarUrl());
+        }
 
         User savedUser = userRepository.save(user);
 

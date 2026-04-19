@@ -1,6 +1,5 @@
 package com.smart_bin.iam_service.serivce;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.smart_bin.iam_service.dto.auth.request.LoginRequest;
 import com.smart_bin.iam_service.dto.auth.response.TokenResponse;
 import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
@@ -17,6 +16,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class KeycloakService {
@@ -204,23 +204,25 @@ public class KeycloakService {
 
     // --- Hàm hỗ trợ dùng chung để giảm lặp code (DRY) ---
     private TokenResponse fetchToken(MultiValueMap<String, String> body) {
-        JsonNode responseNode = restClient.post()
+        // Sửa JsonNode.class thành Map.class
+        Map response = restClient.post()
                 .uri(serverUrl + "/realms/" + realm + "/protocol/openid-connect/token")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(body)
                 .retrieve()
-                .body(JsonNode.class);
+                .body(Map.class); // Thay đổi ở đây
 
-        if (responseNode == null) {
+        if (response == null) {
             throw new RuntimeException("Empty response from Keycloak");
         }
 
+        // Lấy dữ liệu từ Map (ép kiểu an toàn)
         return new TokenResponse(
-                responseNode.path("access_token").asText(),
-                responseNode.path("refresh_token").asText(),
-                responseNode.path("expires_in").asInt(),
-                responseNode.path("refresh_expires_in").asInt(),
-                responseNode.path("token_type").asText()
+                (String) response.get("access_token"),
+                (String) response.get("refresh_token"),
+                (Integer) response.get("expires_in"),
+                (Integer) response.get("refresh_expires_in"),
+                (String) response.get("token_type")
         );
     }
 }
