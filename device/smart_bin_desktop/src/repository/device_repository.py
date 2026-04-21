@@ -52,24 +52,38 @@ class DeviceClient:
         
         return ok, payload_str, signature_or_error
 
-    def _signed_json_headers(self, signature: str) -> dict[str, str]:
+    def _signed_json_headers(
+        self,
+        signature: str,
+        signature_header: str = "X-Signature",
+        metadata_header: str | None = None,
+    ) -> dict[str, str]:
         """Build standard headers for signed backend requests."""
-        return {
-            "X-Signature": signature,
+        headers = {
+            signature_header: signature,
             "Content-Type": "application/json",
         }
+        if metadata_header is not None:
+            headers["metadata"] = metadata_header
+        return headers
 
     def _post_signed_request(
         self,
         path: str,
         params: dict[str, Any] | None = None,
+        signature_header: str = "X-Signature",
+        metadata_header: str | None = None,
     ) -> tuple[bool, HttpResponse | str]:
         """Send signed POST request where body must match signed payload exactly."""
         ok, payload_str, signature_or_error = self._generate_payload_and_signature()
         if not ok:
             return False, signature_or_error
 
-        headers = self._signed_json_headers(signature_or_error)
+        headers = self._signed_json_headers(
+            signature_or_error,
+            signature_header=signature_header,
+            metadata_header=metadata_header,
+        )
         url = f"{self.base_url}/{path}"
 
         try:
@@ -201,9 +215,11 @@ class DeviceClient:
         content_type: str,
     ) -> tuple[bool, dict | str]:
         """Request a presigned URL from backend to upload one detection image."""
+        metadata_header = json.dumps(metadata, separators=(',', ':'))
         ok, response_or_error = self._post_signed_request(
-            "get-presigned-url",
-            params={"metadata": json.dumps(metadata)},
+            "presigned-url",
+            signature_header="X-Signature",
+            metadata_header=metadata_header,
         )
         if not ok:
             return False, response_or_error
@@ -284,9 +300,10 @@ class DeviceClient:
         upload_info: dict,
     ) -> tuple[bool, dict | str]:
         """Confirm to backend that file upload via presigned URL completed."""
+        metadata_query = json.dumps(metadata, separators=(',', ':'))
         ok, response_or_error = self._post_signed_request(
             "confirm-upload",
-            params={"metadata": json.dumps(metadata)},
+            metadata_header=metadata_query
         )
         if not ok:
             return False, response_or_error

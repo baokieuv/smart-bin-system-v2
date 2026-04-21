@@ -116,7 +116,7 @@ public class DeviceController {
 
     @PostMapping("/presigned-url")
     public ResponseEntity<ApiResponseFormat<Object>> getPresignedUrl(
-            @RequestHeader("signature") String signature,
+            @RequestHeader("X-Signature") String signature,
             @RequestHeader("metadata") String metadata,
             @RequestBody String payload
     ) {
@@ -126,7 +126,7 @@ public class DeviceController {
 
     @PostMapping(value = "/confirm-upload")
     public ResponseEntity<ApiResponseFormat<Object>> confirmUpload(
-            @RequestParam("metadata") String metadata,
+            @RequestHeader("metadata") String metadata,
             @RequestBody String payload,
             @RequestHeader("X-Signature") String signature
     ){

@@ -322,11 +322,8 @@ class MainViewModel(QObject):
             self.telemetry_timer.stop()
             self.access_token = None
 
-            error_code = self._extract_error_code(result)
-            if error_code == "AVT3010":
-                self.state_activation_required.emit(True, "Device is not activated. Press Activate to continue.")
-            else:
-                self.state_activation_required.emit(False, "")
+            activation_message = self._build_activation_hint_message(result)
+            self.state_activation_required.emit(True, activation_message)
 
             if not self.access_token_retry_timer.isActive():
                 self.access_token_retry_timer.start()
@@ -338,6 +335,10 @@ class MainViewModel(QObject):
             self.logger.warning("No access token in response, telemetry disabled")
             self.telemetry_timer.stop()
             self.access_token = None
+            self.state_activation_required.emit(
+                True,
+                "No access token available. Press Activate Device, then the app will retry automatically every 5 minutes.",
+            )
             if not self.access_token_retry_timer.isActive():
                 self.access_token_retry_timer.start()
             return
@@ -358,6 +359,13 @@ class MainViewModel(QObject):
         if not success:
             self.logger.warning("Telemetry failed, stopping telemetry loop: %s", message)
             self.telemetry_timer.stop()
+            self.access_token = None
+            self.state_activation_required.emit(
+                True,
+                "Access token is not available. Press Activate Device, app will retry get-access-token every 5 minutes.",
+            )
+            if not self.access_token_retry_timer.isActive():
+                self.access_token_retry_timer.start()
             return
 
         self.logger.info("Telemetry sent successfully")
@@ -391,8 +399,12 @@ class MainViewModel(QObject):
         if isinstance(result, dict):
             code = result.get("code")
             return str(code).upper() if code else None
-        if isinstance(result, str) and "AVT3010" in result.upper():
-            return "AVT3010"
+        if isinstance(result, str):
+            normalized = result.upper()
+            if "AVT3010" in normalized:
+                return "AVT3010"
+            if "DEVICE NOT FOUND" in normalized or "DEVICE_NOT_FOUND" in normalized:
+                return "DEVICE_NOT_FOUND"
         return None
 
     def _extract_error_message(self, result) -> str:
@@ -400,6 +412,33 @@ class MainViewModel(QObject):
         if isinstance(result, dict):
             return str(result.get("message") or result.get("code") or "Unknown error")
         return str(result)
+
+    def _is_device_not_active_error(self, result) -> bool:
+        """Identify backend response indicating this device exists but is not active."""
+        if self._extract_error_code(result) == "AVT3010":
+            return True
+
+        message = self._extract_error_message(result).lower()
+        return "not active" in message or "not activated" in message
+
+    def _is_device_not_found_error(self, result) -> bool:
+        """Identify backend response indicating this device MAC is unknown."""
+        code = self._extract_error_code(result)
+        if code in {"DEVICE_NOT_FOUND", "AVT3004"}:
+            return True
+
+        message = self._extract_error_message(result).lower()
+        return "device not found" in message
+
+    def _build_activation_hint_message(self, result) -> str:
+        """Create activation hint text for any no-token state."""
+        if self._is_device_not_active_error(result):
+            return "Device is not activated. Press Activate Device to continue."
+
+        if self._is_device_not_found_error(result):
+            return "Device is not registered. Press Activate Device to register and activate."
+
+        return "Access token is unavailable. Press Activate Device and app will retry get-access-token every 5 minutes."
 
     def _save_detection_metadata(self, trash_data: TrashData, feedback: str) -> Path:
         """Backward-compatible wrapper; delegated to DetectionMetadataStore."""

@@ -28,16 +28,14 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/v1/users").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/devices/activate").permitAll()
-
-                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/v1/devices/activate",
+                                "/api/v1/devices/get-access-token",
+                                "/api/v1/devices/presigned-url",
+                                "/api/v1/devices/confirm-upload"
+                        ).permitAll()
                         .requestMatchers("/api/v1/things-board/**").permitAll()
-
-                        .requestMatchers("/api/v1/users/**").authenticated()
                         .requestMatchers("/api/v1/devices/**").authenticated()
-                        .requestMatchers("/api/v1/notifications/**").authenticated()
-
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
