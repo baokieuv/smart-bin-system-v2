@@ -1,5 +1,6 @@
 package com.smart_bin.order_service.service;
 
+import com.smart_bin.core.common.OrderType;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.order_service.common.OrderStatus;
@@ -53,12 +54,12 @@ public class PaymentService {
             order.setStatus(OrderStatus.PAID);
             orderRepository.save(order);
             // Kích hoạt SAGA: Báo cho Product-service trừ hẳn kho (Commit)
-            orderEventProducer.publishOrderEvent(orderIdStr, "ORDER_PAID", inventoryItems);
+            orderEventProducer.publishOrderEvent(orderIdStr, OrderType.ORDER_PAID, inventoryItems);
         } else {
             order.setStatus(OrderStatus.FAILED);
             orderRepository.save(order);
             // Kích hoạt SAGA: Báo cho Product-service nhả kho ra (Release)
-            orderEventProducer.publishOrderEvent(orderIdStr, "ORDER_CANCELLED", inventoryItems);
+            orderEventProducer.publishOrderEvent(orderIdStr, OrderType.ORDER_CANCELLED, inventoryItems);
         }
     }
 }

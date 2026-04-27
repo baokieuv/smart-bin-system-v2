@@ -8,6 +8,8 @@ import com.smart_bin.order_service.service.CartService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -19,20 +21,30 @@ public class CartController {
     private final CartService cartService;
 
     @GetMapping
-    public ResponseEntity<ApiResponseFormat<Object>> getCart(@RequestHeader("X-User-Id") String userId) {
+    public ResponseEntity<ApiResponseFormat<Object>> getCart(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String userId = jwt.getSubject();
         return responseFactory.response(SuccessCode.OK, cartService.getCartItems(userId));
     }
 
     @PostMapping
     public ResponseEntity<ApiResponseFormat<Object>> updateCart(
-            @RequestHeader("X-User-Id") String userId,
-            @Valid @RequestBody CartItemDto item) {
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody CartItemDto item
+    ) {
+        String userId = jwt.getSubject();
+
         cartService.addOrUpdateCartItem(userId, item);
         return responseFactory.response(SuccessCode.OK, "Cập nhật giỏ hàng thành công");
     }
 
     @DeleteMapping
-    public ResponseEntity<ApiResponseFormat<Object>> clearCart(@RequestHeader("X-User-Id") String userId) {
+    public ResponseEntity<ApiResponseFormat<Object>> clearCart(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String userId = jwt.getSubject();
+
         cartService.clearCart(userId);
         return responseFactory.response(SuccessCode.OK, "Đã xóa sạch giỏ hàng");
     }

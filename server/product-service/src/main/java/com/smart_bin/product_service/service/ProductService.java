@@ -50,12 +50,12 @@ public class ProductService {
     @Transactional
     public ProductResponse createProduct(CreateProductRequest request) {
         // Business logic: Kiểm tra trùng SKU
-        if (repository.existsBySku(request.sku())) {
+        if (repository.existsBySkuAndActiveTrue(request.sku())) {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Product SKU already exists");
         }
 
         // Kiểm tra Category có tồn tại không
-        Category category = categoryRepository.findById(request.categoryId())
+        Category category = categoryRepository.findByIdAndActiveTrue(request.categoryId())
                 .orElseThrow(() -> new ApiException(ProductErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
 
         Product product = mapper.toEntity(request);
@@ -76,8 +76,8 @@ public class ProductService {
 
         // Nếu request gửi lên categoryId mới, phải check và update Category
         if (request.categoryId() != null && !request.categoryId().equals(product.getCategoryId())) {
-            Category newCategory = categoryRepository.findById(request.categoryId())
-                    .orElseThrow(() -> new ApiException(ProductErrorCode.CATEGORY_NOT_FOUND, "New Category not found"));
+            Category newCategory = categoryRepository.findByIdAndActiveTrue(request.categoryId())
+                    .orElseThrow(() -> new ApiException(ProductErrorCode.CATEGORY_NOT_FOUND, "New Category not found or deleted"));
             product.setCategoryId(newCategory.getId());
         }
 

@@ -8,7 +8,6 @@ import com.smart_bin.product_service.dto.request.ReserveInventoryRequest;
 import com.smart_bin.product_service.service.InventoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.apache.coyote.Response;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 

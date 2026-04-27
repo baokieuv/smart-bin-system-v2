@@ -20,4 +20,6 @@ public class Category extends BaseEntity {
     private UUID id;
 
     private String name;
+
+    private String description;
 }

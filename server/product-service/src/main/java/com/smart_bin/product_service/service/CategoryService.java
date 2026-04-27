@@ -27,7 +27,7 @@ public class CategoryService {
     private final CategoryMapper mapper;
 
     public List<CategoryResponse> getAllCategories() {
-        return repository.findAll().stream()
+        return repository.findAllByActiveTrue().stream()
                 .map(mapper::toResponse)
                 .collect(Collectors.toList());
     }
@@ -38,11 +38,12 @@ public class CategoryService {
 
     @Transactional
     public CategoryResponse createCategory(CreateCategoryRequest request) {
-        if (repository.existsByName(request.name())) {
+        if (repository.existsByNameAndActiveTrue(request.name())) {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Category name already exists");
         }
 
         Category category = mapper.toEntity(request);
+        category.setActive(true);
         return mapper.toResponse(repository.save(category));
     }
 
@@ -50,7 +51,7 @@ public class CategoryService {
     public CategoryResponse updateCategory(String id, UpdateCategoryRequest request) {
         Category category = findCategoryById(id);
 
-        if (request.name() != null && repository.existsByNameAndIdNot(request.name(), category.getId())) {
+        if (request.name() != null && repository.existsByNameAndIdNotAndActiveTrue(request.name(), category.getId())) {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Category name already exists");
         }
 
@@ -67,13 +68,15 @@ public class CategoryService {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Cannot delete category. There are active products belonging to this category.");
         }
 
-        repository.delete(category);
+        category.setActive(false);
+        repository.save(category);
+
         return "Deleted category successfully";
     }
 
     private Category findCategoryById(String id) {
         UUID categoryId = parseUUID(id);
-        return repository.findById(categoryId)
+        return repository.findByIdAndActiveTrue(categoryId)
                 .orElseThrow(() -> new ApiException(ProductErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
     }
 
