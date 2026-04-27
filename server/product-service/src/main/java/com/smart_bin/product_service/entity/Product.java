@@ -19,7 +19,7 @@ public class Product extends BaseEntity {
     @GeneratedValue(generator = "uuid-v7-generator")
     private UUID id;
 
-    private Category category;
+    private UUID categoryId;
 
     private String sku;
 

@@ -59,7 +59,7 @@ public class ProductService {
                 .orElseThrow(() -> new ApiException(ProductErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
 
         Product product = mapper.toEntity(request);
-        product.setCategory(category);
+        product.setCategoryId(category.getId());
         product.setActive(true);
 
         product = repository.save(product);
@@ -75,10 +75,10 @@ public class ProductService {
         Product product = findProductActiveById(id);
 
         // Nếu request gửi lên categoryId mới, phải check và update Category
-        if (request.categoryId() != null && !request.categoryId().equals(product.getCategory().getId())) {
+        if (request.categoryId() != null && !request.categoryId().equals(product.getCategoryId())) {
             Category newCategory = categoryRepository.findById(request.categoryId())
                     .orElseThrow(() -> new ApiException(ProductErrorCode.CATEGORY_NOT_FOUND, "New Category not found"));
-            product.setCategory(newCategory);
+            product.setCategoryId(newCategory.getId());
         }
 
         mapper.updateProductFromRequest(request, product);
