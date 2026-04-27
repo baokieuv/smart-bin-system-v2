@@ -67,7 +67,7 @@ public class OrderService {
         int pageIndex = Math.max(page - 1, 0);
         Pageable pageable = PageRequest.of(pageIndex, size);
 
-        return orderRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
+        return orderRepository.findByUserIdOrderByCreatedDateDesc(userId, pageable)
                 .map(order -> orderMapper.toResponse(order, paymentService.generatePaymentUrl(order)));
     }
 

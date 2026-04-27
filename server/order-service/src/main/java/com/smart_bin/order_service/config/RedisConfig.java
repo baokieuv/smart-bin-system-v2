@@ -12,6 +12,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
+import org.springframework.data.redis.serializer.StringRedisSerializer; // Thêm import này
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
@@ -30,16 +31,25 @@ public class RedisConfig {
     @Bean
     public LettuceConnectionFactory redisConnectionFactory(){
         RedisStandaloneConfiguration config = new RedisStandaloneConfiguration(redisHost, redisPort);
-
         config.setPassword(redisPassword);
-
         return new LettuceConnectionFactory(config);
     }
 
     @Bean
-    public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory redisConnectionFactory){
-        RedisTemplate<String, String> template = new RedisTemplate<>();
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory redisConnectionFactory){
+        ObjectMapper mapper = new ObjectMapper();
+
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(redisConnectionFactory);
+
+        // Cấu hình Serializer để key và value lưu vào Redis dưới dạng JSON/String dễ đọc
+        template.setKeySerializer(new StringRedisSerializer());
+        template.setHashKeySerializer(new StringRedisSerializer());
+
+        template.setValueSerializer(new GenericJacksonJsonRedisSerializer(mapper));
+        template.setHashValueSerializer(new GenericJacksonJsonRedisSerializer(mapper));
+
+        template.afterPropertiesSet();
         return template;
     }
 
@@ -55,7 +65,7 @@ public class RedisConfig {
         ObjectMapper objectMapper = new ObjectMapper();
 
         RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(60)) // Set thời gian sống của Cache là 60 phút
+                .entryTtl(Duration.ofMinutes(60))
                 .disableCachingNullValues()
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJacksonJsonRedisSerializer(objectMapper)));
 
