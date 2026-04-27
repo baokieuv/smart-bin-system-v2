@@ -1,0 +1,51 @@
+server:
+  port: ${SERVER_PORT:2110} # Port riêng cho Order
+
+spring:
+  application:
+    name: order-service
+
+  # 1. DATABASE (Database riêng cho Order)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
+    username: ${SPRING_DATASOURCE_USERNAME:admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    driver-class-name: org.mariadb.jdbc.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.MariaDBDialect
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SHOW_SQL:false}
+
+  # 2. REDIS (Rất quan trọng - Dùng để lưu Giỏ hàng - Cart)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redisadmin}
+
+  # 3. KAFKA (Đóng vai trò Producer - Báo cáo đơn hàng đã thanh toán)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+  # 4. SECURITY
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+
+# 5. CẤU HÌNH FEIGN CLIENT (Để gọi sang service khác kiểm tra kho và voucher)
+app:
+  feign:
+    product-service:
+      url: ${PRODUCT_SERVICE_URL:http://localhost:2109}
+    reward-service:
+      url: ${REWARD_SERVICE_URL:http://localhost:2111}
+  kafka:
+    topics:
+      order-events: "order-events-topic" # Bắn event mua hàng vào topic này

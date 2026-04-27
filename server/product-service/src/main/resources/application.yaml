@@ -1,0 +1,57 @@
+server:
+  port: ${SERVER_PORT:2112} # Port riêng cho Product
+
+spring:
+  application:
+    name: product-service
+
+  # 1. DATABASE (Database riêng cho Product & Inventory)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
+    username: ${SPRING_DATASOURCE_USERNAME:admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    driver-class-name: org.mariadb.jdbc.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      connection-timeout: 20000
+      maximum-pool-size: 10
+      minimum-idle: 5
+      max-lifetime: 1200000
+      idle-timeout: 300000
+
+  jpa:
+    database-platform: org.hibernate.dialect.MariaDBDialect
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SHOW_SQL:false}
+
+  # 2. REDIS (Dùng để cache danh sách sản phẩm, giảm tải DB)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redisadmin}
+
+  # 3. KAFKA (Đóng vai trò Consumer - Lắng nghe đơn hàng để trừ kho)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: product-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*" # Cho phép deserialize mọi object
+
+  # 4. SECURITY (Xác thực JWT nội bộ)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+
+# 5. CUSTOM APP TOPICS
+app:
+  kafka:
+    topics:
+      order-events: "order-events-topic" # Lắng nghe event order_paid từ topic này

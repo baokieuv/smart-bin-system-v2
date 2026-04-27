@@ -1,0 +1,9 @@
+package com.smart_bin.product_service.dto.request;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public record ImportInventoryRequest(
+        @NotBlank String sku,
+        @NotNull @Min(1) Long quantity
+) {}

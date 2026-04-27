@@ -1,0 +1,44 @@
+server:
+  port: ${SERVER_PORT:2111} # Port riêng cho Reward
+
+spring:
+  application:
+    name: reward-service
+
+  # 1. DATABASE (Database riêng cho Lịch sử điểm & Voucher)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
+    username: ${SPRING_DATASOURCE_USERNAME:admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    driver-class-name: org.mariadb.jdbc.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.MariaDBDialect
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SHOW_SQL:false}
+
+  # 2. KAFKA (Đóng vai trò Consumer - Lắng nghe 2 nguồn sự kiện)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: reward-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+  # 3. SECURITY
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+
+# 4. CUSTOM APP TOPICS (Định nghĩa các topic cần lắng nghe)
+app:
+  kafka:
+    topics:
+      device-events: "device-notification-topic" # Lắng nghe từ device-service để cộng điểm vứt rác
+      order-events: "order-events-topic"         # Lắng nghe từ order-service để cộng điểm hoàn tiền (cashback)
