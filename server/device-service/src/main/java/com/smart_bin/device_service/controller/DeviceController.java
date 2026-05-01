@@ -22,7 +22,7 @@ public class DeviceController {
     private final ResponseFactory responseFactory;
     private final DeviceService deviceService;
 
-    @PostMapping("/")
+    @PostMapping
     public ResponseEntity<ApiResponseFormat<Object>> addDevice(
             @Valid @RequestBody CreateDeviceRequest request,
             @AuthenticationPrincipal Jwt jwt
@@ -32,7 +32,7 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
-    @GetMapping("/")
+    @GetMapping
     public ResponseEntity<ApiResponseFormat<Object>> getListDevices(
             @AuthenticationPrincipal Jwt jwt
     ){
@@ -72,24 +72,6 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.OK, "Deleted device successfully!");
     }
 
-    @PostMapping("/activate")
-    public ResponseEntity<ApiResponseFormat<Object>> activateDevice(
-            @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature
-    ){
-        var response = deviceService.activateDevice(payload, signature);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
-
-    @PostMapping("/get-access-token")
-    public ResponseEntity<ApiResponseFormat<Object>> getAccessToken(
-            @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature
-    ){
-        var response = deviceService.getAccessToken(payload, signature);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
-
     @GetMapping("/{deviceId}/telemetries")
     public ResponseEntity<ApiResponseFormat<Object>> getTelemetries(
             @AuthenticationPrincipal Jwt jwt,
@@ -114,7 +96,7 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
-    @PostMapping("/presigned-url")
+    @PostMapping("/public/presigned-url")
     public ResponseEntity<ApiResponseFormat<Object>> getPresignedUrl(
             @RequestHeader("X-Signature") String signature,
             @RequestHeader("metadata") String metadata,
@@ -124,13 +106,31 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
-    @PostMapping(value = "/confirm-upload")
+    @PostMapping(value = "/public/confirm-upload")
     public ResponseEntity<ApiResponseFormat<Object>> confirmUpload(
             @RequestHeader("metadata") String metadata,
             @RequestBody String payload,
             @RequestHeader("X-Signature") String signature
     ){
         var response = deviceService.confirmUpload(payload, signature, metadata);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping("/public/activate")
+    public ResponseEntity<ApiResponseFormat<Object>> activateDevice(
+            @RequestBody String payload,
+            @RequestHeader("X-Signature") String signature
+    ){
+        var response = deviceService.activateDevice(payload, signature);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping("/public/get-access-token")
+    public ResponseEntity<ApiResponseFormat<Object>> getAccessToken(
+            @RequestBody String payload,
+            @RequestHeader("X-Signature") String signature
+    ){
+        var response = deviceService.getAccessToken(payload, signature);
         return responseFactory.response(SuccessCode.OK, response);
     }
 }
