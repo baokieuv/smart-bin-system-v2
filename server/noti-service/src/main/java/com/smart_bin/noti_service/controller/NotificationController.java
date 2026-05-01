@@ -20,7 +20,7 @@ public class NotificationController {
     private final ResponseFactory responseFactory;
     private final NotificationService notificationService;
 
-    @GetMapping("/")
+    @GetMapping
     public ResponseEntity<ApiResponseFormat<Object>> getNotifications(
             @RequestParam Long page,
             @RequestParam Long size,

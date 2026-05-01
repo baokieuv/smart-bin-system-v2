@@ -55,8 +55,6 @@ public class KafkaConfig {
         DefaultJacksonJavaTypeMapper typeMapper = new DefaultJacksonJavaTypeMapper();
 
         // 2. Thêm package của bạn vào danh sách tin cậy (Trust List)
-        // Dấu "*" nghĩa là tin tưởng tất cả các package.
-        // Nếu muốn bảo mật hơn, bạn có thể gõ "com.smart_bin.*"
         typeMapper.addTrustedPackages("*");
 
         // 3. Gắn TypeMapper vào Converter
@@ -73,8 +71,8 @@ public class KafkaConfig {
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JacksonJsonDeserializer.class);
         props.put(JacksonJsonDeserializer.TRUSTED_PACKAGES, "*");
-        props.put(JacksonJsonDeserializer.USE_TYPE_INFO_HEADERS, false); // ✅ Không dùng type header
-        props.put(JacksonJsonDeserializer.VALUE_DEFAULT_TYPE, "java.lang.Object"); // ✅ Mỗi listener tự cast
+        props.put(JacksonJsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+        props.put(JacksonJsonDeserializer.VALUE_DEFAULT_TYPE, "java.lang.Object");
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
