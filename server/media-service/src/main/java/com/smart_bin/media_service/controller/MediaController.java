@@ -38,17 +38,17 @@ public class MediaController {
         return responseFactory.response(SuccessCode.CREATED, response);
     }
 
-    @PostMapping("/presigned-upload")
-    public ResponseEntity<ApiResponseFormat<Object>> createPresignedUploadUrl(
-            @RequestParam(value = "folder", required = false, defaultValue = "") String folder,
-            @RequestParam(value = "oldObjectName", required = false) String oldObjectName,
-            @RequestParam("contentType") String contentType,
-            @AuthenticationPrincipal Jwt jwt
-    ) {
-        String keycloakId = jwt.getSubject();
-        var response = mediaStorageService.createPresignedUploadUrl(keycloakId, folder, oldObjectName, contentType);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
+//    @PostMapping("/presigned-upload")
+//    public ResponseEntity<ApiResponseFormat<Object>> createPresignedUploadUrl(
+//            @RequestParam(value = "folder", required = false, defaultValue = "") String folder,
+//            @RequestParam(value = "oldObjectName", required = false) String oldObjectName,
+//            @RequestParam("contentType") String contentType,
+//            @AuthenticationPrincipal Jwt jwt
+//    ) {
+//        String keycloakId = jwt.getSubject();
+//        var response = mediaStorageService.createPresignedUploadUrl(keycloakId, folder, oldObjectName, contentType);
+//        return responseFactory.response(SuccessCode.OK, response);
+//    }
 
     @PostMapping("/internal/presigned-upload")
     public ResponseEntity<ApiResponseFormat<Object>> createInternalPresignedUrl(
@@ -65,15 +65,15 @@ public class MediaController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
-    @GetMapping("/download-url")
-    public ResponseEntity<ApiResponseFormat<Object>> createPresignedDownloadUrl(
-            @RequestParam("objectName") String objectName,
-            @AuthenticationPrincipal Jwt jwt
-    ) {
-        String keycloakId = jwt.getSubject();
-        var response = mediaStorageService.createPresignedDownloadUrl(keycloakId, objectName);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
+//    @GetMapping("/download-url")
+//    public ResponseEntity<ApiResponseFormat<Object>> createPresignedDownloadUrl(
+//            @RequestParam("objectName") String objectName,
+//            @AuthenticationPrincipal Jwt jwt
+//    ) {
+//        String keycloakId = jwt.getSubject();
+//        var response = mediaStorageService.createPresignedDownloadUrl(keycloakId, objectName);
+//        return responseFactory.response(SuccessCode.OK, response);
+//    }
 
     @GetMapping("/files")
     public ResponseEntity<ApiResponseFormat<Object>> listFiles(
