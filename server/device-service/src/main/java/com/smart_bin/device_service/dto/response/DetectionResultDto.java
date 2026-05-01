@@ -5,6 +5,7 @@ import com.smart_bin.device_service.common.WasteType;
 
 public record DetectionResultDto(
         String imageUrl,
+        String contentType,
         WasteType type,
         Double confidence,
         DetectionFeedback feedback,

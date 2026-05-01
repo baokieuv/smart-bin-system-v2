@@ -1,6 +1,5 @@
 package com.smart_bin.device_service.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.smart_bin.core.entity.BaseEntity;
 import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.common.DeviceStatus;

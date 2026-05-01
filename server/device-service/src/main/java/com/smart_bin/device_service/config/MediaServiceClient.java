@@ -13,6 +13,7 @@ public interface MediaServiceClient {
     JsonNode getInternalPresignedUrl(
             @RequestHeader("x-internal-secret") String secret,
             @RequestParam("macAddress") String macAddress,
-            @RequestParam("fileName") String fileName
+            @RequestParam("fileName") String fileName,
+            @RequestParam("contentType") String contentType
     );
 }

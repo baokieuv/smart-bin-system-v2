@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.time.Instant;
@@ -40,7 +41,7 @@ public class DeviceSecurityService {
             byte[] digitalSignature = Base64.getDecoder().decode(signature);
             Signature verify = Signature.getInstance("SHA256withRSA");
             verify.initVerify(serverPublicKey);
-            verify.update(payload.getBytes("UTF-8"));
+            verify.update(payload.getBytes(StandardCharsets.UTF_8));
 
             if (!verify.verify(digitalSignature)) {
                 throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);

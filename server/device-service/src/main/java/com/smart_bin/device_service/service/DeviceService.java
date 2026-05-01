@@ -46,9 +46,7 @@ public class DeviceService {
     private final MediaServiceClient mediaServiceClient;
     private final KafkaService kafkaService;
     private final DeviceSecurityService securityService;
-//
-//    // THÊM: Dùng Kafka để bắn thông báo thay vì gọi trực tiếp NotificationService
-//    private final KafkaTemplate<String, Object> kafkaTemplate;
+
     @Value("${media-service.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
     private String internalSecret;
 
@@ -245,10 +243,10 @@ public class DeviceService {
             JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
                     internalSecret,
                     mac,
-                    fileInfo.imageUrl()
+                    fileInfo.imageUrl(),
+                    fileInfo.contentType()
             );
 
-            // Bóc tách dữ liệu y như cũ
             String presignedUrl = mediaResponse.get("data").get("url").asText();
             String objectPath = mediaResponse.get("data").get("objectName").asText();
 
