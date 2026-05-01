@@ -17,7 +17,10 @@ public enum AuthErrorCode implements ApiResponseCode {
     INVALID_TOKEN(false, "AVT2004", "error.invalid_token", HttpStatus.UNAUTHORIZED),
     TOKEN_EXPIRED(false, "AVT2005", "error.token_expired", HttpStatus.UNAUTHORIZED),
     REFRESH_TOKEN_EXPIRED(false, "AVT2006", "error.refresh_token_expired", HttpStatus.UNAUTHORIZED),
-    MISSING_TOKEN(false, "AVT2007", "error.missing_token", HttpStatus.UNAUTHORIZED);
+    MISSING_TOKEN(false, "AVT2007", "error.missing_token", HttpStatus.UNAUTHORIZED),
+    UNVERIFIED_EMAIL(false, "AVT2008", "error.unverified_email", HttpStatus.FORBIDDEN),
+    INCOMPLETE_PROFILE(false, "AVT2009", "error.incomplete_profile", HttpStatus.FORBIDDEN),
+    ;
 
     private final boolean success;
     private final String code;

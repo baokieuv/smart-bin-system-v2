@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.common.EmailType;
+import com.smart_bin.core.common.UserRole;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.common.TokenType;
@@ -37,6 +38,9 @@ public class UserService {
     private final KafkaService kafkaService;
     private final ObjectMapper objectMapper;
 
+    @Value("${app.admin.root-email}")
+    private String rootEmail;
+
     @Transactional
     public UserDto createUser(CreateUserRequest request) {
         // 1. Tìm user hoặc khởi tạo mới
@@ -47,22 +51,30 @@ public class UserService {
             if (user.isActive()) {
                 throw new ApiException(UserErrorCode.USER_ALREADY_EXISTED);
             }
-            // Nếu user tồn tại nhưng inactive -> Kích hoạt lại
-            user.setActive(true);
-        } else {
-            // Nếu là user hoàn toàn mới -> Tạo trên Keycloak và khởi tạo object User
-            String keycloakUserId = keycloakService.createUser(request);
 
-            user = new User();
-            user.setKeycloakId(keycloakUserId);
-            user.setEmail(request.email());
+            try {
+                keycloakService.deleteUser(user.getKeycloakId());
+            } catch (Exception ignored) {
+                // Ignore nếu user không tồn tại trên Keycloak
+            }
+
+            String newKeycloakId = keycloakService.createUser(request);
+
+            // Nếu user tồn tại nhưng inactive -> Kích hoạt lại và update thông tin mới
+            user.setActive(true);
+            user.setKeycloakId(newKeycloakId);
             user.setFirstName(request.firstName());
             user.setLastName(request.lastName());
+        } else {
+            String keycloakUserId = keycloakService.createUser(request);
+
+            user = mapper.toEntity(request);
+            user.setKeycloakId(keycloakUserId);
         }
 
-        // 2. Cấu hình các thông số dùng chung cho cả 2 trường hợp
+        // 2. Cấu hình lại các thông số xác thực
+        user.setState(UserState.PENDING);
         user.setEmailVerified(false);
-        user.setState(UserState.PENDING); // Chờ xác thực email
         user.setActionToken(UUID.randomUUID().toString());
         user.setActionTokenExpiry(System.currentTimeMillis() + Constants.VERIFICATION_TOKEN_EXPIRY);
         user.setTokenType(TokenType.VERIFY_EMAIL);
@@ -78,6 +90,9 @@ public class UserService {
 
         // Gọi KafkaService để gửi
         kafkaService.sendEmailToUser(emailData, EmailType.VERIFICATION);
+
+        keycloakService.updateUserAttribute(user.getKeycloakId(), "user_state", "PENDING");
+
 
         // 5. Trả về DTO
         return mapper.toDto(savedUser);
@@ -103,6 +118,8 @@ public class UserService {
 
         userRepository.save(user);
         keycloakService.enableUser(user.getKeycloakId());
+
+        keycloakService.updateUserAttribute(user.getKeycloakId(), "user_state", "ACTIVE");
 
         // 4. Gửi email welcome
         ObjectNode emailData = objectMapper.createObjectNode();
@@ -135,32 +152,71 @@ public class UserService {
         User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
-        if (request.firstName() != null && !request.firstName().isBlank()) {
-            user.setFirstName(request.firstName());
-        }
-        if (request.lastName() != null) {
-            user.setLastName(request.lastName());
-        }
         if (request.avatarUrl() != null && !request.avatarUrl().isBlank()) {
             if (!request.avatarUrl().startsWith("https://s3.kvbhust.id.vn")) {
                 throw new ApiException(CoreErrorCode.BAD_REQUEST, "Avatar URL không hợp lệ");
             }
-            user.setAvatarUrl(request.avatarUrl());
+        }
+
+        mapper.updateUserFromRequest(request, user);
+        if (user.getFirstName() == null || user.getFirstName().isEmpty()) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Tên không được để trống.");
         }
 
         User savedUser = userRepository.save(user);
+        keycloakService.updateUserInfo(keycloakId, savedUser.getFirstName(), savedUser.getLastName());
 
         return mapper.toDto(savedUser);
     }
 
-    public void deleteUserById(String userId) {
-        User user = userRepository.findByKeycloakIdAndActiveTrue(userId)
+    @Transactional
+    public void deleteUserById(String actorId, String targetUserId) {
+        // 1. Tìm user mục tiêu bằng UUID trong Database
+        UUID uuid;
+        try {
+            uuid = UUID.fromString(targetUserId);
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Định dạng ID không hợp lệ");
+        }
+
+        User targetUser = userRepository.findByIdAndActiveTrue(uuid)
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
-        user.setActive(false);
-        user.setState(UserState.DELETED);
+        if (targetUser.getKeycloakId().equals(actorId)) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Bạn không thể tự xóa tài khoản của chính mình.");
+        }
 
-        userRepository.save(user);
+        if (targetUser.getEmail().equalsIgnoreCase(rootEmail)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Tài khoản Root của hệ thống là bất khả xâm phạm.");
+        }
+
+        // 4. Xóa mềm trong DB
+        targetUser.setActive(false);
+        targetUser.setState(UserState.DELETED);
+        userRepository.save(targetUser);
+
+        // 5. Xóa cứng trên Keycloak
+        keycloakService.deleteUser(targetUser.getKeycloakId());
+
+        log.info("Super_Admin (Actor ID: {}) đã xóa User (Target ID: {})", actorId, targetUserId);
+    }
+
+    // Sửa kiểu dữ liệu của biến tham số thành Enum UserRole
+    public void updateUserRole(String actorId, String targetUserId, UserRole newRole) {
+        User targetUser = userRepository.findByIdAndActiveTrue(UUID.fromString(targetUserId))
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
+
+        if (targetUser.getKeycloakId().equals(actorId)) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Bạn không thể tự thay đổi hoặc hạ quyền của chính mình.");
+        }
+
+        if (targetUser.getEmail().equalsIgnoreCase(rootEmail)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Tài khoản Root của hệ thống là bất khả xâm phạm.");
+        }
+
+        keycloakService.updateRealmRole(targetUser.getKeycloakId(), newRole);
+
+        log.info("Super_Admin (Actor ID: {}) đã cấp quyền '{}' cho User (Target ID: {})", actorId, newRole.name(), targetUserId);
     }
 
     public void resendVerificationEmail(ResendVerificationRequest request) {
@@ -185,5 +241,18 @@ public class UserService {
 
         // Gọi KafkaService để gửi
         kafkaService.sendEmailToUser(emailData, EmailType.VERIFICATION);
+    }
+
+    public void verifyStatus(String keycloakId) {
+        User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
+
+        if (user.getState() == UserState.PENDING) {
+            if (!user.isEmailVerified()) {
+                throw new ApiException(AuthErrorCode.UNVERIFIED_EMAIL);
+            } else {
+                throw new ApiException(AuthErrorCode.INCOMPLETE_PROFILE);
+            }
+        }
     }
 }

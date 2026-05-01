@@ -1,10 +1,12 @@
 package com.smart_bin.iam_service.serivce;
 
+import com.smart_bin.core.common.UserRole;
 import com.smart_bin.iam_service.dto.auth.request.LoginRequest;
 import com.smart_bin.iam_service.dto.auth.response.TokenResponse;
 import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -15,6 +17,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -56,12 +59,20 @@ public class KeycloakService {
 
         user.setCredentials(Collections.singletonList(credential));
 
+        Map<String, List<String>> attributes = new HashMap<>();
+        attributes.put("user_state", Collections.singletonList("PENDING"));
+        user.setAttributes(attributes);
+
         try (jakarta.ws.rs.core.Response response =
                      keycloak.realm(realm).users().create(user)) {
 
             if (response.getStatus() == 201) {
                 String locationHeader = response.getHeaderString("Location");
-                return locationHeader.substring(locationHeader.lastIndexOf('/') + 1);
+                String userId = locationHeader.substring(locationHeader.lastIndexOf('/') + 1);
+
+                updateRealmRole(userId, UserRole.USER);
+
+                return userId;
             } else if (response.getStatus() == 409) {
                 throw new RuntimeException("Email already exists in Keycloak");
             } else {
@@ -69,6 +80,50 @@ public class KeycloakService {
             }
         } catch (Exception e) {
             throw new RuntimeException("Error creating user in Keycloak: " + e.getMessage());
+        }
+    }
+
+    // Đổi tham số nhận vào thành UserRole
+    public void updateRealmRole(String userId, UserRole newRole) {
+        try {
+            var realmRoleResource = keycloak.realm(realm).users().get(userId).roles().realmLevel();
+
+            List<RoleRepresentation> currentRoles = realmRoleResource.listAll();
+
+            // So sánh bằng hằng số của Enum thay vì chuỗi gõ tay
+            List<RoleRepresentation> rolesToRemove = currentRoles.stream()
+                    .filter(r -> r.getName().equals(UserRole.RoleConstants.USER_LOWER)
+                            || r.getName().equals(UserRole.RoleConstants.ADMIN_LOWER)
+                            || r.getName().equals(UserRole.RoleConstants.SUPER_ADMIN_LOWER))
+                    .toList();
+
+            if (!rolesToRemove.isEmpty()) {
+                realmRoleResource.remove(rolesToRemove);
+            }
+
+            // Lấy tên role viết thường (user, admin, super_admin) để gán trên Keycloak
+            RoleRepresentation roleToAdd = keycloak.realm(realm).roles().get(newRole.getRoleName()).toRepresentation();
+            realmRoleResource.add(Collections.singletonList(roleToAdd));
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating role to user in Keycloak: " + e.getMessage());
+        }
+    }
+
+    public void updateUserAttribute(String userId, String key, String value) {
+        try {
+            UserRepresentation user = keycloak.realm(realm).users().get(userId).toRepresentation();
+
+            Map<String, List<String>> attributes = user.getAttributes();
+            if (attributes == null) {
+                attributes = new HashMap<>();
+            }
+            attributes.put(key, Collections.singletonList(value));
+            user.setAttributes(attributes);
+
+            keycloak.realm(realm).users().get(userId).update(user);
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating user attribute in Keycloak: " + e.getMessage());
         }
     }
 
@@ -193,6 +248,32 @@ public class KeycloakService {
             throw new RuntimeException("Error fetching user from Keycloak: " + e.getMessage());
         }
     }
+
+    public void updateUserInfo(String userId, String firstName, String lastName) {
+        try {
+            UserRepresentation user = keycloak.realm(realm).users().get(userId).toRepresentation();
+
+            if (firstName != null && !firstName.isBlank()) {
+                user.setFirstName(firstName.trim());
+            }
+            if (lastName != null) {
+                user.setLastName(lastName.trim());
+            }
+
+            keycloak.realm(realm).users().get(userId).update(user);
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating user info in Keycloak: " + e.getMessage());
+        }
+    }
+
+    public void logoutAllSessions(String userId) {
+        try {
+            keycloak.realm(realm).users().get(userId).logout();
+        } catch (Exception e) {
+            throw new RuntimeException("Error logging out sessions in Keycloak: " + e.getMessage());
+        }
+    }
+
 
     public void deleteUser(String userId) {
         try {

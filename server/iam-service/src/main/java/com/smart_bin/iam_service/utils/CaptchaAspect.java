@@ -26,10 +26,10 @@ public class CaptchaAspect {
             }
         }
 
-        boolean isHuman = captchaService.isValidCaptcha(captchaToken, action);
-        if (!isHuman){
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid CAPTCHA or Bot detected");
-        }
+//        boolean isHuman = captchaService.isValidCaptcha(captchaToken, action);
+//        if (!isHuman){
+//            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid CAPTCHA or Bot detected");
+//        }
 
         return joinPoint.proceed();
     }

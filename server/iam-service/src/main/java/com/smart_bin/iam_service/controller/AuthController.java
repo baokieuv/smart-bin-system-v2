@@ -102,4 +102,14 @@ public class AuthController {
 
         return responseFactory.response(SuccessCode.OK, "Verification email sent successfully");
     }
+
+    @GetMapping("/verify-status")
+    public ResponseEntity<ApiResponseFormat<Object>> verifyStatus(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String keycloakId = jwt.getSubject();
+
+        userService.verifyStatus(keycloakId);
+        return responseFactory.response(SuccessCode.OK, "Tài khoản hợp lệ");
+    }
 }

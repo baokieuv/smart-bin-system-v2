@@ -12,6 +12,7 @@ import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.*;
 import com.smart_bin.iam_service.dto.auth.response.TokenResponse;
 import com.smart_bin.iam_service.entity.User;
+import com.smart_bin.iam_service.exception.AuthErrorCode;
 import com.smart_bin.iam_service.exception.UserErrorCode;
 import com.smart_bin.iam_service.repository.UserRepository;
 import jakarta.transaction.Transactional;
@@ -37,7 +38,7 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         if (!user.isEmailVerified()) {
-            throw new RuntimeException("Email not verified. Please check your email for verification link.");
+            throw new ApiException(AuthErrorCode.UNVERIFIED_EMAIL, "Email not verified. Please check your email for verification link.");
         }
 
         return keycloakService.login(request);
@@ -74,6 +75,9 @@ public class AuthService {
             newUser.setEmailVerified(true); // Google đã verify
             newUser.setState(UserState.PENDING); // Đánh dấu PENDING chờ nhập Password
             userRepository.save(newUser);
+
+            keycloakService.updateUserAttribute(keycloakId, "user_state", "PENDING");
+
         }
 
         return keycloakToken;
@@ -98,6 +102,9 @@ public class AuthService {
 
         // Gọi KafkaService để gửi
         kafkaService.sendEmailToUser(emailData, EmailType.WELCOME);
+
+        keycloakService.updateUserAttribute(user.getKeycloakId(), "user_state", "ACTIVE");
+
     }
 
     public TokenResponse refreshToken(RefreshTokenRequest request){
@@ -129,6 +136,7 @@ public class AuthService {
 
         // 4. Cập nhật mật khẩu mới lên Keycloak
         keycloakService.updatePassword(keycloakId, request.newPassword());
+        keycloakService.logoutAllSessions(keycloakId);
 
         return "Change password successfully.";
     }
@@ -178,6 +186,8 @@ public class AuthService {
         user.setActionTokenExpiry(null);
         user.setTokenType(null);
         userRepository.save(user);
+
+        keycloakService.logoutAllSessions(user.getKeycloakId());
 
         return "Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.";
     }
