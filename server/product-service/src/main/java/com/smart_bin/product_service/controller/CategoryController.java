@@ -9,6 +9,7 @@ import com.smart_bin.product_service.service.CategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -20,8 +21,11 @@ public class CategoryController {
     private final CategoryService service;
 
     @GetMapping
-    public ResponseEntity<ApiResponseFormat<Object>> getAllCategories() {
-        return responseFactory.response(SuccessCode.OK, service.getAllCategories());
+    public ResponseEntity<ApiResponseFormat<Object>> getAllCategories(
+            @RequestParam(required = false, defaultValue = "1") Long page,
+            @RequestParam(required = false, defaultValue = "10") Long size
+    ) {
+        return responseFactory.response(SuccessCode.OK, service.getAllCategories(page, size));
     }
 
     @GetMapping("/{id}")
@@ -30,11 +34,17 @@ public class CategoryController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> createCategory(@Valid @RequestBody CreateCategoryRequest request) {
         return responseFactory.response(SuccessCode.CREATED, service.createCategory(request));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> updateCategory(
             @PathVariable String id,
             @Valid @RequestBody UpdateCategoryRequest request
@@ -43,6 +53,9 @@ public class CategoryController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> deleteCategory(@PathVariable String id) {
         return responseFactory.response(SuccessCode.OK, service.deleteCategory(id));
     }

@@ -9,10 +9,11 @@ import com.smart_bin.product_service.service.InventoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/internal/inventories")
+@RequestMapping("/api/v1/inventories")
 @RequiredArgsConstructor
 public class InternalInventoryController {
 
@@ -28,6 +29,9 @@ public class InternalInventoryController {
     }
 
     @PostMapping("/import-inventory")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> importInventory(
             @Valid @RequestBody ImportInventoryRequest request
     ){

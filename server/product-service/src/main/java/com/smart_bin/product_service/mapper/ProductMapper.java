@@ -11,7 +11,7 @@ public interface ProductMapper {
 
     // Map Request -> Entity (Bỏ qua trường id để JPA tự sinh)
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "category", ignore = true) // Sẽ handle tay việc set Category trong Service
+    @Mapping(target = "categoryId", ignore = true) // Sẽ handle tay việc set Category trong Service
     Product toEntity(CreateProductRequest request);
 
     // Map Entity -> Response DTO (Trả ra cho client)
@@ -20,6 +20,6 @@ public interface ProductMapper {
     // Patch update logic
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "category", ignore = true)
+    @Mapping(target = "categoryId", ignore = true)
     void updateProductFromRequest(UpdateProductRequest request, @MappingTarget Product product);
 }

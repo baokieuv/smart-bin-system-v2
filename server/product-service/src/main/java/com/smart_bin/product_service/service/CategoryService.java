@@ -12,6 +12,9 @@ import com.smart_bin.product_service.repository.CategoryRepository;
 import com.smart_bin.product_service.repository.ProductRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -26,10 +29,12 @@ public class CategoryService {
     private final ProductRepository productRepository;
     private final CategoryMapper mapper;
 
-    public List<CategoryResponse> getAllCategories() {
-        return repository.findAllByActiveTrue().stream()
-                .map(mapper::toResponse)
-                .collect(Collectors.toList());
+    public Page<CategoryResponse> getAllCategories(Long page, Long size) {
+        int pageIndex = (page != null && page > 0) ? page.intValue() - 1 : 0;
+        int pageSize = (size != null && size > 0) ? size.intValue() : 10;
+        Pageable pageable = PageRequest.of(pageIndex, pageSize);
+
+        return repository.findAllByActiveTrue(pageable).map(mapper::toResponse);
     }
 
     public CategoryResponse getCategoryById(String id) {
