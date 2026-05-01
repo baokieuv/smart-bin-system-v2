@@ -13,8 +13,8 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Smart Bin Platform",
-  description: "Monitor, manage, and optimize your smart bin network.",
+  title: "Smart Bin Platform | Operations & Shopping",
+  description: "Monitor, manage, optimize, and shop for smart bin products in one platform.",
 };
 
 const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;

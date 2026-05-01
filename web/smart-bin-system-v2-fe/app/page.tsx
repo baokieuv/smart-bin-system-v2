@@ -87,6 +87,12 @@ export default function HomePage() {
               >
                 Create Account
               </Link>
+              <Link
+                href="/shop"
+                className="inline-flex items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-6 py-3 font-semibold text-amber-900 transition hover:bg-amber-100"
+              >
+                Explore Shop
+              </Link>
             </div>
           </div>
 
@@ -127,6 +133,10 @@ export default function HomePage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">Analytics</h3>
             <p className="mt-2 text-sm leading-relaxed text-slate-600">Discover trends in usage to improve planning and sustainability outcomes.</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-amber-950">Shopping Module</h3>
+            <p className="mt-2 text-sm leading-relaxed text-amber-900/80">Browse products publicly, add items to cart, revisit past orders, and review shipping or payment details.</p>
           </div>
         </section>
       </div>

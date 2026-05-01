@@ -52,6 +52,13 @@ body {
     linear-gradient(180deg, #f8fafc 0%, #edf4fb 100%);
 }
 
+.shop-page-bg {
+  background:
+    radial-gradient(circle at 10% 14%, rgba(234, 179, 8, 0.12), transparent 32%),
+    radial-gradient(circle at 88% 16%, rgba(16, 185, 129, 0.12), transparent 34%),
+    linear-gradient(180deg, #fcfbf6 0%, #f4f8f2 100%);
+}
+
 /* Keep one consistent eye icon by hiding browser-native password controls on Windows/Edge and legacy engines. */
 input[type="password"]::-ms-reveal,
 input[type="password"]::-ms-clear {

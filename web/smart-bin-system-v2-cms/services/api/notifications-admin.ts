@@ -1,0 +1,9 @@
+import { api } from "@/lib/api-client";
+import type { NotificationDto } from "@/types/notification";
+
+export const notificationsAdminApi = {
+  getNotifications: async (params?: { page?: number; size?: number }) =>
+    api.get<NotificationDto[] | { items?: NotificationDto[]; content?: NotificationDto[] }>("/notifications", params),
+  markAsRead: async (id: string | number) => api.put(`/notifications/${id}/read`),
+  readAll: async () => api.put("/notifications/read-all"),
+};

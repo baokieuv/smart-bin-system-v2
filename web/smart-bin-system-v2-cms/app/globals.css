@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #eef6ff;
+  --ink: #0f2031;
+  --muted: #56718b;
+  --line: #d6e3f0;
+  --brand: #0f5f93;
+  --brand-soft: #d8ecfb;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-manrope);
+  --font-mono: var(--font-ibm-plex-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-manrope), sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
