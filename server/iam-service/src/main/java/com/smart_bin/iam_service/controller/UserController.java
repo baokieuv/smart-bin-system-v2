@@ -28,7 +28,7 @@ public class UserController {
     private final ResponseFactory responseFactory;
     private final UserService userService;
 
-    @PostMapping("/")
+    @PostMapping
     @RequireCaptcha(action = "REGISTER")
     public ResponseEntity<ApiResponseFormat<Object>> createUser(@Valid @RequestBody CreateUserRequest request){
         var user = userService.createUser(request);
@@ -44,7 +44,7 @@ public class UserController {
         return responseFactory.response(SuccessCode.OK, user);
     }
 
-    @PutMapping("/")
+    @PutMapping
     public ResponseEntity<ApiResponseFormat<Object>> updateUserById(
             @Valid @RequestBody UpdateUserRequest request,
             @AuthenticationPrincipal Jwt jwt

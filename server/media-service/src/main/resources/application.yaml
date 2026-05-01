@@ -5,7 +5,7 @@ spring:
   application:
     name: media-service
 
-  # 1. DATABASE (Tuỳ chọn: Nếu bạn muốn lưu bảng 'media_records' để quản lý file)
+  # 1. DATABASE
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
     username: ${SPRING_DATASOURCE_USERNAME:admin}
@@ -19,13 +19,13 @@ spring:
       ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
     show-sql: ${SHOW_SQL:false}
 
-  # 2. CẤU HÌNH MULTIPART (Giới hạn dung lượng file)
+  # 2. CẤU HÌNH MULTIPART
   servlet:
     multipart:
       enabled: ${MULTIPART_ENABLED:true}
-      # Giới hạn 1 file tối đa 5MB (rất phù hợp cho ảnh avatar hoặc ảnh thùng rác)
+      # Giới hạn 1 file tối đa 5MB
       max-file-size: ${MAX_FILE_SIZE:5MB}
-      # Giới hạn tổng dung lượng 1 lần request (nếu up nhiều file cùng lúc)
+      # Giới hạn tổng dung lượng 1 lần request
       max-request-size: ${MAX_REQUEST_SIZE:20MB}
 
   # 3. SECURITY (Xác minh JWT từ người dùng)
@@ -48,6 +48,7 @@ media:
   upload-url-expiry-minutes: ${MEDIA_UPLOAD_URL_EXPIRY_MINUTES:15}
   download-url-expiry-minutes: ${MEDIA_DOWNLOAD_URL_EXPIRY_MINUTES:15}
   allowed-mime-types: ${MEDIA_ALLOWED_MIME_TYPES:image/jpeg,image/png,image/webp,image/gif,application/pdf}
+  internal-secret: ${MEDIA_INTERNAL_SECRET:SUPER_SECRET_INTERNAL_KEY}
 
 management:
   endpoints:
