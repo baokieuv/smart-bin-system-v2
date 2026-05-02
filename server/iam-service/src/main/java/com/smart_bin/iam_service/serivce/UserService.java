@@ -22,6 +22,10 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -132,6 +136,7 @@ public class UserService {
         return "Email verified successfully";
     }
 
+    @Cacheable(value = "users", key = "#userId")
     public UserDto getUserById(String userId) {
         UUID uuid = UUID.fromString(userId);
 
@@ -141,6 +146,7 @@ public class UserService {
         return mapper.toDto(user);
     }
 
+    @Cacheable(value = "usersByKcId", key = "#keycloakId")
     public UserDto getUserByKeycloakId(String keycloakId){
         User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
@@ -148,6 +154,10 @@ public class UserService {
         return mapper.toDto(user);
     }
 
+    @Caching(put = {
+            @CachePut(value = "usersByKcId", key = "#keycloakId"),
+            @CachePut(value = "users", key = "#result.id.toString()")
+    })
     public UserDto updateUser(String keycloakId, UpdateUserRequest request) {
         User user = userRepository.findByKeycloakIdAndActiveTrue(keycloakId)
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
@@ -169,6 +179,10 @@ public class UserService {
         return mapper.toDto(savedUser);
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "users", key = "#targetUserId"),
+            @CacheEvict(value = "usersByKcId", key = "#targetUser.keycloakId")
+    })
     @Transactional
     public void deleteUserById(String actorId, String targetUserId) {
         // 1. Tìm user mục tiêu bằng UUID trong Database
@@ -201,7 +215,7 @@ public class UserService {
         log.info("Super_Admin (Actor ID: {}) đã xóa User (Target ID: {})", actorId, targetUserId);
     }
 
-    // Sửa kiểu dữ liệu của biến tham số thành Enum UserRole
+    @CacheEvict(value = "users", key = "#targetUserId")
     public void updateUserRole(String actorId, String targetUserId, UserRole newRole) {
         User targetUser = userRepository.findByIdAndActiveTrue(UUID.fromString(targetUserId))
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));

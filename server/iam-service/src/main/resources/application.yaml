@@ -6,6 +6,12 @@ spring:
   application:
     name: iam-service
 
+  cache:
+    type: redis
+    redis:
+      time-to-live: 3600000 # Thời gian sống của cache là 1 giờ (tính bằng milliseconds)
+      cache-null-values: false # Không lưu các giá trị null vào cache
+
   # 1. DATABASE (Lưu trữ User Identity nội bộ)
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}

@@ -22,6 +22,10 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.redis.core.RedisTemplate;
 // THÊM KAFKA
 import org.springframework.stereotype.Service;
@@ -51,6 +55,7 @@ public class DeviceService {
     private String internalSecret;
 
     @Transactional
+    @CacheEvict(value = "device_list", key = "#keycloakId")
     public DeviceDto addDevice(CreateDeviceRequest request, String keycloakId) {
         // BỎ check User. Token có keycloakId là đủ quyền tạo thiết bị.
         Optional<Device> existingDeviceOpt = repository.findByMac(request.mac());
@@ -99,23 +104,29 @@ public class DeviceService {
         Device savedDevice = repository.save(device);
 
         String key = Constants.PENDING_DEVICE_PREFIX + keycloakId + ":" + savedDevice.getId();
-        redisTemplate.opsForValue().set(key, "pending");
+        redisTemplate.opsForValue().set(key, "pending", Constants.TIMESTAMP_EXPIRY_20M, TimeUnit.MILLISECONDS);
 
         return mapper.toDto(savedDevice);
     }
 
+    @Cacheable(value = "device_list", key = "#keycloakId")
     public List<DeviceDto> getListDevices(String keycloakId){
         // SỬA: Query thẳng bằng keycloakId
         List<Device> devices = repository.findByKeycloakIdAndActiveTrue(keycloakId);
         return devices.stream().map(mapper::toDto).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "device_detail", key = "#deviceId")
     public DeviceDto getDeviceDetail(String keycloakId, String deviceId){
         Device device = getDeviceAndVerifyOwnership(deviceId, keycloakId);
         return mapper.toDto(device);
     }
 
     @Transactional
+    @Caching(
+            put = { @CachePut(value = "device_detail", key = "#id") },
+            evict = { @CacheEvict(value = "device_list", key = "#keycloakId") }
+    )
     public DeviceDto updateDevice(String id, UpdateDeviceRequest request, String keycloakId) {
         Device device = getDeviceAndVerifyOwnership(id, keycloakId);
         Map<String, Object> tbAttributes = new HashMap<>();
@@ -163,6 +174,10 @@ public class DeviceService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "device_detail", key = "#id"),
+            @CacheEvict(value = "device_list", key = "#keycloakId")
+    })
     public void deleteDevice(String id, String keycloakId){
         Device device = getDeviceAndVerifyOwnership(id, keycloakId);
 
@@ -184,6 +199,7 @@ public class DeviceService {
 //        kafkaTemplate.send("notification-events", eventPayload);
     }
 
+    @CacheEvict(value = "device_list", allEntries = true)
     public DeviceDto activateDevice(String payload, String signature){
         String mac = securityService.verifyAndExtractMac(payload, signature);
 
@@ -260,7 +276,7 @@ public class DeviceService {
                     redisKey,
                     objectMapper.writeValueAsString(redisData),
                     Constants.TIMESTAMP_EXPIRY_20M,
-                    TimeUnit.MINUTES
+                    TimeUnit.MILLISECONDS
             );
 
             return presignedUrl;
