@@ -47,3 +47,13 @@ void step_motor(int steps, int direction, int delay_ms){
         gpio_set_level(motor_pins[pin], 0);
     }
 }
+
+void step_motor_by_degree(int degree) {
+    int direction = (degree >= 0) ? 1 : 0;
+    int abs_degree = abs(degree);
+    // Tính số bước: 360 độ = 4096 steps -> 1 độ ≈ 11.377 steps
+    int steps = (int)((abs_degree / 360.0) * 4096.0);
+    
+    // Tốc độ: 2ms/step
+    step_motor(steps, direction, 2);
+}

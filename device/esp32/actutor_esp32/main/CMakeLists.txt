@@ -7,6 +7,7 @@ idf_component_register(
         driver 
         esp_event 
         esp_netif
+        app_update
         
         # Các Component của bạn (Tên folder trong components/)
         gpio

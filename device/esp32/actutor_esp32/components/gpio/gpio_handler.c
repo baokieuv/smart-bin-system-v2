@@ -2,10 +2,10 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 
-#define TAG_GPIO        "GPIO"
+static const char *TAG = "GPIO";
 
 esp_err_t gpio_handler_init() {
-    ESP_LOGI(TAG_GPIO, "Initializing GPIO...");
+    ESP_LOGI(TAG, "Initializing GPIO...");
 
     esp_err_t ret = ESP_OK;
 
