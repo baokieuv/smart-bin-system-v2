@@ -13,9 +13,11 @@ import { StatusMessage } from '@/components/ui/status-message';
 import { PasswordVisibilityButton } from '@/components/ui/password-visibility-button';
 import { PASSWORD_MIN_LENGTH, getPasswordRules, getPasswordStrengthScore, isPasswordStrongEnough } from '@/lib/password-policy';
 import { getRecaptchaToken } from '@/lib/recaptcha';
+import { useToast } from '@/components/ui/use-toast';
 
 export default function RegisterPage() {
     const router = useRouter();
+    const { pushToast, ToastContainer } = useToast();
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
@@ -44,15 +46,18 @@ export default function RegisterPage() {
         setStatus({ type: '', message: '' });
 
         if (!isPasswordStrongEnough(formData.password)) {
+            const msg = `Password must be at least ${PASSWORD_MIN_LENGTH} characters and include an uppercase letter, a number, and a special character.`;
             setStatus({
                 type: 'error',
-                message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters and include an uppercase letter, a number, and a special character.`,
+                message: msg,
             });
+            pushToast(msg, 'error');
             return;
         }
 
         if (formData.password !== confirmPassword) {
             setStatus({ type: 'error', message: 'Password confirmation does not match.' });
+            pushToast('Password confirmation does not match.', 'error');
             return;
         }
 
@@ -67,12 +72,17 @@ export default function RegisterPage() {
                     type: 'success',
                     message: 'Registration successful! Please check your email to activate your account.',
                 });
+                pushToast('Registration successful!', 'success');
                 setTimeout(() => router.push('/auth/login'), 3000);
             } else {
-                setStatus({ type: 'error', message: data.message || 'Registration failed' });
+                const msg = data.message || 'Registration failed';
+                setStatus({ type: 'error', message: msg });
+                pushToast(msg, 'error');
             }
-        } catch {
-            setStatus({ type: 'error', message: 'Failed to connect to the server' });
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : 'Failed to connect to the server';
+            setStatus({ type: 'error', message: msg });
+            pushToast(msg, 'error');
         } finally {
             setIsLoading(false);
         }
@@ -83,6 +93,7 @@ export default function RegisterPage() {
             title="Create Account"
             description="Set up your Smart Bin account and start managing devices efficiently."
         >
+            {ToastContainer}
             {status.message && (
                 <StatusMessage tone={status.type === 'error' ? 'error' : 'success'} className="mb-4">
                     {status.message}

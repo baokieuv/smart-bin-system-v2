@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 public record OrderResponse(
-        UUID orderId,
+        UUID id,
         BigDecimal totalAmount,
         String status,
         String paymentMethod,

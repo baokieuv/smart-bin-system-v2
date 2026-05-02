@@ -55,15 +55,22 @@ export const apiClient = async <T = unknown> (endpoint: string, options: Request
     try {
         const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
-        // If not 401 or auth refresh is skipped, handle response normally
-        if (response.status !== 401 || skipAuthRefresh) {
-            const data = await response.json();
-            
+        // If not 401, handle response normally
+        if (response.status !== 401) {
+            const data = await response.json().catch(() => ({}));
+
             if (!response.ok) {
-                throw new Error(data.message || 'An error occurred. Please try again later.');
+                throw new Error((data && (data as any).message) || 'An error occurred. Please try again later.');
             }
 
             return data;
+        }
+
+        // If 401 and this was a call with skipAuthRefresh (public endpoint), don't try to refresh
+        // because public endpoints shouldn't require auth in the first place
+        if (skipAuthRefresh) {
+            const errBody = await response.json().catch(() => ({ message: 'Unauthorized' }));
+            throw new Error((errBody && (errBody as any).message) || 'Unauthorized');
         }
 
         // Handle 401 - token expired, attempt refresh

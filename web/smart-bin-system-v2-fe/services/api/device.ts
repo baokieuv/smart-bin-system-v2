@@ -1,6 +1,7 @@
 // Service layer for device CRUD and telemetry endpoints.
 
 import { api } from "@/lib/api-client";
+import { getCache, setCache } from '@/lib/cache';
 import { DeviceDto, TelemetryParams, UpdateDeviceRequest } from "@/types/device";
 
 export const deviceApi = {
@@ -16,12 +17,28 @@ export const deviceApi = {
 
     // Get device list requires auth and uses auto-refresh
     getList: async () => {
-        return api.get('/devices/');
+        const key = 'devices:list';
+        const cached = getCache<any>(key);
+        if (cached) return { success: true, data: cached } as any;
+
+        const res = await api.get('/devices');
+        if (res && res.success && res.data) {
+            setCache(key, res.data, 2 * 60 * 1000);
+        }
+        return res;
     },
 
     // Get device detail requires auth and uses auto-refresh
     getDetail: async (deviceId: string) => {
-        return api.get<DeviceDto>(`/devices/${deviceId}`);
+        const key = `device:${deviceId}`;
+        const cached = getCache<DeviceDto>(key);
+        if (cached) return { success: true, data: cached } as any;
+
+        const res = await api.get<DeviceDto>(`/devices/${deviceId}`);
+        if (res && res.success && res.data) {
+            setCache(key, res.data, 3 * 60 * 1000);
+        }
+        return res;
     },
 
     // Update device requires auth and uses auto-refresh
@@ -41,6 +58,14 @@ export const deviceApi = {
 
     // Get attributes requires auth and uses auto-refresh
     getAttributes: async (deviceId: string) => {
-        return api.get(`/devices/${deviceId}/attributes`);
+        const key = `device:${deviceId}:attributes`;
+        const cached = getCache<any>(key);
+        if (cached) return { success: true, data: cached } as any;
+
+        const res = await api.get(`/devices/${deviceId}/attributes`);
+        if (res && res.success && res.data) {
+            setCache(key, res.data, 5 * 60 * 1000);
+        }
+        return res;
     }
 }

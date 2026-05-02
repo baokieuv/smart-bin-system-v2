@@ -12,8 +12,9 @@ import {
   formatOrderStatus,
   formatPaymentMethod,
   toNumber,
-  useAuthToken,
+  useValidAuthToken,
 } from '@/lib/shop-utils';
+import { useToast } from '@/components/ui/use-toast';
 import type { OrderDetailDto } from '@/types/shop';
 
 type OrderDetailState = {
@@ -27,7 +28,8 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const orderId = params.orderId;
   const [state, setState] = useState<OrderDetailState>({ status: 'loading' });
-  const isLoggedIn = useAuthToken();
+  const isLoggedIn = useValidAuthToken();
+  const { pushToast, ToastContainer } = useToast();
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -45,10 +47,12 @@ export default function OrderDetailPage() {
       } catch (error) {
         if (cancelled) return;
 
+        const errorMsg = error instanceof Error ? error.message : 'Không tải được chi tiết đơn hàng.';
         setState({
           status: 'error',
-          message: error instanceof Error ? error.message : 'Không tải được chi tiết đơn hàng.',
+          message: errorMsg,
         });
+        pushToast(errorMsg, 'error');
       }
     };
 
@@ -62,30 +66,36 @@ export default function OrderDetailPage() {
   const order = state.order;
 
   const pricing = useMemo(() => {
-    const subtotal = toNumber(order?.subtotal) ?? (order?.items || []).reduce((total, item) => total + ((toNumber(item.unitPrice) ?? 0) * (toNumber(item.quantity) ?? 0)), 0);
-    const shippingFee = toNumber(order?.shippingFee) ?? 0;
-    const discount = toNumber(order?.discount) ?? 0;
-    const total = toNumber(order?.total) ?? Math.max(0, subtotal + shippingFee - discount);
-
-    return { subtotal, shippingFee, discount, total };
+    const total = toNumber(order?.totalAmount) ?? 0;
+    return { total };
   }, [order]);
 
   const handleBuyAgain = async () => {
     if (!order?.items?.length) return;
 
+    let addedCount = 0;
+
     for (const item of order.items) {
-      const productId = item.productId;
-      if (!productId) continue;
+      const sku = item.productSku;
+      if (!sku) continue;
       const quantity = toNumber(item.quantity) ?? 1;
-      await shopApi.addOrUpdateCartItem({ productId, quantity });
+      try {
+        const response = await shopApi.addOrUpdateCartItem({ sku, quantity });
+        if (response.success) {
+          addedCount += 1;
+        }
+      } catch (error) {
+        console.error(`Lỗi thêm ${sku}:`, error);
+      }
     }
 
+    pushToast(addedCount > 0 ? 'Đã thêm sản phẩm vào giỏ. Đang chuyển sang trang giỏ hàng.' : 'Không thể thêm sản phẩm vào giỏ.', addedCount > 0 ? 'success' : 'error');
     router.push('/shop/cart');
   };
 
   if (!isLoggedIn) {
     return (
-      <Surface className="p-6 sm:p-8">
+      <Surface className="border-0 bg-white/85 p-6 shadow-[0_18px_50px_-32px_rgba(15,23,42,0.45)] sm:p-8">
         <div className="max-w-2xl space-y-4">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">Order detail</p>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Đăng nhập để xem chi tiết đơn.</h2>
@@ -104,7 +114,7 @@ export default function OrderDetailPage() {
 
   if (state.status === 'error') {
     return (
-      <Surface className="p-6 sm:p-8">
+      <Surface className="border-0 bg-white/85 p-6 shadow-[0_18px_50px_-32px_rgba(15,23,42,0.45)] sm:p-8">
         <div className="space-y-4">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Lỗi tải đơn</p>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Không thể mở chi tiết đơn hàng</h2>
@@ -124,23 +134,24 @@ export default function OrderDetailPage() {
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-      <Surface className="p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+      {ToastContainer}
+      <Surface className="border-0 bg-white/85 p-5 shadow-[0_18px_50px_-32px_rgba(15,23,42,0.45)] sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200/70 pb-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700">Order detail</p>
             <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">{order?.orderCode || order?.id || 'Đơn hàng'}</h2>
             <p className="mt-2 text-sm text-slate-600">Tạo lúc {formatDateTime(order?.createdAt)}</p>
           </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{formatOrderStatus(order?.status)}</span>
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{formatOrderStatus(order?.status)}</span>
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="rounded-2xl bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Thanh toán</p>
             <p className="mt-2 text-sm font-semibold text-slate-900">{formatPaymentMethod(order?.paymentMethod)}</p>
             <p className="mt-1 text-sm text-slate-600">Trạng thái: {order?.paymentStatus || 'Chưa rõ'}</p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="rounded-2xl bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Shipping</p>
             <p className="mt-2 text-sm font-semibold text-slate-900">{order?.shipping?.carrier || 'Standard delivery'}</p>
             <p className="mt-1 text-sm text-slate-600">ETA: {order?.shipping?.estimatedDelivery || '—'}</p>
@@ -150,20 +161,20 @@ export default function OrderDetailPage() {
         <div className="mt-5 space-y-3">
           <h3 className="text-lg font-semibold text-slate-900">Mặt hàng trong đơn</h3>
           {(order?.items || []).map((item, index) => {
-            const title = item.productName || item.name || `Item ${index + 1}`;
+            const title = item.productName || `Item ${index + 1}`;
             const quantity = toNumber(item.quantity) ?? 0;
-            const unitPrice = toNumber(item.unitPrice) ?? 0;
-            const subtotal = toNumber(item.subtotal) ?? unitPrice * quantity;
+            const price = toNumber(item.price) ?? 0;
+            const subtotal = price * quantity;
 
             return (
-              <div key={`${item.productId || title}-${index}`} className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div key={`${item.productSku || title}-${index}`} className="flex flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <div className="h-16 w-16 overflow-hidden rounded-xl bg-slate-100">
                     {item.imageUrl || item.thumbnailUrl ? <img src={item.imageUrl || item.thumbnailUrl} alt={title} className="h-full w-full object-cover" /> : null}
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{title}</p>
-                    <p className="text-xs text-slate-500">SL {quantity} · {formatCurrency(unitPrice)}</p>
+                    <p className="text-xs text-slate-500">SL {quantity} · {formatCurrency(price)}</p>
                   </div>
                 </div>
                 <div className="text-sm font-semibold text-slate-900">{formatCurrency(subtotal)}</div>
@@ -174,16 +185,13 @@ export default function OrderDetailPage() {
       </Surface>
 
       <div className="space-y-5">
-        <Surface className="p-5 sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Tổng quan giá</p>
+        <Surface className="border-0 bg-white/85 p-5 shadow-[0_18px_50px_-32px_rgba(15,23,42,0.45)] sm:p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Tổng thanh toán</p>
           <div className="mt-4 space-y-3 text-sm">
-            <div className="flex items-center justify-between"><span className="text-slate-600">Tạm tính</span><span className="font-semibold text-slate-900">{formatCurrency(pricing.subtotal)}</span></div>
-            <div className="flex items-center justify-between"><span className="text-slate-600">Phí ship</span><span className="font-semibold text-slate-900">{formatCurrency(pricing.shippingFee)}</span></div>
-            <div className="flex items-center justify-between"><span className="text-slate-600">Giảm giá</span><span className="font-semibold text-slate-900">- {formatCurrency(pricing.discount)}</span></div>
-            <div className="flex items-center justify-between border-t border-slate-200 pt-3"><span className="text-slate-900">Tổng thanh toán</span><span className="text-lg font-bold text-slate-900">{formatCurrency(pricing.total)}</span></div>
+            <div className="flex items-center justify-between border-b border-slate-200/70 pb-3"><span className="text-slate-900">Tổng tiền</span><span className="text-lg font-bold text-slate-900">{formatCurrency(pricing.total)}</span></div>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Thông tin giao hàng</p>
             <p className="mt-2">Người nhận: {order?.shipping?.recipientName || '—'}</p>
             <p>Điện thoại: {order?.shipping?.recipientPhone || '—'}</p>
@@ -195,18 +203,24 @@ export default function OrderDetailPage() {
             <Button onClick={() => void handleBuyAgain()} disabled={!order?.items?.length}>
               Mua lại
             </Button>
-            <Button variant="secondary" onClick={() => router.push('/shop/cart')}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                pushToast('Đang chuyển sang trang giỏ hàng.', 'success');
+                router.push('/shop/cart');
+              }}
+            >
               Về lịch sử đơn
             </Button>
           </div>
         </Surface>
 
-        <Surface className="p-5 sm:p-6">
+        <Surface className="border-0 bg-white/85 p-5 shadow-[0_18px_50px_-32px_rgba(15,23,42,0.45)] sm:p-6">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Trạng thái thanh toán</p>
           <div className="mt-4 space-y-3 text-sm text-slate-600">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Method: {formatPaymentMethod(order?.paymentMethod)}</div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Payment status: {order?.paymentStatus || 'Chưa thanh toán / chưa cập nhật'}</div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Shipping status: {order?.shippingStatus || 'Chưa cập nhật'}</div>
+            <div className="rounded-2xl bg-slate-50 p-3">Method: {formatPaymentMethod(order?.paymentMethod)}</div>
+            <div className="rounded-2xl bg-slate-50 p-3">Payment status: {order?.paymentStatus || 'Chưa thanh toán / chưa cập nhật'}</div>
+            <div className="rounded-2xl bg-slate-50 p-3">Shipping status: {order?.shippingStatus || 'Chưa cập nhật'}</div>
           </div>
         </Surface>
       </div>

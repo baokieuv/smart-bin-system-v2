@@ -22,6 +22,7 @@ public interface OrderMapper {
     Order toEntity(CheckoutRequest request);
 
     // 2. Entity -> Response
+    @Mapping(target = ".", source = "order")
     @Mapping(target = "status", expression = "java(order.getStatus().name())")
     @Mapping(target = "paymentUrl", source = "paymentUrl")
     OrderResponse toResponse(Order order, String paymentUrl);

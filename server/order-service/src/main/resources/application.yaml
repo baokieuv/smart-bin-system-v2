@@ -56,6 +56,6 @@ vnpay:
   tmn-code: ${VNPAY_TMNCODE:GUET6307}
   hash-secret: ${VNPAY-HASHSECRET:1S6DQ95S0HESOZ4ID3OEWRZN7DRJ9ZCH}
   url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
-  return-url: ${VNPAY_RETURN_URL:https://kvbhust.id.vn/api/payment/vnpay-return}
+  return-url: ${VNPAY_RETURN_URL:https://kvbhust.id.vn/shop/vnpay-return}
   version: ${VNPAY_VERSION:2.1.0}
   command: ${VNPAY_COMMAND:pay}

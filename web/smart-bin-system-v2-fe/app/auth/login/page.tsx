@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { StatusMessage } from '@/components/ui/status-message';
 import { PasswordVisibilityButton } from '@/components/ui/password-visibility-button';
 import { getRecaptchaToken } from '@/lib/recaptcha';
+import { syncGuestCartToServer } from '@/lib/shop-cart';
+import { useToast } from '@/components/ui/use-toast';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -24,6 +26,25 @@ export default function LoginPage() {
 
     // Password visibility state
     const [showPassword, setShowPassword] = useState(false);
+    const { pushToast, ToastContainer } = useToast();
+
+    const redirectAfterLogin = async () => {
+        const safeReturnUrl = (() => {
+            if (typeof window === 'undefined') return '/dashboard';
+
+            const returnUrl = new URLSearchParams(window.location.search).get('returnUrl');
+            return returnUrl && returnUrl.startsWith('/') ? returnUrl : '/dashboard';
+        })();
+
+        try {
+            await syncGuestCartToServer();
+        } catch {
+            // Keep login successful even if guest-cart sync fails.
+        }
+
+        pushToast('Đăng nhập thành công. Đang chuyển trang...', 'success');
+        router.push(safeReturnUrl);
+    };
 
     const handlePasswordLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -41,13 +62,15 @@ export default function LoginPage() {
             if (data.success) {
                 localStorage.setItem('access_token', data.data.access_token);
                 localStorage.setItem('refresh_token', data.data.refresh_token);
-                router.push('/dashboard');
+                await redirectAfterLogin();
             } else {
                 setError(data.message || 'Incorrect email or password');
             }
         } catch (err: unknown) {
             const systemMessage = err instanceof Error ? err.message : '';
-            setError(systemMessage || 'Failed to connect to the server');
+            const errorMsg = systemMessage || 'Failed to connect to the server';
+            setError(errorMsg);
+            pushToast(errorMsg, 'error');
         } finally {
             setIsLoading(false);
         }
@@ -69,7 +92,7 @@ export default function LoginPage() {
                     if (userData.data.state === 'PENDING') {
                         router.push('/auth/complete-profile');
                     } else {
-                        router.push('/dashboard');
+                        await redirectAfterLogin();
                     }
                 } else {
                     setError(dataLogin.message || 'Google sign-in failed');
@@ -86,6 +109,7 @@ export default function LoginPage() {
             title="Welcome Back"
             description="Sign in to access your dashboard and monitor smart bins in real time."
         >
+            {ToastContainer}
             {error && <StatusMessage tone="error" className="mb-4">{error}</StatusMessage>}
 
             <form onSubmit={handlePasswordLogin} className="space-y-5">

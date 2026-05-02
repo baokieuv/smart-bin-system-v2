@@ -17,7 +17,16 @@ export interface MarkNotificationsRequest {
 export const notificationApi = {
   // Get notification feed for activity timeline
   getList: async (params: NotificationListParams) => {
-    return api.get<NotificationListPayload>('/notifications/', params);
+    const { getCache, setCache } = await import('@/lib/cache');
+    const key = `notifications:${JSON.stringify(params)}`;
+    const cached = getCache<NotificationListPayload>(key);
+    if (cached) return { success: true, data: cached } as any;
+
+    const res = await api.get<NotificationListPayload>('/notifications', params);
+    if (res && res.success && res.data) {
+      setCache(key, res.data, 1 * 60 * 1000);
+    }
+    return res;
   },
 
   // Get unread notification count

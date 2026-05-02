@@ -48,6 +48,37 @@ export const hasAuthToken = () => {
   return Boolean(window.localStorage.getItem('access_token'));
 };
 
+const parseTokenExpiry = (token: string): number | null => {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const normalized = payload.padEnd(payload.length + ((4 - (payload.length % 4)) % 4), '=');
+    const json = atob(normalized);
+    const parsed = JSON.parse(json) as { exp?: unknown };
+    const exp = typeof parsed.exp === 'number' ? parsed.exp : Number(parsed.exp);
+
+    return Number.isFinite(exp) ? exp : null;
+  } catch {
+    return null;
+  }
+};
+
+export const hasValidAuthToken = () => {
+  if (typeof window === 'undefined') return false;
+
+  const token = window.localStorage.getItem('access_token');
+  if (!token) return false;
+
+  const exp = parseTokenExpiry(token);
+  // Some backends return opaque tokens without exp claim.
+  if (!exp) return true;
+
+  const nowInSeconds = Math.floor(Date.now() / 1000);
+  return exp > nowInSeconds;
+};
+
 const subscribeToAuthToken = (onStoreChange: () => void) => {
   if (typeof window === 'undefined') return () => undefined;
 
@@ -56,11 +87,16 @@ const subscribeToAuthToken = (onStoreChange: () => void) => {
 };
 
 const getAuthTokenSnapshot = () => hasAuthToken();
+const getValidAuthTokenSnapshot = () => hasValidAuthToken();
 
 const getServerAuthTokenSnapshot = () => false;
 
 export const useAuthToken = () => {
   return useSyncExternalStore(subscribeToAuthToken, getAuthTokenSnapshot, getServerAuthTokenSnapshot);
+};
+
+export const useValidAuthToken = () => {
+  return useSyncExternalStore(subscribeToAuthToken, getValidAuthTokenSnapshot, getServerAuthTokenSnapshot);
 };
 
 export const unwrapListPayload = <T,>(payload: unknown): T[] => {

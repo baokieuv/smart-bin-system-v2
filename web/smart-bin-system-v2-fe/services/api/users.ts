@@ -51,7 +51,7 @@ const toObjectNameFromAvatarUrl = (avatarUrl: string) => {
 export const usersApi = {
     // Register does not require auth; skip refresh-token mechanism
     register: async (formData: CreateUserRequest) => {
-        return api.post<UserDto>('/users/', formData, { skipAuthRefresh: true });
+        return api.post<UserDto>('/users', formData, { skipAuthRefresh: true });
     },
 
     // Get user info requires auth and uses auto-refresh
@@ -65,7 +65,7 @@ export const usersApi = {
         lastName?: string;
         avatarUrl?: string;
     }) => {
-        return api.put<UserDto>('/users/', formData);
+        return api.put<UserDto>('/users', formData);
     },
 
     createAvatarPresignedUploadUrl: async (

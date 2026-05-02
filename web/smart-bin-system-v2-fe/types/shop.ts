@@ -1,3 +1,9 @@
+export type CategoryResponse = {
+  id: string;
+  name?: string;
+  description?: string;
+};
+
 export type ProductCardDto = {
   id: string;
   name?: string;
@@ -6,8 +12,7 @@ export type ProductCardDto = {
   shortDescription?: string;
   imageUrl?: string;
   thumbnailUrl?: string;
-  categoryId?: string;
-  categoryName?: string;
+  sku?: string;
   price?: number | string;
   oldPrice?: number | string;
   discountPercent?: number | string;
@@ -16,6 +21,7 @@ export type ProductCardDto = {
   reviewCount?: number | string;
   soldCount?: number | string;
   unit?: string;
+  category?: CategoryResponse;
   badges?: string[];
   tags?: string[];
 };
@@ -23,7 +29,6 @@ export type ProductCardDto = {
 export type ProductDetailDto = ProductCardDto & {
   images?: string[];
   gallery?: string[];
-  sku?: string;
   warranty?: string;
   origin?: string;
   weight?: string;
@@ -48,22 +53,18 @@ export type ProductListPayload =
     };
 
 export type CartItemDto = {
-  productId: string;
+  sku: string;
   quantity: number;
 };
 
 export type CartLineDto = {
   id?: string;
-  productId?: string;
+  productSku?: string;
   productName?: string;
-  name?: string;
-  imageUrl?: string;
-  thumbnailUrl?: string;
-  unitPrice?: number | string;
   price?: number | string;
   quantity?: number | string;
-  subtotal?: number | string;
-  note?: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
 };
 
 export type CartSummaryDto = {
@@ -77,39 +78,32 @@ export type CartSummaryDto = {
 };
 
 export type CheckoutRequest = {
-  recipientName?: string;
-  recipientPhone?: string;
-  shippingAddress?: string;
-  shippingMethod?: string;
-  paymentMethod?: 'COD' | 'BANK_TRANSFER' | string;
-  note?: string;
-  discountCode?: string;
+  shippingAddress: string;
+  paymentMethod: 'VNPAY' | 'MOMO' | 'COD';
 };
 
 export type OrderItemDto = {
-  productId?: string;
+  id?: string;
+  productSku?: string;
   productName?: string;
-  name?: string;
+  price?: number | string;
+  quantity?: number | string;
   imageUrl?: string;
   thumbnailUrl?: string;
-  quantity?: number | string;
-  unitPrice?: number | string;
-  subtotal?: number | string;
 };
 
 export type OrderDetailDto = {
   id: string;
+  orderId?: string;
   orderCode?: string;
   status?: string;
-  paymentMethod?: 'COD' | 'BANK_TRANSFER' | string;
+  paymentMethod?: 'VNPAY' | 'MOMO' | 'COD';
   paymentStatus?: string;
   shippingStatus?: string;
   createdAt?: string;
   updatedAt?: string;
-  subtotal?: number | string;
-  shippingFee?: number | string;
-  discount?: number | string;
-  total?: number | string;
+  totalAmount?: number | string;
+  paymentUrl?: string;
   items?: OrderItemDto[];
   shipping?: {
     recipientName?: string;
