@@ -17,6 +17,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/products")
 @RequiredArgsConstructor
@@ -88,4 +90,11 @@ public class ProductController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
+    @PostMapping("/by-skus")
+    public ResponseEntity<ApiResponseFormat<Object>> getProductsBySkus(
+            @RequestBody List<String> skus
+    ) {
+        var response = service.getProductsBySkus(skus);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
 }

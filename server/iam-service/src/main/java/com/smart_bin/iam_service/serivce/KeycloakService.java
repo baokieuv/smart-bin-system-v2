@@ -6,6 +6,7 @@ import com.smart_bin.iam_service.dto.auth.response.TokenResponse;
 import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.FederatedIdentityRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
@@ -280,6 +281,20 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).remove();
         } catch (Exception e) {
             throw new RuntimeException("Error deleting user from Keycloak: " + e.getMessage());
+        }
+    }
+
+    public void linkIdentityProvider(String userId, String providerAlias, String providerUserId, String providerUsername) {
+        try {
+            FederatedIdentityRepresentation identity = new FederatedIdentityRepresentation();
+            identity.setIdentityProvider(providerAlias); // truyền "google"
+            identity.setUserId(providerUserId);          // Subject ID của Google Token
+            identity.setUserName(providerUsername);      // Email
+
+            keycloak.realm(realm).users().get(userId).addFederatedIdentity(providerAlias, identity);
+        } catch (Exception e) {
+            // Bỏ qua nếu tài khoản đã được link từ trước đó
+            System.out.println("User is already linked or error: " + e.getMessage());
         }
     }
 

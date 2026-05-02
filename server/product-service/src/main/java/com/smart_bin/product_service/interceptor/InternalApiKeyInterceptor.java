@@ -12,7 +12,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class InternalApiKeyInterceptor implements HandlerInterceptor {
 
     // Cấu hình key này trong application.yml hoặc biến môi trường
-    @Value("${app.internal-key:smart-bin-secret-key-123}")
+    @Value("${app.internal-key:SUPER_SECRET_INTERNAL_KEY}")
     private String internalKey;
 
     @Override

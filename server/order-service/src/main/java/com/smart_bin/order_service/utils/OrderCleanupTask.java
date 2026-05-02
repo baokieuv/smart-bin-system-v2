@@ -12,7 +12,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Slf4j
@@ -29,7 +31,11 @@ public class OrderCleanupTask {
 
         LocalDateTime expireTime = LocalDateTime.now().minusMinutes(15);
 
-        List<Order> expiredOrders = orderRepository.findByStatusAndCreatedDateBefore(OrderStatus.PENDING_PAYMENT, expireTime);
+        Instant instant = expireTime
+                .atZone(ZoneId.of("Asia/Ho_Chi_Minh"))
+                .toInstant();
+
+        List<Order> expiredOrders = orderRepository.findByStatusAndCreatedDateBefore(OrderStatus.PENDING_PAYMENT, instant);
 
         for (Order order : expiredOrders) {
             order.setStatus(OrderStatus.CANCELLED);

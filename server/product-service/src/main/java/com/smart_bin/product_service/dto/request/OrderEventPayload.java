@@ -6,6 +6,6 @@ import java.util.List;
 
 public record OrderEventPayload(
         String orderId,
-        OrderType eventType, // Ví dụ: "ORDER_PAID", "ORDER_CANCELLED"
+        OrderType orderType, // Ví dụ: "ORDER_PAID", "ORDER_CANCELLED"
         List<InventoryItemDto> items
 ) {}

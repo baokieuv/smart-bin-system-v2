@@ -6,12 +6,14 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @ComponentScan(basePackages = {"com.smart_bin.order_service", "com.smart_bin.core"})
 @EntityScan(basePackages = {"com.smart_bin.order_service", "com.smart_bin.core"})
 @EnableJpaAuditing
 @EnableFeignClients
+@EnableScheduling
 public class OrderServiceApplication {
 
 	public static void main(String[] args) {

@@ -17,10 +17,10 @@ public class OrderEventListener {
             groupId = "product-service-group"
     )
     public void handleOrderEvents(OrderEventPayload eventPayload) {
-        log.info("Received order event: {} for Order ID: {}", eventPayload.eventType(), eventPayload.orderId());
+        log.info("Received order event: {} for Order ID: {}", eventPayload.orderType(), eventPayload.orderId());
 
         try {
-            switch (eventPayload.eventType()) {
+            switch (eventPayload.orderType()) {
                 case ORDER_PAID -> {
                     // Thanh toán thành công -> Trừ hẳn phần đã giữ chỗ
                     inventoryService.commitInventory(eventPayload.items());
@@ -29,12 +29,13 @@ public class OrderEventListener {
                     // Hủy đơn / Hết hạn -> Trả lại kho
                     inventoryService.releaseInventory(eventPayload.items());
                 }
-                default -> log.warn("Unknown event type: {}", eventPayload.eventType());
+                default -> log.warn("Unknown event type: {}", eventPayload.orderType());
             }
         } catch (Exception e) {
             // Trong thực tế, bạn nên gửi message lỗi này vào Dead Letter Queue (DLQ) để xử lý sau
             log.error("Error processing order event {} for Order ID {}: {}",
-                    eventPayload.eventType(), eventPayload.orderId(), e.getMessage());
+                    eventPayload.orderType(), eventPayload.orderId(), e.getMessage());
+            throw new RuntimeException("Kafka Listener failed, forcing retry", e);
         }
     }
 

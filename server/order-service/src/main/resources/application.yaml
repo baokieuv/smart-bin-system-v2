@@ -30,7 +30,7 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
 
   # 4. SECURITY
   security:
@@ -43,9 +43,19 @@ spring:
 app:
   feign:
     product-service:
-      url: ${PRODUCT_SERVICE_URL:http://localhost:2109}
+      url: ${PRODUCT_SERVICE_URL:http://localhost:2112}
+      internal-secret: ${PRODUCT_INTERNAL_SECRET:SUPER_SECRET_INTERNAL_KEY}
     reward-service:
       url: ${REWARD_SERVICE_URL:http://localhost:2111}
+      internal-secret: ${REWARD_INTERNAL_SECRET:SUPER_SECRET_INTERNAL_KEY}
   kafka:
     topics:
-      order-events: "order-events-topic" # Bắn event mua hàng vào topic này
+      order-events: "order-events-topic"
+
+vnpay:
+  tmn-code: ${VNPAY_TMNCODE:GUET6307}
+  hash-secret: ${VNPAY-HASHSECRET:1S6DQ95S0HESOZ4ID3OEWRZN7DRJ9ZCH}
+  url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  return-url: ${VNPAY_RETURN_URL:https://kvbhust.id.vn/api/payment/vnpay-return}
+  version: ${VNPAY_VERSION:2.1.0}
+  command: ${VNPAY_COMMAND:pay}

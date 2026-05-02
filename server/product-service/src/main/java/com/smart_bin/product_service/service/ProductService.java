@@ -101,6 +101,15 @@ public class ProductService {
         return "Deleted product successfully";
     }
 
+    public List<ProductResponse> getProductsBySkus(List<String> skus) {
+        if (skus == null || skus.isEmpty()) return List.of();
+
+        return repository.findBySkuInAndActiveTrue(skus)
+                .stream()
+                .map(mapper::toResponse)
+                .toList();
+    }
+
     private Product findProductActiveById(String id) {
         UUID productId = parseUUID(id);
         return repository.findByIdAndActiveTrue(productId)

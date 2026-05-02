@@ -114,11 +114,17 @@ public class InventoryService {
     // 4. XÁC NHẬN TRỪ KHO (Được gọi khi Kafka báo event ORDER_PAID)
     @Transactional
     public void commitInventory(List<InventoryItemDto> items) {
-        for (InventoryItemDto item : items) {
-            repository.findByProductSkuWithLock(item.sku()).ifPresent(inventory -> {
-                inventory.setQuantityReserved(inventory.getQuantityReserved() - item.quantity());
+        List<String> sortedSkus = items.stream().map(InventoryItemDto::sku).sorted().toList();
+        Map<String, Long> itemMap = items.stream()
+                .collect(Collectors.toMap(InventoryItemDto::sku, InventoryItemDto::quantity, Long::sum));
+
+        for (String sku : sortedSkus) {
+            repository.findByProductSkuWithLock(sku).ifPresent(inventory -> {
+                Long commitQty = itemMap.get(sku);
+                long newReserved = Math.max(0, inventory.getQuantityReserved() - commitQty); // Tránh âm kho
+                inventory.setQuantityReserved(newReserved);
                 repository.save(inventory);
-                log.info("Committed (deducted) {} reserved items for SKU: {}", item.quantity(), item.sku());
+                log.info("Committed (deducted) {} reserved items for SKU: {}", commitQty, sku);
             });
         }
     }
@@ -126,12 +132,19 @@ public class InventoryService {
     // 5. HOÀN TRẢ KHO (Được gọi khi Kafka báo event ORDER_CANCELLED)
     @Transactional
     public void releaseInventory(List<InventoryItemDto> items) {
-        for (InventoryItemDto item : items) {
-            repository.findByProductSkuWithLock(item.sku()).ifPresent(inventory -> {
-                inventory.setQuantityReserved(inventory.getQuantityReserved() - item.quantity());
-                inventory.setQuantityAvailable(inventory.getQuantityAvailable() + item.quantity());
+        List<String> sortedSkus = items.stream().map(InventoryItemDto::sku).sorted().toList();
+        Map<String, Long> itemMap = items.stream()
+                .collect(Collectors.toMap(InventoryItemDto::sku, InventoryItemDto::quantity, Long::sum));
+
+        for (String sku : sortedSkus) {
+            repository.findByProductSkuWithLock(sku).ifPresent(inventory -> {
+                Long releaseQty = itemMap.get(sku);
+                long newReserved = Math.max(0, inventory.getQuantityReserved() - releaseQty); // Tránh âm kho
+
+                inventory.setQuantityReserved(newReserved);
+                inventory.setQuantityAvailable(inventory.getQuantityAvailable() + releaseQty);
                 repository.save(inventory);
-                log.info("Released (refunded) {} items back to available for SKU: {}", item.quantity(), item.sku());
+                log.info("Released (refunded) {} items back to available for SKU: {}", releaseQty, sku);
             });
         }
     }

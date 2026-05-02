@@ -1,6 +1,7 @@
 package com.smart_bin.order_service.common;
 
 public enum OrderStatus {
+    PENDING_INVENTORY,
     PENDING_PAYMENT, // Vừa tạo, đang chờ thanh toán
     PAID,            // Đã thanh toán thành công
     PROCESSING,      // Đang chuẩn bị hàng

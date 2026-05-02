@@ -52,6 +52,7 @@ spring:
 
 # 5. CUSTOM APP TOPICS
 app:
+  internal-key: ${INTERNAL_KEY:SUPER_SECRET_INTERNAL_KEY}
   kafka:
     topics:
       order-events: "order-events-topic" # Lắng nghe event order_paid từ topic này

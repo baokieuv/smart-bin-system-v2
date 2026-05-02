@@ -1,6 +1,7 @@
 package com.smart_bin.order_service.controller;
 
 import com.smart_bin.order_service.service.PaymentService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,17 +15,16 @@ public class PaymentController {
 
     // VNPay IPN (Instant Payment Notification)
     @GetMapping("/vnpay_ipn")
-    public ResponseEntity<String> vnpayWebhook(
-            @RequestParam("vnp_TxnRef") String orderId,
-            @RequestParam("vnp_TransactionNo") String transactionId,
-            @RequestParam("vnp_ResponseCode") String responseCode) {
+    public ResponseEntity<Object> vnpayWebhook(HttpServletRequest request) {
+        var response = paymentService.processVnpayIpn(request);
 
-        // Response Code "00" nghĩa là thanh toán thành công
-        boolean isSuccess = "00".equals(responseCode);
+        return ResponseEntity.ok(response);
+    }
 
-        paymentService.processPaymentWebhook(orderId, transactionId, isSuccess);
+    @GetMapping("/vnpay_return")
+    public ResponseEntity<Object> vnpayReturn(HttpServletRequest request) {
+        var result = paymentService.processVnpayReturn(request);
 
-        // Webhook VNPay yêu cầu trả về code riêng
-        return ResponseEntity.ok("{\"RspCode\":\"00\",\"Message\":\"Confirm Success\"}");
+        return ResponseEntity.ok(result);
     }
 }

@@ -26,7 +26,7 @@ public class Order extends BaseEntity {
     private String userId;
 
     @Column(nullable = false)
-    private BigDecimal totalAmount;
+    private BigDecimal totalAmount = BigDecimal.ZERO;
 
     private BigDecimal shippingFee = BigDecimal.ZERO;
     private BigDecimal discountAmount = BigDecimal.ZERO;
@@ -35,7 +35,7 @@ public class Order extends BaseEntity {
     private String shippingAddress;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private OrderStatus status = OrderStatus.PENDING_PAYMENT;
 
     private String paymentMethod; // VN_PAY, MOMO, COD

@@ -28,7 +28,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.GET, "/api/v1/payments/vnpay_ipn").permitAll()
+                        .requestMatchers("/api/v1/payments/**").permitAll()
 
                         .requestMatchers("/api/v1/cart/**").authenticated()
                         .requestMatchers("/api/v1/orders/**").authenticated()

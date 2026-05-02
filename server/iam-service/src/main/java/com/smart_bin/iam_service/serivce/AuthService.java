@@ -50,6 +50,20 @@ public class AuthService {
 
     @Transactional
     public TokenResponse loginGoogle(String googleToken) {
+        try {
+            var googleJwt = JWT.decode(googleToken);
+            String email = googleJwt.getClaim("email").asString();
+            String googleSubjectId = googleJwt.getSubject();
+
+            var kcUser = keycloakService.getUserByEmail(email);
+
+            if (kcUser != null) {
+                keycloakService.linkIdentityProvider(kcUser.getId(), "google", googleSubjectId, email);
+            }
+        } catch (Exception e) {
+
+        }
+
         // 1. Đổi token Google lấy token Keycloak
         TokenResponse keycloakToken = keycloakService.exchangeGoogleToken(googleToken);
 
