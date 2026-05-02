@@ -4,6 +4,7 @@ import com.smart_bin.product_service.entity.Product;
 import io.lettuce.core.dynamic.annotation.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
@@ -11,20 +12,25 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ProductRepository extends JpaRepository<Product, UUID> {
+    @EntityGraph(attributePaths = {"category"})
     Optional<Product> findByIdAndActiveTrue(UUID uuid);
 
-    @Query("SELECT p FROM Product p WHERE p.active = true " +
-            "AND (:categoryId IS NULL OR p.categoryId = :categoryId) " +
-            "AND (:searchParams IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :searchParams, '%')))")
+    @Query(value = "SELECT p FROM Product p LEFT JOIN FETCH p.category WHERE p.active = true " +
+            "AND (:categoryId IS NULL OR p.category.id = :categoryId) " +
+            "AND (:searchParams IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :searchParams, '%')))",
+            countQuery = "SELECT count(p) FROM Product p WHERE p.active = true " +
+                    "AND (:categoryId IS NULL OR p.category.id = :categoryId) " +
+                    "AND (:searchParams IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :searchParams, '%')))")
     Page<Product> searchProducts(
             @Param("categoryId") UUID categoryId,
             @Param("searchParams") String searchParams,
             Pageable pageable
     );
 
+    @EntityGraph(attributePaths = {"category"})
     Page<Product> findAllByActiveTrue(Pageable pageable);
 
-    boolean existsByCategoryIdAndActiveTrue(UUID categoryId);
+    boolean existsByCategory_IdAndActiveTrue(UUID categoryId);
 
     boolean existsBySkuAndActiveTrue(String sku);
 

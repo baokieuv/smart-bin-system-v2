@@ -69,7 +69,7 @@ public class CategoryService {
         Category category = findCategoryById(id);
 
         // Logic check: Không cho phép xóa nếu có Product đang thuộc Category này
-        if (productRepository.existsByCategoryIdAndActiveTrue(category.getId())) {
+        if (productRepository.existsByCategory_IdAndActiveTrue(category.getId())) {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Cannot delete category. There are active products belonging to this category.");
         }
 

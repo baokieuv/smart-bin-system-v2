@@ -23,7 +23,7 @@ public class MediaController {
     private final ResponseFactory responseFactory;
     private final MediaStorageService mediaStorageService;
 
-    @Value("${media.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
+    @Value("${media.internal-secret}")
     private String internalSecret;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -38,17 +38,17 @@ public class MediaController {
         return responseFactory.response(SuccessCode.CREATED, response);
     }
 
-//    @PostMapping("/presigned-upload")
-//    public ResponseEntity<ApiResponseFormat<Object>> createPresignedUploadUrl(
-//            @RequestParam(value = "folder", required = false, defaultValue = "") String folder,
-//            @RequestParam(value = "oldObjectName", required = false) String oldObjectName,
-//            @RequestParam("contentType") String contentType,
-//            @AuthenticationPrincipal Jwt jwt
-//    ) {
-//        String keycloakId = jwt.getSubject();
-//        var response = mediaStorageService.createPresignedUploadUrl(keycloakId, folder, oldObjectName, contentType);
-//        return responseFactory.response(SuccessCode.OK, response);
-//    }
+    @PostMapping("/presigned-upload")
+    public ResponseEntity<ApiResponseFormat<Object>> createPresignedUploadUrl(
+            @RequestParam(value = "folder", required = false, defaultValue = "") String folder,
+            @RequestParam(value = "oldObjectName", required = false) String oldObjectName,
+            @RequestParam("contentType") String contentType,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String keycloakId = jwt.getSubject();
+        var response = mediaStorageService.createPresignedUploadUrl(keycloakId, folder, oldObjectName, contentType);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
 
     @PostMapping("/internal/presigned-upload")
     public ResponseEntity<ApiResponseFormat<Object>> createInternalPresignedUrl(

@@ -59,7 +59,7 @@ public class ProductService {
                 .orElseThrow(() -> new ApiException(ProductErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
 
         Product product = mapper.toEntity(request);
-        product.setCategoryId(category.getId());
+        product.setCategory(category);
         product.setActive(true);
 
         product = repository.save(product);
@@ -75,10 +75,12 @@ public class ProductService {
         Product product = findProductActiveById(id);
 
         // Nếu request gửi lên categoryId mới, phải check và update Category
-        if (request.categoryId() != null && !request.categoryId().equals(product.getCategoryId())) {
+        if (request.categoryId() != null &&
+                (product.getCategory() == null || !request.categoryId().equals(product.getCategory().getId()))) {
+
             Category newCategory = categoryRepository.findByIdAndActiveTrue(request.categoryId())
                     .orElseThrow(() -> new ApiException(ProductErrorCode.CATEGORY_NOT_FOUND, "New Category not found or deleted"));
-            product.setCategoryId(newCategory.getId());
+            product.setCategory(newCategory);
         }
 
         mapper.updateProductFromRequest(request, product);
@@ -93,6 +95,8 @@ public class ProductService {
 
         product.setActive(false);
         repository.save(product);
+
+        inventoryService.deactivateInventory(product.getSku());
 
         return "Deleted product successfully";
     }

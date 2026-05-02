@@ -39,12 +39,37 @@ public class InventoryService {
     // 2. Admin nhập kho
     @Transactional
     public boolean importInventory(ImportInventoryRequest request) {
-        Inventory inventory = repository.findByProductSkuWithLock(request.sku())
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Inventory not found for SKU: " + request.sku()));
+        // 1. [QUAN TRỌNG]: Sắp xếp SKU theo Alphabet trước khi Lock DB để chống Deadlock.
+        List<String> sortedSkus = request.items().stream()
+                .map(InventoryItemDto::sku)
+                .sorted()
+                .toList();
 
-        inventory.setQuantityAvailable(inventory.getQuantityAvailable() + request.quantity());
-        repository.save(inventory);
-        log.info("Imported {} items to SKU: {}", request.quantity(), request.sku());
+        // 2. Map lại dữ liệu để tra cứu số lượng cần nhập (O(1))
+        Map<String, Long> itemMap = request.items().stream()
+                .collect(Collectors.toMap(
+                        InventoryItemDto::sku,
+                        InventoryItemDto::quantity,
+                        Long::sum // Nếu trùng SKU thì cộng dồn số lượng lại với nhau
+                ));
+
+        // 3. Tiến hành duyệt theo thứ tự đã sort và khóa dòng
+        for (String sku : sortedSkus) {
+            Inventory inventory = repository.findByProductSkuWithLock(sku)
+                    .orElseThrow(() -> new ApiException(
+                            CoreErrorCode.BAD_REQUEST,
+                            "Inventory not found for SKU: " + sku
+                    ));
+
+            Long importQty = itemMap.get(sku);
+
+            // Cộng dồn số lượng
+            inventory.setQuantityAvailable(inventory.getQuantityAvailable() + importQty);
+
+            repository.save(inventory);
+
+            log.info("Imported {} items to SKU: {}", importQty, sku);
+        }
 
         return true;
     }
@@ -59,7 +84,11 @@ public class InventoryService {
                 .toList();
 
         Map<String, Long> itemMap = request.items().stream()
-                .collect(Collectors.toMap(InventoryItemDto::sku, InventoryItemDto::quantity));
+                .collect(Collectors.toMap(
+                        InventoryItemDto::sku,
+                        InventoryItemDto::quantity,
+                        Long::sum // Nếu trùng SKU thì cộng dồn số lượng lại với nhau
+                ));
 
         // Tiến hành duyệt và khóa dòng
         for (String sku : sortedSkus) {
@@ -105,6 +134,15 @@ public class InventoryService {
                 log.info("Released (refunded) {} items back to available for SKU: {}", item.quantity(), item.sku());
             });
         }
+    }
+
+    @Transactional
+    public void deactivateInventory(String sku){
+        repository.findByProductSkuWithLock(sku).ifPresent(inventory -> {
+            inventory.setActive(false);
+            repository.save(inventory);
+            log.info("Committed deactivate items for SKU: {}", sku);
+        });
     }
 
 }

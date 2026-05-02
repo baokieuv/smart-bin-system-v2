@@ -18,7 +18,9 @@ public class Product extends BaseEntity {
     @GeneratedValue(generator = "uuid-v7-generator")
     private UUID id;
 
-    private UUID categoryId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private Category category;
 
     private String sku;
 

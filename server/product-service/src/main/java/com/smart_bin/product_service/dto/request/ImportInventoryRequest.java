@@ -1,9 +1,11 @@
 package com.smart_bin.product_service.dto.request;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+
+import java.util.List;
 
 public record ImportInventoryRequest(
-        @NotBlank String sku,
-        @NotNull @Min(1) Long quantity
-) {}
+        @NotEmpty(message = "Items list cannot be empty")
+        List<@Valid InventoryItemDto> items
+) {
+}
