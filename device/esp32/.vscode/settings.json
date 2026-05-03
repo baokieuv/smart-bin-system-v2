@@ -1,3 +1,4 @@
 {
-    "idf.currentSetup": "d:\\Embedded\\ESP\\esp\\v5.3\\esp-idf"
+    "idf.currentSetup": "d:\\Embedded\\ESP\\esp\\v5.3\\esp-idf",
+    "cmake.sourceDirectory": "D:/HUST/soict/final-project/smart-bin-v2/smart-bin-system-v2/device/esp32/actutor_esp32"
 }
