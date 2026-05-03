@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,6 +9,7 @@ from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 from src.models.trash_model import TrashData
 from src.repository.device_repository import DeviceClient
 from src.repository.thingsboard_repository import ThingsboardClient
+from src.repository.actuator_repository import ActuatorRepository
 from src.utils.config import APP_CONFIG
 
 
@@ -185,6 +187,7 @@ class MainViewModel(QObject):
         self.worker = worker
         self.device_client = DeviceClient()
         self.thingsboard_client = ThingsboardClient()
+        self.actuator_client = ActuatorRepository()
         self.metadata_store = DetectionMetadataStore(APP_CONFIG.paths.detection_metadata_dir, self.logger)
         self.upload_manager = DetectionUploadManager(self.metadata_store, self.device_client, self.logger)
         self.access_token = None
@@ -259,6 +262,22 @@ class MainViewModel(QObject):
         # Persist raw result first so feedback can patch the same metadata file later.
         self.current_detection_metadata_path = self.metadata_store.save_detection(trash_data, "not_rated")
         self.worker.pause_detection()  # Pause AI while collecting user feedback.
+        
+        # Trigger stepper motor control based on waste category.
+        waste_group = trash_data.waste_group
+        angle = trash_data.stepper_angle
+        self.logger.info(
+            "Activating stepper motor: category=%s group=%s angle=%d°",
+            trash_data.category,
+            waste_group.name,
+            angle,
+        )
+        ok, message = self.actuator_client.control_step_motor(angle)
+        if ok:
+            self.logger.info("Stepper motor command succeeded: %s", message)
+        else:
+            self.logger.warning("Stepper motor command failed: %s", message)
+        
         self.state_feedback.emit(trash_data)  # Notify view to show Feedback screen.
         self.feedback_timer.start(APP_CONFIG.viewmodel.feedback_timeout_ms)
         self.logger.info(
@@ -391,8 +410,9 @@ class MainViewModel(QObject):
             self._refresh_access_token(reason="activate_success")
             return
 
-        message = self._extract_error_message(result)
-        self.state_toast.emit(f"Device activation failed: {message}", False)
+        self.logger.warning("Device activation failed: %s", result)
+        message = self._extract_user_friendly_error_message(result)
+        self.state_toast.emit(f"Kích hoạt thiết bị thất bại: {message}", False)
 
     def _extract_error_code(self, result) -> str | None:
         """Extract backend error code from either dict payload or plain text."""
@@ -410,8 +430,48 @@ class MainViewModel(QObject):
     def _extract_error_message(self, result) -> str:
         """Build user-facing error message from structured/unstructured results."""
         if isinstance(result, dict):
-            return str(result.get("message") or result.get("code") or "Unknown error")
-        return str(result)
+            raw_message = str(result.get("message") or result.get("code") or "Unknown error")
+            return self._sanitize_backend_message(raw_message)
+        return self._sanitize_backend_message(str(result))
+
+    def _sanitize_backend_message(self, message: str) -> str:
+        """Compress backend responses into short, readable UI text."""
+        cleaned = re.sub(r"<[^>]*>", " ", message)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+        if not cleaned:
+            return "Unknown error"
+
+        suspicious_markers = (
+            "document.",
+            "window.",
+            "XMLHttpRequest",
+            "addEventListener",
+            "JSON.stringify",
+            "error-feedback-survey",
+            "function(){",
+            "function ()",
+            "<html",
+            "<!doctype",
+        )
+        if len(cleaned) > 180 or any(marker.lower() in cleaned.lower() for marker in suspicious_markers):
+            return "Backend returned an invalid response"
+
+        return cleaned
+
+    def _extract_user_friendly_error_message(self, result) -> str:
+        """Return a concise error message suitable for toast UI."""
+        if isinstance(result, dict):
+            code = str(result.get("code") or "").strip()
+            message = self._extract_error_message(result)
+            if code and message and code.lower() not in message.lower():
+                return f"{code}: {message}"
+            return message
+
+        message = self._extract_error_message(result)
+        if len(message) > 120:
+            return message[:117].rstrip() + "..."
+        return message
 
     def _is_device_not_active_error(self, result) -> bool:
         """Identify backend response indicating this device exists but is not active."""

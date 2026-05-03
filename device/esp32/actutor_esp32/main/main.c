@@ -7,8 +7,44 @@
 #include "servo.h"
 #include "step_motor.h"
 #include "uart_handler.h"
+#include "ultrasonic_sensor.h"
+#include "nvs_storage.h"
 
 static const char *TAG = "MAIN_APP";
+
+SmartBinConfig_t system_config;
+
+void sensor_report_task(void *arg){
+    while(1) {
+        TrashBinDistances_t dist = ultrasonic_read_all_bins();
+
+        uint8_t fill_level[4] = {0};
+
+        float depth = system_config.bin_depth_cm;
+
+        if (dist.bin1_cm > 0) fill_level[0] = (uint8_t)(((depth - dist.bin1_cm) / depth) * 100);
+        if (dist.bin2_cm > 0) fill_level[1] = (uint8_t)(((depth - dist.bin2_cm) / depth) * 100);
+        if (dist.bin3_cm > 0) fill_level[2] = (uint8_t)(((depth - dist.bin3_cm) / depth) * 100);
+        if (dist.bin4_cm > 0) fill_level[3] = (uint8_t)(((depth - dist.bin4_cm) / depth) * 100);
+
+        for(int i = 0; i < 4; i++) {
+            if (fill_level[i] > 100) fill_level[i] = 100;
+        }
+
+        bool is_any_bin_full = false;
+        for(int i = 0; i < 4; i++) {
+            if (fill_level[i] >= system_config.full_threshold_pct) {
+                is_any_bin_full = true;
+                break;
+            }
+        }
+
+        set_trash_full_alarm(is_any_bin_full);
+        uart_send_frame_hmac(CMD_REPORT_FILL_LEVEL, fill_level, 4);
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
 
 void app_main(void)
 {
@@ -19,13 +55,20 @@ void app_main(void)
       ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-
     ESP_LOGI(TAG, "Khoi tao he thong Smart Bin v1.2...");
 
+    if (nvs_load_bin_config(&system_config) != ESP_OK) {
+        ESP_LOGW(TAG, "Cai dat mac dinh cho lan boot dau tien...");
+        system_config.bin_depth_cm = 60.0;       // Sâu 60cm
+        system_config.full_threshold_pct = 90;   // Ngưỡng 90%
+        nvs_save_bin_config(&system_config);     // Lưu ngay xuống Flash
+    }
+    
     // 2. Khởi tạo các module ngoại vi
     gpio_handler_init();
     init_stepper();
     init_servo();
+    ultrasonic_sensor_init();
     
     // 3. Khởi tạo module truyền thông (Sẽ tự động tạo Queue và Task chạy ngầm)
     uart_handler_init();
@@ -33,6 +76,8 @@ void app_main(void)
     // 4. Set trạng thái ban đầu
     set_servo_angle(0);
     beep_pattern(2, 100);
+
+    xTaskCreate(sensor_report_task, "sensor_report_task", 4086, NULL, 5, NULL);
 
     int16_t current_degree_request;
 

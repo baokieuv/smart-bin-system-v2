@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QHBoxLayout
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QPoint, QRect
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QHBoxLayout, QPushButton
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QPoint, QRect, pyqtSignal
 from PyQt6.QtGui import QPainter, QLinearGradient, QColor, QBrush, QPen
 import random
 import math
@@ -77,6 +77,8 @@ class ConfettiWidget(QWidget):
 class ScreenThanks(QWidget):
     """Thank-you screen shown after user sends correctness feedback."""
 
+    close_requested = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         self._build_ui()
@@ -105,9 +107,30 @@ class ScreenThanks(QWidget):
         self.card.setGraphicsEffect(card_shadow)
 
         card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(60, 52, 60, 52)
+        card_layout.setContentsMargins(28, 18, 28, 24)
         card_layout.setSpacing(16)
         card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        top_row = QHBoxLayout()
+        top_row.addStretch()
+        close_btn = QPushButton("×")
+        close_btn.setFixedSize(34, 34)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: #f1f5f9;
+                color: #426699;
+                border: none;
+                border-radius: 17px;
+                font-size: 20px;
+                font-weight: 700;
+            }
+            QPushButton:hover { background: #dbeafe; color: #1d4ed8; }
+            QPushButton:pressed { background: #bfdbfe; }
+        """)
+        close_btn.clicked.connect(self.close_requested.emit)
+        top_row.addWidget(close_btn)
+        card_layout.addLayout(top_row)
 
         # Checkmark icon with gradient bg
         self.icon_widget = QWidget()

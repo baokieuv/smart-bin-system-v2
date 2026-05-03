@@ -6,9 +6,12 @@
 #include "driver/uart.h"
 #include "esp_ota_ops.h"
 #include "mbedtls/md.h"
+#include "nvs_storage.h"
 #include <string.h>
 
 static const char *TAG = "UART_HANDLER";
+
+extern SmartBinConfig_t system_config;
 
 esp_ota_handle_t update_handle = 0 ;
 const esp_partition_t *update_partition = NULL;
@@ -38,8 +41,47 @@ bool verify_hmac(uint8_t cmd, uint16_t len, uint8_t *payload, uint8_t *received_
 }
 
 void send_response(uint8_t cmd) {
-    uint8_t resp[7] = {HEADER_1, HEADER_2, cmd, 0x00, 0x00, cmd, TAIL};
-    uart_write_bytes(UART_PORT_NUM, (const char *)resp, sizeof(resp));
+    uart_send_frame_hmac(cmd, NULL, 0);
+}
+
+void uart_send_frame_hmac(uint8_t cmd, uint8_t *payload, uint16_t len) {
+    uint8_t calculated_mac[32];
+    mbedtls_md_context_t ctx;
+    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+
+    // A. TÍNH TOÁN HMAC
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
+    mbedtls_md_hmac_starts(&ctx, (const unsigned char *)SECRET_KEY, strlen(SECRET_KEY));
+
+    mbedtls_md_hmac_update(&ctx, &cmd, 1);
+    uint8_t len_bytes[2] = {(len >> 8) & 0xFF, len & 0xFF};
+    mbedtls_md_hmac_update(&ctx, len_bytes, 2);
+    if (len > 0) {
+        mbedtls_md_hmac_update(&ctx, payload, len);
+    }
+    mbedtls_md_hmac_finish(&ctx, calculated_mac);
+    mbedtls_md_free(&ctx);
+
+    // B. ĐÓNG GÓI FRAME VÀ GỬI ĐI
+    uint16_t frame_size = 5 + len + 32 + 1; // Header(2) + Cmd(1) + Len(2) + Payload + HMAC(32) + Tail(1)
+    uint8_t *frame = malloc(frame_size);
+    if (frame == NULL) return; // Hết RAM
+
+    uint16_t idx = 0;
+    frame[idx++] = HEADER_1;
+    frame[idx++] = HEADER_2;
+    frame[idx++] = cmd;
+    frame[idx++] = len_bytes[0];
+    frame[idx++] = len_bytes[1];
+    
+    for(int i = 0; i < len; i++) frame[idx++] = payload[i];
+    for(int i = 0; i < 32; i++) frame[idx++] = calculated_mac[i];
+
+    frame[idx++] = TAIL;
+
+    uart_write_bytes(UART_PORT_NUM, (const char *)frame, frame_size);
+    free(frame);
 }
 
 void uart_rx_task(void *arg) {
@@ -116,6 +158,30 @@ void uart_rx_task(void *arg) {
                                     xQueueSend(step_action_queue, &target_degree, 0);
                                     send_response(CMD_ACK);
                                 } else send_response(CMD_NACK);
+                            }
+                            else if (current_cmd == CMD_SET_CONFIG) {
+                                if (current_len == 5) { // 4 bytes Float + 1 byte Uint8_t
+                                    float new_depth;
+                                    // Copy 4 bytes đầu vào biến float (đảm bảo ép kiểu an toàn)
+                                    memcpy(&new_depth, &payload_buf[0], sizeof(float)); 
+                                    uint8_t new_threshold = payload_buf[4];
+                                    
+                                    // Cập nhật vào biến toàn cục đang chạy
+                                    system_config.bin_depth_cm = new_depth;
+                                    system_config.full_threshold_pct = new_threshold;
+                                    
+                                    // Lưu vĩnh viễn xuống Flash (NVS)
+                                    if (nvs_save_bin_config(&system_config) == ESP_OK) {
+                                        ESP_LOGI(TAG, "Cap nhat Config thanh cong: Sau=%.1fcm, Nguong=%d%%", 
+                                                 system_config.bin_depth_cm, system_config.full_threshold_pct);
+                                        send_response(CMD_ACK);
+                                    } else {
+                                        send_response(CMD_NACK);
+                                    }
+                                } else {
+                                    ESP_LOGE(TAG, "Sai do dai Payload cua CMD_SET_CONFIG");
+                                    send_response(CMD_NACK);
+                                }
                             }
                             else if (current_cmd == CMD_OTA_START) {
                                 ESP_LOGI(TAG, "Bat dau OTA...");

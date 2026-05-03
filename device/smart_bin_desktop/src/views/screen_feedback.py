@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel,
                              QPushButton, QGraphicsDropShadowEffect, QGraphicsOpacityEffect)
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QTimer, QSequentialAnimationGroup
 from PyQt6.QtGui import QPainter, QLinearGradient, QColor, QBrush, QFont, QRadialGradient
+from src.models.trash_model import TrashData, WasteGroup
 
 
 class PulseButton(QPushButton):
@@ -201,6 +202,53 @@ class ScreenFeedback(QWidget):
         self.left_layout.addWidget(conf_label)
         self.left_layout.addWidget(conf_bar_bg)
         self.left_layout.addWidget(conf_pct)
+        self.left_layout.addSpacing(12)
+
+        # Waste group badge (displays category, emoji, angle, Vietnamese description)
+        self.waste_group_container = QWidget()
+        self.waste_group_container.setStyleSheet("""
+            QWidget {
+                background: rgba(255,255,255,0.15);
+                border-radius: 12px;
+                border: none;
+            }
+        """)
+        waste_group_layout = QVBoxLayout(self.waste_group_container)
+        waste_group_layout.setContentsMargins(12, 8, 12, 8)
+        waste_group_layout.setSpacing(4)
+
+        self.lbl_waste_group_badge = QLabel("🟢 Recyclable")
+        self.lbl_waste_group_badge.setStyleSheet("""
+            font-size: 13px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.95);
+            background: transparent;
+        """)
+        self.lbl_waste_group_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.lbl_waste_group_desc = QLabel("Có thể tái chế")
+        self.lbl_waste_group_desc.setStyleSheet("""
+            font-size: 11px;
+            font-weight: 500;
+            color: rgba(255,255,255,0.8);
+            background: transparent;
+        """)
+        self.lbl_waste_group_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.lbl_stepper_angle = QLabel("Angle: 45°")
+        self.lbl_stepper_angle.setStyleSheet("""
+            font-size: 10px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.7);
+            background: transparent;
+        """)
+        self.lbl_stepper_angle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        waste_group_layout.addWidget(self.lbl_waste_group_badge)
+        waste_group_layout.addWidget(self.lbl_waste_group_desc)
+        waste_group_layout.addWidget(self.lbl_stepper_angle)
+
+        self.left_layout.addWidget(self.waste_group_container)
 
         # ── RIGHT PANEL ──────────────────────────────────────────
         self.right_panel = QWidget()
@@ -262,7 +310,7 @@ class ScreenFeedback(QWidget):
         self.btn_layout.setSpacing(28)
         self.btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.btn_wrong = QPushButton("X")
+        self.btn_wrong = QPushButton("✕")
         self.btn_wrong.setFixedSize(120, 120)
         self.btn_wrong.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_wrong.setStyleSheet("""
@@ -290,7 +338,7 @@ class ScreenFeedback(QWidget):
         wrong_shadow.setOffset(0, 6)
         self.btn_wrong.setGraphicsEffect(wrong_shadow)
 
-        self.btn_correct = QPushButton("V")
+        self.btn_correct = QPushButton("✓")
         self.btn_correct.setFixedSize(120, 120)
         self.btn_correct.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_correct.setStyleSheet("""
@@ -359,18 +407,28 @@ class ScreenFeedback(QWidget):
         gradient.setColorAt(1.0, QColor("#f0f4ff"))
         painter.fillRect(self.rect(), gradient)
 
-    def update_ui(self, material, item_type, bg_color):
-        """Update visual content based on current classification result."""
+    def update_ui(self, trash_data: TrashData):
+        """Update visual content based on trash detection result.
+        
+        Args:
+            trash_data: TrashData object containing classification result, category, and confidence.
+        """
         # Called whenever detector emits a new material result; refresh left panel.
-        self.lbl_material.setText(material.upper())
-        self.lbl_type.setText(item_type)
+        self.lbl_material.setText(trash_data.material.upper())
+        self.lbl_type.setText(trash_data.item_type)
         self.left_panel.setStyleSheet(
-            f"QWidget {{ background-color: {bg_color}; border-radius: 26px; }}"
+            f"QWidget {{ background-color: {trash_data.bg_color}; border-radius: 26px; }}"
         )
+
+        # Update waste group badge with emoji, description, and angle.
+        waste_group: WasteGroup = trash_data.waste_group
+        self.lbl_waste_group_badge.setText(f"{waste_group.badge_color} {waste_group.name.replace('_', ' ').title()}")
+        self.lbl_waste_group_desc.setText(waste_group.description)
+        self.lbl_stepper_angle.setText(f"Angle: {trash_data.stepper_angle}°")
 
         # Map material -> short code + category chip label.
         # Text labels are used instead of emoji for cross-platform consistency.
-        mat_upper = material.upper()
+        mat_upper = trash_data.material.upper()
         if "BATTERY" in mat_upper:
             self.lbl_item_image.setText("PIN")
             self.chip_text.setText("RÁC NGUY HẠI")

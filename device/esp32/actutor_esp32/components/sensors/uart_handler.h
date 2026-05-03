@@ -9,4 +9,6 @@ extern QueueHandle_t step_action_queue;
 
 void uart_handler_init(void);
 
+void uart_send_frame_hmac(uint8_t cmd, uint8_t *payload, uint16_t len);
+
 #endif

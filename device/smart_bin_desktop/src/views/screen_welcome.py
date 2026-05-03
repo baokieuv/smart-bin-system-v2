@@ -95,7 +95,7 @@ class ScreenWelcome(QWidget):
         top_bar.addStretch()
 
         self.btn_settings = GlowButton()
-        self.btn_settings.setText("≡")
+        self.btn_settings.setText("☰")
         self.btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_settings.setFixedSize(46, 46)
         self.btn_settings.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
@@ -128,9 +128,9 @@ class ScreenWelcome(QWidget):
             }
             QMenu::item:selected { background: #eff6ff; color: #1d4ed8; }
         """)
-        link_action = QAction("  Liên kết thiết bị", self)
+        link_action = QAction("  ↔ Liên kết thiết bị", self)
         link_action.triggered.connect(self.open_device_link_requested.emit)
-        wifi_action = QAction("  Cấu hình Wi-Fi", self)
+        wifi_action = QAction("  ◌ Cấu hình Wi-Fi", self)
         wifi_action.triggered.connect(self.open_wifi_config_requested.emit)
         menu.addAction(link_action)
         menu.addAction(wifi_action)
@@ -404,6 +404,9 @@ class ScreenWelcome(QWidget):
     def show_toast(self, message: str, is_success: bool):
         """Show transient bottom toast for success/error user feedback."""
         bg = "rgba(16,185,129,0.95)" if is_success else "rgba(239,68,68,0.95)"
+        self.toast_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.toast_label.setWordWrap(True)
+        self.toast_label.setMaximumWidth(min(self.width() - 40, 560))
         self.toast_label.setStyleSheet(
             "QLabel {"
             f"background: {bg};"
@@ -415,6 +418,8 @@ class ScreenWelcome(QWidget):
             "}"
         )
         self.toast_label.setText(message)
+        self.toast_label.adjustSize()
+        self.toast_label.setMaximumWidth(min(self.width() - 40, 560))
         self.toast_label.adjustSize()
         x = (self.width() - self.toast_label.width()) // 2
         y = self.height() - self.toast_label.height() - 22

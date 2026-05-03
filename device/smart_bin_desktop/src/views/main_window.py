@@ -45,6 +45,7 @@ class MainWindow(QMainWindow):
         self.screen_welcome.open_device_link_requested.connect(self.show_device_link)
         self.screen_welcome.open_wifi_config_requested.connect(self.show_wifi_config)
         self.screen_welcome.activate_requested.connect(self.viewmodel.activate_device_manually)
+        self.screen_thanks.close_requested.connect(self.show_welcome)
         self.screen_device_link.back_requested.connect(self.close_device_link)
 
         # ViewModel state signals
@@ -84,7 +85,7 @@ class MainWindow(QMainWindow):
     def show_feedback(self, data: TrashData):
         """Show feedback screen populated by latest detection payload."""
         def setup():
-            self.screen_feedback.update_ui(data.material, data.item_type, data.bg_color)
+            self.screen_feedback.update_ui(data)
         self.logger.info("Show feedback for %s (conf=%.3f)", data.category, data.confidence)
         self._fade_to(2, setup)
 

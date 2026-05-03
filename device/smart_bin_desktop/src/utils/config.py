@@ -92,6 +92,36 @@ class ApiConfig:
 
 
 @dataclass(frozen=True)
+class Esp32OtaConfig:
+	"""Serial and OTA settings shared by ESP32 transport/test scripts."""
+
+	com_port: str = _env_str("SMART_BIN_COM_PORT", "COM4")
+	baud_rate: int = _env_int("SMART_BIN_BAUD_RATE", 115200)
+	firmware_file: Path = Path(
+		_env_str(
+			"SMART_BIN_FIRMWARE_FILE",
+			str(Path(__file__).resolve().parent.parent.parent.parent / "esp32" / "actutor_esp32.bin"),
+		)
+	)
+	chunk_size: int = _env_int("SMART_BIN_CHUNK_SIZE", 512)
+	secret_key: bytes = _env_str("SMART_BIN_SECRET_KEY", "HUST_SMART_BIN_KEY_2026").encode("utf-8")
+
+	# Command bytes shared with ESP32 config.h / uart_handler.c.
+	cmd_ctrl_servo: int = 0x10
+	cmd_ctrl_stepper: int = 0x11
+	cmd_ota_start: int = 0x20
+	cmd_ota_data: int = 0x21
+	cmd_ota_end: int = 0x22
+	cmd_ack: int = 0x30
+	cmd_nack: int = 0x31
+
+	# Frame markers shared with ESP32 config.h / uart_handler.c.
+	header_1: int = 0xAA
+	header_2: int = 0x55
+	tail: int = 0xEF
+
+
+@dataclass(frozen=True)
 class PathConfig:
 	# Root folder for deriving models/assets/key paths.
 	base_dir: Path = Path(__file__).resolve().parent.parent.parent
@@ -128,6 +158,7 @@ class PathConfig:
 	def private_key_path(self) -> Path:
 		return self.base_dir / "key" / "private_key.pem"
 
+    
 
 @dataclass(frozen=True)
 class AppConfig:
@@ -139,6 +170,7 @@ class AppConfig:
 	detection: DetectionConfig = DetectionConfig()
 	viewmodel: ViewModelConfig = ViewModelConfig()
 	api: ApiConfig = ApiConfig()
+	esp32_ota: Esp32OtaConfig = Esp32OtaConfig()
 	paths: PathConfig = PathConfig()
 
 
