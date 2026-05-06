@@ -78,6 +78,7 @@ class DetectionConfig:
 @dataclass(frozen=True)
 class ViewModelConfig:
 	telemetry_interval_ms: int = _env_int("SMART_BIN_TELEMETRY_INTERVAL_MS", 5 * 60 * 1000)
+	app_version_check_interval_ms: int = _env_int("SMART_BIN_APP_VERSION_CHECK_INTERVAL_MS", 24 * 60 * 60 * 1000)
 	feedback_timeout_ms: int = _env_int("SMART_BIN_FEEDBACK_TIMEOUT_MS", 10000)
 	thanks_timeout_ms: int = _env_int("SMART_BIN_THANKS_TIMEOUT_MS", 5000)
 	upload_interval_ms: int = _env_int("SMART_BIN_UPLOAD_INTERVAL_MS", 30 * 60 * 1000)
@@ -86,7 +87,7 @@ class ViewModelConfig:
 
 @dataclass(frozen=True)
 class ApiConfig:
-	device_base_url: str = _env_str("SMART_BIN_DEVICE_API_BASE", "https://api.kvbhust.id.vn/api/v1/devices")
+	device_base_url: str = _env_str("SMART_BIN_DEVICE_API_BASE", "https://api.kvbhust.id.vn/api/v1/devices/public")
 	thingsboard_base_url: str = _env_str("SMART_BIN_THINGSBOARD_API_BASE", "https://thingsboard.kvbhust.id.vn/api/v1")
 	request_timeout_seconds: int = _env_int("SMART_BIN_API_TIMEOUT", 10)
 
@@ -105,6 +106,7 @@ class Esp32OtaConfig:
 	)
 	chunk_size: int = _env_int("SMART_BIN_CHUNK_SIZE", 512)
 	secret_key: bytes = _env_str("SMART_BIN_SECRET_KEY", "HUST_SMART_BIN_KEY_2026").encode("utf-8")
+	fill_levels_poll_interval_seconds: int = _env_int("SMART_BIN_FILL_LEVELS_POLL_INTERVAL", 60)
 
 	# Command bytes shared with ESP32 config.h / uart_handler.c.
 	cmd_ctrl_servo: int = 0x10
@@ -171,6 +173,7 @@ class AppConfig:
 	viewmodel: ViewModelConfig = ViewModelConfig()
 	api: ApiConfig = ApiConfig()
 	esp32_ota: Esp32OtaConfig = Esp32OtaConfig()
+	desktop_version: str = _env_str("SMART_BIN_DESKTOP_VERSION", "1.0.0")
 	paths: PathConfig = PathConfig()
 
 

@@ -4,11 +4,14 @@ package com.smart_bin.device_service.controller;
 import com.smart_bin.core.dto.ApiResponseFormat;
 import com.smart_bin.core.utils.ResponseFactory;
 import com.smart_bin.device_service.common.SuccessCode;
+import com.smart_bin.device_service.dto.request.AppVersionInfo;
 import com.smart_bin.device_service.dto.request.CreateDeviceRequest;
 import com.smart_bin.device_service.dto.request.UpdateDeviceRequest;
 import com.smart_bin.device_service.service.DeviceService;
+import com.smart_bin.device_service.utils.HardwareSecureResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.apache.kafka.shaded.com.google.protobuf.Api;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -97,6 +100,7 @@ public class DeviceController {
     }
 
     @PostMapping("/public/presigned-url")
+    @HardwareSecureResponse
     public ResponseEntity<ApiResponseFormat<Object>> getPresignedUrl(
             @RequestHeader("X-Signature") String signature,
             @RequestHeader("metadata") String metadata,
@@ -107,6 +111,7 @@ public class DeviceController {
     }
 
     @PostMapping(value = "/public/confirm-upload")
+    @HardwareSecureResponse
     public ResponseEntity<ApiResponseFormat<Object>> confirmUpload(
             @RequestHeader("metadata") String metadata,
             @RequestBody String payload,
@@ -118,19 +123,37 @@ public class DeviceController {
 
     @PostMapping("/public/activate")
     public ResponseEntity<ApiResponseFormat<Object>> activateDevice(
-            @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature
+            @RequestBody String payload
     ){
-        var response = deviceService.activateDevice(payload, signature);
+        var response = deviceService.activateDevice(payload);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
     @PostMapping("/public/get-access-token")
+    @HardwareSecureResponse
     public ResponseEntity<ApiResponseFormat<Object>> getAccessToken(
             @RequestBody String payload,
             @RequestHeader("X-Signature") String signature
     ){
         var response = deviceService.getAccessToken(payload, signature);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping("/public/get-app-version")
+    public ResponseEntity<ApiResponseFormat<Object>> getAppVersionInfo(
+            @RequestBody String payload,
+            @RequestHeader("X-Signature") String signature
+    ) {
+        var response = deviceService.getAppVersionInfo(signature, payload);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping("/public/app-version")
+    public ResponseEntity<ApiResponseFormat<Object>> updateAppVersionInfo(
+            @RequestBody AppVersionInfo request,
+            @RequestHeader("X-Secret-Key") String key
+    ) {
+        var response = deviceService.updateAppVersionInfo(request, key);
         return responseFactory.response(SuccessCode.OK, response);
     }
 }

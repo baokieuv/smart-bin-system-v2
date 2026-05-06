@@ -40,7 +40,6 @@ void sensor_report_task(void *arg){
         }
 
         set_trash_full_alarm(is_any_bin_full);
-        uart_send_frame_hmac(CMD_REPORT_FILL_LEVEL, fill_level, 4);
 
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
@@ -55,6 +54,9 @@ void app_main(void)
       ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    esp_log_level_set("*", ESP_LOG_NONE);
+    
     ESP_LOGI(TAG, "Khoi tao he thong Smart Bin v1.2...");
 
     if (nvs_load_bin_config(&system_config) != ESP_OK) {

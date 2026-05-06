@@ -4,13 +4,21 @@ import os
 import struct
 import hmac
 import hashlib
+import logging
 
-# ================= CẤU HÌNH =================
+# ================= CẤU HÌNH LOGGING =================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+# ================= CẤU HÌNH HỆ THỐNG =================
 COM_PORT = 'COM4'      # Đổi thành cổng COM thực tế
 BAUD_RATE = 115200
 FIRMWARE_FILE = r'D:\HUST\soict\final-project\smart-bin-v2\smart-bin-system-v2\device\esp32\actutor_esp32.bin'
 CHUNK_SIZE = 512       
-
 SECRET_KEY = b"HUST_SMART_BIN_KEY_2026" # Khớp với config.h trên ESP32
 
 # ================= LỆNH (COMMAND) =================
@@ -21,181 +29,242 @@ CMD_OTA_DATA     = 0x21
 CMD_OTA_END      = 0x22
 CMD_ACK          = 0x30
 CMD_NACK         = 0x31
-CMD_REPORT_FILL_LEVEL = 0x40 # Lệnh báo cáo cảm biến siêu âm
-CMD_SET_CONFIG   = 0x50      # Lệnh cấu hình hệ thống (Mới)
+CMD_REPORT_FILL_LEVEL = 0x40 
+CMD_SET_CONFIG   = 0x50      
+CMD_GET_VERSION  = 0x60
 
 HEADER_1 = 0xAA
 HEADER_2 = 0x55
 TAIL     = 0xEF
 
-# ================= HÀM TIỆN ÍCH =================
+# ================= HÀM TIỆN ÍCH & BẢO MẬT =================
 
-# Tính HMAC-SHA256 y hệt như hàm verify_hmac trong ESP32
-def calculate_hmac(cmd, length, payload):
-    len_h = (length >> 8) & 0xFF
-    len_l = length & 0xFF
-    
-    # Payload để hash gồm: [CMD] [LEN_H] [LEN_L] [PAYLOAD...]
+def calculate_hmac(cmd: int, length: int, payload: bytes) -> bytes:
+    """
+    Tính toán mã xác thực HMAC-SHA256 cho frame dữ liệu.
+    Cấu trúc hash: [CMD] [LEN_H] [LEN_L] [PAYLOAD...]
+    """
+    len_h, len_l = (length >> 8) & 0xFF, length & 0xFF
     msg = bytearray([cmd, len_h, len_l])
     if payload:
         msg.extend(payload)
-        
-    # Tạo HMAC-SHA256 với Secret Key
-    h = hmac.new(SECRET_KEY, msg, hashlib.sha256)
-    return h.digest() # Trả về 32 bytes
+    return hmac.new(SECRET_KEY, msg, hashlib.sha256).digest()
 
-def create_frame(cmd, payload=b''):
+def create_frame(cmd: int, payload: bytes = b'') -> bytearray:
+    """
+    Đóng gói dữ liệu thành frame hoàn chỉnh chuẩn giao thức bảo mật.
+    Frame: [H1][H2][CMD][LEN_H][LEN_L][PAYLOAD][HMAC_32][TAIL]
+    """
     length = len(payload)
-    len_h = (length >> 8) & 0xFF
-    len_l = length & 0xFF
-    
+    len_h, len_l = (length >> 8) & 0xFF, length & 0xFF
     mac_32bytes = calculate_hmac(cmd, length, payload)
     
     frame = bytearray([HEADER_1, HEADER_2, cmd, len_h, len_l])
     frame.extend(payload)
-    frame.extend(mac_32bytes) # Nối 32 byte chữ ký vào
+    frame.extend(mac_32bytes)
     frame.append(TAIL)
     return frame
 
-def wait_for_ack(ser, timeout=3):
+def extract_valid_frame(buffer: bytearray):
+    """
+    Quét buffer để tìm và xác thực một frame hợp lệ.
+    Trả về: (cmd, payload, số_byte_đã_xử_lý) hoặc (None, None, 0) nếu chưa đủ data/lỗi.
+    """
+    while len(buffer) >= 38: # Khung nhỏ nhất là 38 bytes (Payload rỗng)
+        if buffer[0] == HEADER_1 and buffer[1] == HEADER_2:
+            cmd = buffer[2]
+            length = (buffer[3] << 8) | buffer[4]
+            total_len = 5 + length + 32 + 1 
+            
+            if len(buffer) >= total_len:
+                payload = buffer[5:5+length]
+                received_mac = buffer[5+length:5+length+32]
+                tail = buffer[5+length+32]
+                
+                # Xác thực đuôi và chữ ký HMAC
+                if tail == TAIL and calculate_hmac(cmd, length, payload) == received_mac:
+                    return cmd, payload, total_len
+                else:
+                    buffer.pop(0) # Lỗi MAC hoặc đuôi, trượt 1 byte
+            else:
+                break # Chưa nhận đủ nguyên frame, chờ thêm
+        else:
+            buffer.pop(0) # Không phải Header, trượt 1 byte
+            
+    return None, None, 0
+
+def wait_for_ack(ser: serial.Serial, timeout: int = 3) -> bool:
+    """Chờ phản hồi ACK hoặc NACK từ ESP32 một cách an toàn."""
     start_time = time.time()
     buffer = bytearray()
-    
-    # Tự động sinh frame ACK/NACK chuẩn bảo mật HMAC để tìm kiếm
-    ack_frame = create_frame(CMD_ACK, b'')
-    nack_frame = create_frame(CMD_NACK, b'')
 
     while time.time() - start_time < timeout:
         if ser.in_waiting > 0:
             buffer.extend(ser.read(ser.in_waiting))
             
-            if ack_frame in buffer:
-                return True
-            if nack_frame in buffer:
-                print("\n[LỖI] Nhận NACK từ ESP32 (Có thể sai HMAC hoặc Data)!")
-                return False
+            # Quét tìm frame hợp lệ thay vì so khớp chuỗi cứng
+            cmd, payload, consumed = extract_valid_frame(buffer)
+            
+            if consumed > 0:
+                if cmd == CMD_ACK:
+                    return True
+                elif cmd == CMD_NACK:
+                    logger.error("Nhận NACK từ ESP32 (Lỗi HMAC hoặc thiết bị từ chối)!")
+                    return False
+                
+                # Nếu nhận được frame khác (VD: Report rác), cắt đi và chờ tiếp
+                buffer = buffer[consumed:]
                 
         time.sleep(0.01)
         
-    print(f"\n[LỖI] Timeout! Không nhận được phản hồi.")
+    logger.error("Timeout! Không nhận được phản hồi ACK/NACK.")
     return False
 
-# ================= CÁC CHỨC NĂNG DEMO =================
+def get_version_from_bin(file_path: str) -> str:
+    """Đọc trực tiếp cấu trúc esp_app_desc_t từ file .bin để trích xuất version."""
+    try:
+        with open(file_path, 'rb') as f:
+            f.seek(0x20)
+            if f.read(4) != b'\x32\x54\xcd\xab': # Magic Word
+                logger.error("File .bin không đúng định dạng chuẩn của ESP-IDF!")
+                return None
+            
+            f.seek(0x30)
+            return f.read(32).decode('utf-8', errors='ignore').rstrip('\x00')
+    except FileNotFoundError:
+        logger.error(f"Không tìm thấy file firmware tại: {file_path}")
+    except Exception as e:
+        logger.error(f"Lỗi khi đọc file .bin: {e}")
+    return None
 
-def send_stepper_cmd(ser, degree):
-    print(f"\n[STEPPER] Đang gửi lệnh xoay {degree} độ...")
-    payload = struct.pack('>h', degree)
-    frame = create_frame(CMD_CTRL_STEPPER, payload)
+def get_esp32_version(ser: serial.Serial) -> str:
+    """Gửi lệnh và chờ nhận phiên bản Firmware đang chạy trên ESP32."""
+    logger.info("Đang truy vấn Firmware Version trên mạch...")
+    ser.write(create_frame(CMD_GET_VERSION))
     
-    ser.write(frame)
-    if wait_for_ack(ser, timeout=2):
-        print(f"[THÀNH CÔNG] ESP32 đã nhận lệnh xoay {degree} độ.")
-    else:
-        print("[LỖI] Gửi lệnh Step Motor thất bại.")
+    start_time = time.time()
+    buffer = bytearray()
+    
+    while time.time() - start_time < 3:
+        if ser.in_waiting > 0:
+            buffer.extend(ser.read(ser.in_waiting))
+            cmd, payload, consumed = extract_valid_frame(buffer)
+            if consumed > 0:
+                if cmd == CMD_GET_VERSION:
+                    return payload.decode('utf-8')
+                buffer = buffer[consumed:]
+        time.sleep(0.01)
+    return None
 
-def run_ota(ser):
+# ================= CÁC CHỨC NĂNG CHÍNH =================
+
+def send_stepper_cmd(ser: serial.Serial, degree: int):
+    """Gửi lệnh điều khiển động cơ bước xoay theo góc chỉ định."""
+    logger.info(f"[STEPPER] Gửi lệnh xoay {degree} độ...")
+    payload = struct.pack('>h', degree)
+    ser.write(create_frame(CMD_CTRL_STEPPER, payload))
+    
+    if wait_for_ack(ser, timeout=2):
+        logger.info(f"[STEPPER] ESP32 đã nhận lệnh xoay {degree} độ thành công.")
+    else:
+        logger.error("[STEPPER] Lệnh thất bại.")
+
+def send_set_config_cmd(ser: serial.Serial, depth: float, threshold: int):
+    """Gửi cấu hình độ sâu và ngưỡng cảnh báo lưu vào NVS Flash."""
+    logger.info(f"[CONFIG] Đang cấu hình: Sâu {depth}cm, Ngưỡng đầy {threshold}%...")
+    payload = struct.pack('<fB', depth, threshold)
+    ser.write(create_frame(CMD_SET_CONFIG, payload))
+    
+    if wait_for_ack(ser, timeout=2):
+        logger.info("[CONFIG] Thành công! ESP32 đã lưu cấu hình mới xuống Flash NVS.")
+    else:
+        logger.error("[CONFIG] Cập nhật cấu hình thất bại.")
+
+def run_ota(ser: serial.Serial):
+    """Thực hiện tiến trình nạp Firmware qua giao thức UART (Serial OTA)."""
     if not os.path.exists(FIRMWARE_FILE):
-        print(f"\n[LỖI] Không tìm thấy file {FIRMWARE_FILE}")
+        logger.error(f"Không tìm thấy file firmware: {FIRMWARE_FILE}")
         return
 
     file_size = os.path.getsize(FIRMWARE_FILE)
-    print(f"\n[OTA] Bắt đầu OTA. File size: {file_size} bytes")
+    target_version = get_version_from_bin(FIRMWARE_FILE)
+    if not target_version: return
 
-    print("1. Gửi lệnh Bắt đầu OTA (CMD_OTA_START)... (Chờ ESP32 xóa Flash)")
-    payload_start = struct.pack('>I', file_size) 
-    ser.write(create_frame(CMD_OTA_START, payload_start))
+    logger.info(f"[OTA] Khởi chạy OTA. Kích thước file: {file_size} bytes")
+    current_version = get_esp32_version(ser)
+    
+    if current_version is None:
+        logger.error("[OTA] Không lấy được Version từ ESP32. Hủy OTA.")
+        return
+        
+    logger.info(f"[OTA] Firmware hiện tại: {current_version} | Firmware chuẩn bị nạp: {target_version}")
+    
+    if current_version == target_version:
+        logger.info("[OTA] Firmware giống nhau. Bỏ qua OTA để bảo vệ tuổi thọ Flash.")
+        return
+
+    logger.info("[OTA] Phát hiện version khác biệt. Bắt đầu quá trình nạp...")
+    logger.info("[OTA] Bước 1: Yêu cầu xóa Flash (Có thể mất vài giây)...")
+    ser.write(create_frame(CMD_OTA_START, struct.pack('>I', file_size)))
     
     if not wait_for_ack(ser, timeout=10):
-        print("[LỖI] Khởi tạo OTA thất bại. Dừng!")
+        logger.error("[OTA] Xóa Flash thất bại. Dừng!")
         return
-    print("[THÀNH CÔNG] ESP32 đã xóa Flash và sẵn sàng.")
-
-    print("2. Đang truyền dữ liệu...")
+        
+    logger.info("[OTA] ESP32 đã sẵn sàng. Bước 2: Đang truyền dữ liệu...")
     bytes_sent = 0
     with open(FIRMWARE_FILE, 'rb') as f:
-        while True:
-            chunk = f.read(CHUNK_SIZE)
-            if not chunk:
-                break
-            
+        while chunk := f.read(CHUNK_SIZE):
             ser.write(create_frame(CMD_OTA_DATA, chunk))
             if not wait_for_ack(ser, timeout=2):
-                print(f"\n[LỖI] Truyền dữ liệu thất bại tại byte {bytes_sent}. Dừng!")
+                logger.error(f"\n[OTA] Truyền dữ liệu lỗi tại byte {bytes_sent}. Dừng!")
                 return
-            
+                
             bytes_sent += len(chunk)
             progress = (bytes_sent / file_size) * 100
+            # Dùng print cho thanh tiến trình để ghi đè (carriage return \r)
             print(f"\rTiến độ: [{int(progress):3d}%] {bytes_sent}/{file_size} bytes", end="")
             
-    print("\n[THÀNH CÔNG] Truyền dữ liệu hoàn tất.")
-
-    print("3. Gửi lệnh Kết thúc OTA và khởi động lại...")
+    print() # Xuống dòng sau khi in progress bar
+    logger.info("[OTA] Truyền dữ liệu hoàn tất. Bước 3: Đóng OTA và Reset mạch...")
     ser.write(create_frame(CMD_OTA_END))
-    if wait_for_ack(ser, timeout=3):
-         print("[THÀNH CÔNG] OTA HOÀN TẤT! ESP32 đang khởi động lại với code mới.")
-    else:
-         print("[LỖI] Kết thúc OTA thất bại.")
-
-def send_set_config_cmd(ser, depth, threshold):
-    print(f"\n[CONFIG] Đang gửi cấu hình mới: Sâu {depth}cm, Ngưỡng đầy {threshold}%...")
-    # Đóng gói dữ liệu: '<' = Little Endian, 'f' = Float (4 bytes), 'B' = Unsigned Char (1 byte)
-    payload = struct.pack('<fB', depth, threshold)
-    frame = create_frame(CMD_SET_CONFIG, payload)
     
-    ser.write(frame)
-    if wait_for_ack(ser, timeout=2):
-        print("[THÀNH CÔNG] ESP32 đã lưu cấu hình mới xuống Flash NVS.")
+    if wait_for_ack(ser, timeout=3):
+         logger.info("[OTA] THÀNH CÔNG! ESP32 đang khởi động lại.")
     else:
-        print("[LỖI] Cập nhật cấu hình thất bại.")
+         logger.error("[OTA] Lệnh kết thúc OTA thất bại.")
 
-# Lắng nghe báo cáo từ cảm biến siêu âm
-def listen_telemetry(ser):
-    print("\n[MONITOR] Đang trực báo cáo từ 4 cảm biến siêu âm... (Nhấn Ctrl+C để thoát)")
+def listen_telemetry(ser: serial.Serial):
+    """Liên tục đọc luồng dữ liệu từ ESP32 để bóc tách thông tin cảm biến."""
+    logger.info("Đang trực báo cáo từ 4 cảm biến siêu âm... (Nhấn Ctrl+C để thoát)")
     buffer = bytearray()
     try:
         while True:
             if ser.in_waiting > 0:
                 buffer.extend(ser.read(ser.in_waiting))
                 
-            # Quét tìm Frame trong buffer
-            while len(buffer) >= 38: # Khung nhỏ nhất là 38 bytes (Payload rỗng)
-                if buffer[0] == HEADER_1 and buffer[1] == HEADER_2:
-                    cmd = buffer[2]
-                    length = (buffer[3] << 8) | buffer[4]
-                    total_len = 5 + length + 32 + 1 # Header(5) + Payload + HMAC(32) + Tail(1)
-                    
-                    if len(buffer) >= total_len:
-                        payload = buffer[5:5+length]
-                        received_mac = buffer[5+length:5+length+32]
-                        tail = buffer[5+length+32]
-                        
-                        if tail == TAIL:
-                            # Xác thực HMAC của gói tin nhận được
-                            calc_mac = calculate_hmac(cmd, length, payload)
-                            if calc_mac == received_mac:
-                                if cmd == CMD_REPORT_FILL_LEVEL and length == 4:
-                                    print(f"[LIVE] Mức rác: Ngăn 1: {payload[0]:3d}% | Ngăn 2: {payload[1]:3d}% | Ngăn 3: {payload[2]:3d}% | Ngăn 4: {payload[3]:3d}%")
-                            buffer = buffer[total_len:] # Cắt bỏ khung đã xử lý
-                        else:
-                            buffer.pop(0) # Đuôi không hợp lệ, trượt 1 byte
-                    else:
-                        break # Chờ nhận thêm data
-                else:
-                    buffer.pop(0) # Không phải Header, trượt 1 byte
-            time.sleep(0.01)
+            cmd, payload, consumed = extract_valid_frame(buffer)
+            if consumed > 0:
+                if cmd == CMD_REPORT_FILL_LEVEL and len(payload) == 4:
+                    logger.info(f"Mức rác: Ngăn 1: {payload[0]}% | Ngăn 2: {payload[1]}% | Ngăn 3: {payload[2]}% | Ngăn 4: {payload[3]}%")
+                buffer = buffer[consumed:] # Cắt bỏ khung đã xử lý
+            else:
+                time.sleep(0.01)
+                
     except KeyboardInterrupt:
-        print("\n[MONITOR] Đã thoát chế độ lắng nghe.")
+        logger.info("Đã thoát chế độ Monitor.")
 
-# ================= MENU CHÍNH =================
+# ================= VÒNG LẶP ĐIỀU KHIỂN CHÍNH =================
+
 def main():
     try:
-        print(f"Đang mở cổng {COM_PORT}...")
+        logger.info(f"Đang mở cổng {COM_PORT} với Baudrate {BAUD_RATE}...")
         ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
         ser.setDTR(False)
         ser.setRTS(False)
         time.sleep(1.5) 
         ser.reset_input_buffer()
-        print("[THÀNH CÔNG] Kết nối Serial thành công!\n")
+        logger.info("Kết nối Serial thành công!")
         
         while True:
             print("\n" + "="*45)
@@ -209,7 +278,7 @@ def main():
             print("0. Thoát")
             print("="*45)
             
-            choice = input("Nhập lựa chọn của bạn: ")
+            choice = input("Nhập lựa chọn của bạn: ").strip()
             
             if choice == '1':
                 send_stepper_cmd(ser, 45)
@@ -226,19 +295,19 @@ def main():
                     if 0 <= threshold <= 100:
                         send_set_config_cmd(ser, depth, threshold)
                     else:
-                        print("[LỖI] Ngưỡng phần trăm phải nằm trong khoảng 0 - 100!")
+                        logger.warning("Ngưỡng phần trăm phải nằm trong khoảng 0 - 100!")
                 except ValueError:
-                    print("[LỖI] Dữ liệu nhập vào không hợp lệ! Vui lòng nhập số.")
+                    logger.warning("Dữ liệu nhập vào không hợp lệ! Vui lòng nhập số.")
             elif choice == '0':
-                print("Đang đóng cổng Serial và thoát...")
+                logger.info("Đang đóng cổng Serial và thoát...")
                 break
             else:
-                print("[LỖI] Lựa chọn không hợp lệ!")
+                logger.warning("Lựa chọn không hợp lệ!")
                 
     except serial.SerialException as e:
-        print(f"[LỖI] Lỗi cổng Serial: {e}. Vui lòng kiểm tra cáp và cổng COM.")
+        logger.error(f"Lỗi cổng Serial: {e}. Vui lòng kiểm tra cáp UART và cấu hình COM.")
     except Exception as e:
-        print(f"[LỖI] Lỗi hệ thống: {e}")
+        logger.error(f"Lỗi hệ thống không xác định: {e}")
     finally:
         if 'ser' in locals() and ser.is_open:
             ser.close()

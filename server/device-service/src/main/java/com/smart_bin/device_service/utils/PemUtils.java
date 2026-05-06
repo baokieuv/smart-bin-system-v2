@@ -3,7 +3,9 @@ package com.smart_bin.device_service.utils;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.KeyFactory;
+import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 
@@ -27,5 +29,30 @@ public class PemUtils {
         X509EncodedKeySpec keySpec = new X509EncodedKeySpec(encoded);
 
         return keyFactory.generatePublic(keySpec);
+    }
+
+    // Lấy Public Key của thiết bị (từ String gửi lên hoặc Database)
+    public static PublicKey getPublicKeyFromString(String keyString) throws Exception {
+        String publicKeyPEM = keyString
+                .replace("-----BEGIN PUBLIC KEY-----", "")
+                .replace("-----END PUBLIC KEY-----", "")
+                .replaceAll("\\s", "");
+
+        byte[] encoded = Base64.getDecoder().decode(publicKeyPEM);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        return keyFactory.generatePublic(new X509EncodedKeySpec(encoded));
+    }
+
+    // Lấy Private Key của Server từ file vật lý
+    public static PrivateKey getPrivateKey(String filepath) throws Exception {
+        String keyString = new String(Files.readAllBytes(Paths.get(filepath)));
+        String privateKeyPEM = keyString
+                .replace("-----BEGIN PRIVATE KEY-----", "")
+                .replace("-----END PRIVATE KEY-----", "")
+                .replaceAll("\\s", "");
+
+        byte[] encoded = Base64.getDecoder().decode(privateKeyPEM);
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        return keyFactory.generatePrivate(new PKCS8EncodedKeySpec(encoded));
     }
 }

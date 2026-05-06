@@ -188,13 +188,20 @@ class MainViewModel(QObject):
         self.device_client = DeviceClient()
         self.thingsboard_client = ThingsboardClient()
         self.actuator_client = ActuatorRepository()
+        # Disposal counters used for telemetry payloads
+        self._disposal_count_total = 0
+        self._disposal_count_since_last_heartbeat = 0
+        self._firmware_update_state = None
         self.metadata_store = DetectionMetadataStore(APP_CONFIG.paths.detection_metadata_dir, self.logger)
         self.upload_manager = DetectionUploadManager(self.metadata_store, self.device_client, self.logger)
         self.access_token = None
         self.telemetry_interval_ms = APP_CONFIG.viewmodel.telemetry_interval_ms
+        self.app_version_check_interval_ms = APP_CONFIG.viewmodel.app_version_check_interval_ms
         self.upload_interval_ms = APP_CONFIG.viewmodel.upload_interval_ms
         self.upload_batch_size = APP_CONFIG.viewmodel.upload_batch_size
         self.current_detection_metadata_path = None
+        self.fill_levels_poll_interval_seconds = APP_CONFIG.esp32_ota.fill_levels_poll_interval_seconds
+        self.latest_fill_levels = None  # Store latest fill levels from polling
         
         # Connect worker events to ViewModel handlers.
         self.worker.trash_detected.connect(self._on_trash_detected)
@@ -219,10 +226,20 @@ class MainViewModel(QObject):
         self.access_token_retry_timer.setInterval(self.telemetry_interval_ms)
         self.access_token_retry_timer.timeout.connect(self._retry_get_access_token)
 
+        self.app_version_timer = QTimer()
+        self.app_version_timer.setSingleShot(False)
+        self.app_version_timer.setInterval(self.app_version_check_interval_ms)
+        self.app_version_timer.timeout.connect(self._check_app_version)
+
         self.upload_timer = QTimer()
         self.upload_timer.setSingleShot(False)
         self.upload_timer.setInterval(self.upload_interval_ms)
         self.upload_timer.timeout.connect(self._upload_detection_results_batch)
+
+        self.fill_levels_poll_timer = QTimer()
+        self.fill_levels_poll_timer.setSingleShot(False)
+        self.fill_levels_poll_timer.setInterval(self.fill_levels_poll_interval_seconds * 1000)  # Convert seconds to ms
+        self.fill_levels_poll_timer.timeout.connect(self._poll_fill_levels)
         self.logger.info("MainViewModel initialized")
 
     def start_system(self):
@@ -240,7 +257,12 @@ class MainViewModel(QObject):
 
         self.state_loading.emit("Initialization complete. Connecting services...")
         self.reset_to_welcome()
+        self._check_app_version()
         self._refresh_access_token(reason="startup")
+
+        if not self.app_version_timer.isActive():
+            self.app_version_timer.start()
+            self.logger.info("Started app version check every %sms", self.app_version_check_interval_ms)
 
         if not self.upload_timer.isActive():
             self.upload_timer.start()
@@ -248,6 +270,13 @@ class MainViewModel(QObject):
                 "Started batch upload every %sms, max %s images per batch",
                 self.upload_interval_ms,
                 self.upload_batch_size,
+            )
+
+        if not self.fill_levels_poll_timer.isActive():
+            self.fill_levels_poll_timer.start()
+            self.logger.info(
+                "Started fill levels polling every %s seconds",
+                self.fill_levels_poll_interval_seconds,
             )
 
     def _on_trash_detected(self, trash_data: TrashData):
@@ -277,6 +306,12 @@ class MainViewModel(QObject):
             self.logger.info("Stepper motor command succeeded: %s", message)
         else:
             self.logger.warning("Stepper motor command failed: %s", message)
+        # Increment disposal counters for telemetry
+        try:
+            self._disposal_count_total += 1
+            self._disposal_count_since_last_heartbeat += 1
+        except Exception:
+            self.logger.exception("Failed to increment disposal counters")
         
         self.state_feedback.emit(trash_data)  # Notify view to show Feedback screen.
         self.feedback_timer.start(APP_CONFIG.viewmodel.feedback_timeout_ms)
@@ -321,8 +356,28 @@ class MainViewModel(QObject):
         """Send heartbeat telemetry if current access token exists."""
         if not self.access_token:
             return False, "Access token is missing"
+        # Build payload with timestamp, disposal counts and latest fill-levels
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
-        return self.thingsboard_client.send_telemetry(self.access_token)
+        payload = {
+            "timestamp": now_ms,
+            "disposal_count_total": int(self._disposal_count_total),
+            "disposal_count_interval": int(self._disposal_count_since_last_heartbeat),
+        }
+
+        if self.latest_fill_levels and isinstance(self.latest_fill_levels, list):
+            # latest_fill_levels is [bin1, bin2, bin3, bin4]
+            for i, v in enumerate(self.latest_fill_levels):
+                try:
+                    payload[f"bin{i+1}"] = int(v)
+                except Exception:
+                    payload[f"bin{i+1}"] = None
+
+        ok, msg = self.thingsboard_client.send_telemetry(self.access_token, payload)
+        if ok:
+            # Reset interval counter only when telemetry successfully sent
+            self._disposal_count_since_last_heartbeat = 0
+        return ok, msg
 
     def get_device_mac_address(self) -> str:
         """Expose MAC for device-link QR screen."""
@@ -389,11 +444,86 @@ class MainViewModel(QObject):
 
         self.logger.info("Telemetry sent successfully")
 
+    def _check_app_version(self):
+        """Check backend version and refresh ESP32 firmware binary if needed."""
+        self.logger.info("Running app version check")
+
+        try:
+            success, result = self.device_client.get_app_version()
+            if not success:
+                self.logger.warning("App version check failed: %s", result)
+                return
+
+            if isinstance(result, dict):
+                local_version = result.get("local", {}).get("esp32_version")
+                backend_version = result.get("backend", {}).get("bin_version")
+                downloaded = bool(result.get("downloaded"))
+                firmware_file = result.get("firmware_file")
+
+                if downloaded:
+                    self.state_toast.emit(
+                        f"ESP32 firmware downloaded {backend_version}. Starting OTA upload...",
+                        True,
+                    )
+                    self.logger.info(
+                        "ESP32 firmware downloaded: local=%s backend=%s file=%s. Starting OTA upload...",
+                        local_version,
+                        backend_version,
+                        firmware_file,
+                    )
+                    
+                    # Upload firmware to ESP32
+                    ota_ok, ota_msg = self.actuator_client.upload_ota(firmware_file)
+                    if ota_ok:
+                        self.state_toast.emit(
+                            f"OTA upload completed successfully. ESP32 updated to {backend_version}",
+                            True,
+                        )
+                        self.logger.info(
+                            "OTA upload successful: %s. ESP32 now running version %s",
+                            ota_msg,
+                            backend_version,
+                        )
+                    else:
+                        self.state_toast.emit(
+                            f"OTA upload failed: {ota_msg}",
+                            False,
+                        )
+                        self.logger.warning(
+                            "OTA upload failed: %s",
+                            ota_msg,
+                        )
+                else:
+                    self.logger.info(
+                        "ESP32 firmware already up to date: local=%s backend=%s",
+                        local_version,
+                        backend_version,
+                    )
+            else:
+                self.logger.info("App version check completed: %s", result)
+        except Exception:
+            self.logger.exception("App version check failed")
+
+    def _poll_fill_levels(self):
+        """Timer callback to periodically request fill levels from ESP32."""
+        try:
+            success, fill_levels = self.actuator_client.request_fill_levels()
+            if success and fill_levels:
+                self.latest_fill_levels = fill_levels
+                self.logger.debug("Fill levels updated: %s", fill_levels)
+            elif not success:
+                self.logger.warning("Failed to request fill levels from ESP32")
+        except Exception:
+            self.logger.exception("Error polling fill levels")
+
     def shutdown(self):
         """Stop timers and worker when app closes."""
         self.telemetry_timer.stop()
         self.access_token_retry_timer.stop()
+        self.app_version_timer.stop()
         self.upload_timer.stop()
+        self.fill_levels_poll_timer.stop()
+        self.actuator_client.close_serial()
         self.worker.stop()
         self.logger.info("MainViewModel shutdown completed")
 

@@ -5,11 +5,14 @@ import time
 import logging
 from pathlib import Path
 from typing import Any
+import re
 
 from src.models.api_response import ApiResponseFormat
 from src.models.device_dto import DeviceDto
+from src.models.app_version_dto import AppVersionDto
 from src.repository.http_client import HttpClient, HttpResponse, RequestsHttpClient
 from src.utils.config import APP_CONFIG
+from src.repository.actuator_repository import ActuatorRepository
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
@@ -109,7 +112,56 @@ class DeviceClient:
         if api_response.success:
             return True, api_response
         return False, api_response.message
+    
+    @staticmethod
+    def _parse_app_version_api_response(
+        response_json: dict[str, Any],
+    ) -> tuple[bool, ApiResponseFormat[AppVersionDto] | str]:
+        """Parse backend wrapper JSON into typed ApiResponseFormat[AppVersionDto]."""
+        api_response = ApiResponseFormat.from_dict(response_json, details_class=AppVersionDto)
+        if api_response.success:
+            return True, api_response
+        return False, api_response.message
 
+    @staticmethod
+    def _normalize_version(version: str | None) -> tuple[int, ...]:
+        """Convert version strings like 1.2.3 into a comparable integer tuple."""
+        if not version:
+            return (0,)
+
+        parts = re.findall(r"\d+", str(version))
+        if not parts:
+            return (0,)
+        return tuple(int(part) for part in parts)
+
+    def _is_version_older(self, current_version: str | None, target_version: str | None) -> bool:
+        """Return True when current_version is older than target_version."""
+        current = self._normalize_version(current_version)
+        target = self._normalize_version(target_version)
+        max_len = max(len(current), len(target))
+        current = current + (0,) * (max_len - len(current))
+        target = target + (0,) * (max_len - len(target))
+        return current < target
+
+    def _download_binary_file(self, url: str, destination: Path) -> tuple[bool, str]:
+        """Download a binary resource and save it to destination."""
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            response = self.http_client.get(url, timeout=self.timeout, stream=True)
+            self.logger.info("download_binary status_code=%s url=%s", response.status_code, url)
+            response.raise_for_status()
+
+            with open(destination, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+            return True, f"Saved firmware to {destination}"
+        except Exception as exc:
+            self.logger.warning("Failed to download binary file: %s", exc)
+            return False, f"Failed to download firmware: {str(exc)}"
+    
+    
     def activate_device(self) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
         """Activate current device by signed MAC/timestamp payload."""
         self.logger.info("Call activate_device")
@@ -319,6 +371,75 @@ class DeviceClient:
         except ValueError:
             return False, "Failed to parse upload confirmation response"
         
+        
+    def get_app_version(self) -> tuple[bool, str | AppVersionDto | dict[str, Any]]:
+        """Fetch backend app version, compare ESP32 firmware, and download newer BIN if needed.
+
+        Returns:
+            (True, payload) when the check runs successfully.
+            payload contains the parsed app version data plus update status.
+        """
+        self.logger.info("Call get_app_version")
+
+        ok, response_or_error = self._post_signed_request("get-app-version")
+        if not ok:
+            return False, response_or_error
+
+        response = response_or_error
+        try:
+            if not response.ok:
+                return False, self._parse_error_response(response)
+
+            ok, parsed_or_error = self._parse_app_version_api_response(response.json())
+            if not ok:
+                return False, parsed_or_error
+
+            api_response = parsed_or_error
+            app_version = api_response.data
+            if not app_version:
+                return False, "Backend returned empty app version data"
+
+            actuator_client = ActuatorRepository()
+            ok, esp_version_or_error = actuator_client.get_firmware_version()
+            if not ok:
+                return False, f"Failed to read ESP32 version: {esp_version_or_error}"
+
+            esp_version = esp_version_or_error or ""
+            desktop_version = APP_CONFIG.desktop_version
+            result: dict[str, Any] = {
+                "backend": {
+                    "bin_version": app_version.bin_version,
+                    "desktop_version": app_version.desktop_version,
+                    "bin_url": app_version.bin_url,
+                    "desktop_url": app_version.desktop_url,
+                },
+                "local": {
+                    "desktop_version": desktop_version,
+                    "esp32_version": esp_version,
+                },
+                "downloaded": False,
+                "firmware_file": str(APP_CONFIG.esp32_ota.firmware_file),
+            }
+
+            if self._is_version_older(esp_version, app_version.bin_version):
+                if not app_version.bin_url:
+                    return False, "Backend returned empty binUrl"
+
+                download_ok, download_message = self._download_binary_file(
+                    app_version.bin_url,
+                    APP_CONFIG.esp32_ota.firmware_file,
+                )
+                if not download_ok:
+                    return False, download_message
+
+                result["downloaded"] = True
+                result["download_message"] = download_message
+
+            return True, result
+        except ValueError:
+            self.logger.warning("get_app_version parse response error")
+            return False, "Failed to parse server response"
+    
     def _encrypt_data(self, payload: str) -> tuple[bool, str]:
         """Sign payload using local RSA private key and return base64 signature."""
         try:

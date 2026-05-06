@@ -31,4 +31,7 @@ public class Product extends BaseEntity {
     private Long price;
 
     private String imageUrl;
+
+    @Column(nullable = false)
+    private Long soldQuantity = 0L;
 }

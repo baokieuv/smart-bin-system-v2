@@ -232,7 +232,7 @@ class DetectionWorker(QThread):
         if now - self._last_state_log_at < 2.0:
             return
 
-        self.logger.info(
+        self.logger.debug(
             "state hand=%s moving=%s diff=%s falling=%s paused=%s",
             hand,
             have_moving,

@@ -47,6 +47,15 @@ public class Order extends BaseEntity {
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> items = new ArrayList<>();
 
+    @Column(nullable = false)
+    private String recipientName;
+
+    private String trackingNumber;
+
+    private String note;
+
+    private String cancelReason;
+
     public void addItem(OrderItem item) {
         items.add(item);
         item.setOrder(this);

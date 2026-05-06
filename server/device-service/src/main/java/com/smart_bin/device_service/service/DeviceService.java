@@ -1,5 +1,7 @@
 package com.smart_bin.device_service.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.nimbusds.jose.shaded.gson.JsonObject;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.common.NotificationType;
 import com.smart_bin.core.dto.NotificationEventDto;
@@ -8,6 +10,7 @@ import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.common.DeviceStatus;
 import com.smart_bin.device_service.config.MediaServiceClient;
+import com.smart_bin.device_service.dto.request.AppVersionInfo;
 import com.smart_bin.device_service.dto.request.CreateDeviceRequest;
 import com.smart_bin.device_service.dto.request.UpdateDeviceRequest;
 import com.smart_bin.device_service.dto.response.DetectionResultDto;
@@ -29,6 +32,7 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.data.redis.core.RedisTemplate;
 // THÊM KAFKA
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -53,6 +57,9 @@ public class DeviceService {
 
     @Value("${media-service.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
     private String internalSecret;
+
+    @Value("${app.secret-key:SECRET_KEY_12345}")
+    private String secretKey;
 
     @Transactional
     @CacheEvict(value = "device_list", key = "#keycloakId")
@@ -200,8 +207,10 @@ public class DeviceService {
     }
 
     @CacheEvict(value = "device_list", allEntries = true)
-    public DeviceDto activateDevice(String payload, String signature){
-        String mac = securityService.verifyAndExtractMac(payload, signature);
+    public DeviceDto activateDevice(String payload){
+        JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
+        String mac = payloadObj.get("mac").getAsString();
+        String publicKey = payloadObj.get("publicKey").getAsString();
 
         Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
                 new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
@@ -211,6 +220,7 @@ public class DeviceService {
         }
 
         device.setState(DeviceState.ACTIVE);
+        device.setPublicKey(publicKey);
         Device savedDevice = repository.save(device);
 
         String key = Constants.PENDING_DEVICE_PREFIX + savedDevice.getKeycloakId() + ":" + savedDevice.getId();
@@ -229,10 +239,13 @@ public class DeviceService {
     }
 
     public DeviceDto getAccessToken(String payload, String signature){
-        String mac = securityService.verifyAndExtractMac(payload, signature);
+        JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
+        String mac = payloadObj.get("mac").getAsString();
 
         Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
                 new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
 
         if (device.getState() != DeviceState.ACTIVE){
             throw new ApiException(DeviceErrorCode.DEVICE_NOT_ACTIVE_YET);
@@ -254,7 +267,15 @@ public class DeviceService {
     public String getPresignedUrl(String payload, String signature, String metadata) {
         try {
             DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
-            String mac = securityService.verifyAndExtractMac(payload, signature);
+
+            JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
+            String mac = payloadObj.get("mac").getAsString();
+
+            Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
+                    new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+
+            securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
 
             JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
                     internalSecret,
@@ -295,10 +316,14 @@ public class DeviceService {
     public String confirmUpload(String payload, String signature, String metadata){
         try {
             DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
-            String mac = securityService.verifyAndExtractMac(payload, signature);
+
+            JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
+            String mac = payloadObj.get("mac").getAsString();
 
             Device device = repository.findByMacAndActiveTrue(mac)
                     .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+            securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
 
             DeviceDetectionResult result = new DeviceDetectionResult();
             result.setConfidence(fileInfo.confidence());
@@ -314,6 +339,53 @@ public class DeviceService {
         } catch (JacksonException e) {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata structure");
         }
+    }
+
+    public Object getAppVersionInfo(String signature, String payload) {
+//        JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
+//        String mac = payloadObj.get("mac").getAsString();
+//
+//        Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
+//                new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+//
+//
+//        securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
+
+        String redisKey = com.smart_bin.device_service.common.Constants.APP_VERSION_PREFIX;
+
+        String res = redisTemplate.opsForValue().get(redisKey);
+
+        if (!StringUtils.hasText(res)) {
+            return null;
+        }
+
+        return objectMapper.readValue(res, AppVersionInfo.class);
+
+    }
+
+    public Object updateAppVersionInfo(AppVersionInfo request, String key) {
+        if (!key.equals(secretKey)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
+        }
+
+        String redisKey = com.smart_bin.device_service.common.Constants.APP_VERSION_PREFIX;
+        String res = redisTemplate.opsForValue().get(redisKey);
+
+        if (res != null && !res.isEmpty()) {
+            AppVersionInfo info = objectMapper.readValue(res, AppVersionInfo.class);
+
+            int binCompare = compareVersions(request.binVer(), info.binVer());
+            int desktopCompare = compareVersions(request.desktopVer(), info.desktopVer());
+
+            if (binCompare <= 0 && desktopCompare <= 0) {
+                throw new ApiException(CoreErrorCode.BAD_REQUEST); // Hoặc mã lỗi tương ứng của bạn
+            }
+        }
+
+        String newVersionData = objectMapper.writeValueAsString(request);
+        redisTemplate.opsForValue().set(redisKey, newVersionData);
+
+        return request;
     }
 
     private Device getDeviceAndVerifyOwnership(String deviceIdStr, String keycloakId) {
@@ -332,5 +404,23 @@ public class DeviceService {
             throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
         }
         return device;
+    }
+
+    private int compareVersions(String v1, String v2) {
+        if (v1 == null || v2 == null) return 0;
+
+        String[] arr1 = v1.split("\\.");
+        String[] arr2 = v2.split("\\.");
+
+        int length = Math.max(arr1.length, arr2.length);
+        for (int i = 0; i < length; i++) {
+            // Nếu một version ngắn hơn (vd "1.0" so với "1.0.1"), phần thiếu sẽ coi như là 0
+            int n1 = (i < arr1.length) ? Integer.parseInt(arr1[i]) : 0;
+            int n2 = (i < arr2.length) ? Integer.parseInt(arr2[i]) : 0;
+
+            if (n1 < n2) return -1;
+            if (n1 > n2) return 1;
+        }
+        return 0; // Bằng nhau
     }
 }

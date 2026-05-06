@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class OrderEventListener {
     private final InventoryService inventoryService;
+    private final ProductService productService;
 
     @KafkaListener(
             topics = "${app.kafka.topics.order-events}",
@@ -24,6 +25,7 @@ public class OrderEventListener {
                 case ORDER_PAID -> {
                     // Thanh toán thành công -> Trừ hẳn phần đã giữ chỗ
                     inventoryService.commitInventory(eventPayload.items());
+                    productService.increaseSoldQuantity(eventPayload.items());
                 }
                 case ORDER_CANCELLED -> {
                     // Hủy đơn / Hết hạn -> Trả lại kho

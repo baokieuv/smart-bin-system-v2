@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
@@ -40,4 +41,8 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     boolean existsBySkuAndIdNotAndActiveTrue(String sku, UUID id);
 
     boolean existsBySku(String sku);
+
+    @Modifying
+    @Query("UPDATE Product p SET p.soldQuantity = p.soldQuantity + :quantity WHERE p.sku = :sku")
+    void increaseSoldQuantityBySku(@Param("sku") String sku, @Param("quantity") Long quantity);
 }

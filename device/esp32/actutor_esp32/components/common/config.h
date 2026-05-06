@@ -47,6 +47,7 @@
 #define CMD_NACK               0x31
 #define CMD_REPORT_FILL_LEVEL  0x40
 #define CMD_SET_CONFIG         0x50
+#define CMD_GET_VERSION        0x60
 
 // Ultrasonic constants
 #define SOUND_SPEED             343.0
@@ -93,5 +94,6 @@ typedef enum {
 typedef struct {
     float bin_depth_cm;         // Độ sâu thực tế của thùng rác (cm)
     uint8_t full_threshold_pct; // Ngưỡng báo đầy (% - ví dụ: 90%)
+    char firm_version[16];      // Version of firmware
 } SmartBinConfig_t;
 #endif // CONFIG_H

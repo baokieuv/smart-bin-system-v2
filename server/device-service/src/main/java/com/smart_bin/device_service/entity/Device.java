@@ -39,4 +39,9 @@ public class Device extends BaseEntity {
 
     @Column(name = "keycloak_id", nullable = false, length = 36)
     private String keycloakId;
+
+    @Column(columnDefinition = "TEXT")
+    private String publicKey;
+
+    private String firmwareVersion;
 }

@@ -59,6 +59,7 @@ things-board:
   key: ${THINGS_BOARD_SECRET_KEY:MY_SUPPER_SECRET_KEY}
 
 app:
+  secret-key: "SECRET_KEY_12345"
   kafka:
     topics:
       send-noti: "device-notification-topic"

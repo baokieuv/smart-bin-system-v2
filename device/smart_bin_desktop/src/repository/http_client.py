@@ -17,9 +17,15 @@ class HttpResponse(Protocol):
     def raise_for_status(self) -> None:
         ...
 
+    def iter_content(self, chunk_size: int = ...) -> Any:
+        ...
+
 
 class HttpClient(Protocol):
     """Simple HTTP client protocol for dependency inversion in repositories."""
+
+    def get(self, url: str, **kwargs: Any) -> HttpResponse:
+        ...
 
     def post(self, url: str, **kwargs: Any) -> HttpResponse:
         ...
@@ -30,6 +36,9 @@ class HttpClient(Protocol):
 
 class RequestsHttpClient:
     """Default HttpClient implementation based on requests library."""
+
+    def get(self, url: str, **kwargs: Any) -> HttpResponse:
+        return requests.get(url, **kwargs)
 
     def post(self, url: str, **kwargs: Any) -> HttpResponse:
         return requests.post(url, **kwargs)

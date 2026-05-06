@@ -3,6 +3,7 @@ package com.smart_bin.product_service.service;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.product_service.dto.request.CreateProductRequest;
+import com.smart_bin.product_service.dto.request.InventoryItemDto;
 import com.smart_bin.product_service.dto.request.UpdateProductRequest;
 import com.smart_bin.product_service.dto.response.ProductResponse;
 import com.smart_bin.product_service.entity.Category;
@@ -108,6 +109,13 @@ public class ProductService {
                 .stream()
                 .map(mapper::toResponse)
                 .toList();
+    }
+
+    @Transactional
+    public void increaseSoldQuantity(List<InventoryItemDto> items) {
+        for (InventoryItemDto item : items) {
+            repository.increaseSoldQuantityBySku(item.sku(), item.quantity());
+        }
     }
 
     private Product findProductActiveById(String id) {

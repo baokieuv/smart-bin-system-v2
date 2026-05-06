@@ -32,4 +32,7 @@ public class Notification extends BaseEntity {
 
     @Column(name = "keycloak_id", nullable = false, length = 36)
     private String keycloakId;
+
+    @Column(columnDefinition = "TEXT")
+    private String metadata;
 }

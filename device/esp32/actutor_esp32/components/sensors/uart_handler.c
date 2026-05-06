@@ -7,6 +7,7 @@
 #include "esp_ota_ops.h"
 #include "mbedtls/md.h"
 #include "nvs_storage.h"
+#include "ultrasonic_sensor.h"
 #include <string.h>
 
 static const char *TAG = "UART_HANDLER";
@@ -84,6 +85,124 @@ void uart_send_frame_hmac(uint8_t cmd, uint8_t *payload, uint16_t len) {
     free(frame);
 }
 
+static void handle_cmd_ctrl_servo(uint16_t len, uint8_t *payload) {
+    if (len >= 1) {
+        set_servo_angle(payload[0]);
+        send_response(CMD_ACK);
+    } else {
+        send_response(CMD_NACK);
+    }
+}
+
+static void handle_cmd_ctrl_stepper(uint16_t len, uint8_t *payload) {
+    if (len >= 2) {
+        int16_t target_degree = (payload[0] << 8) | payload[1];
+        xQueueSend(step_action_queue, &target_degree, 0);
+        send_response(CMD_ACK);
+    } else {
+        send_response(CMD_NACK);
+    }
+}
+
+static void handle_cmd_set_config(uint16_t len, uint8_t *payload) {
+    if (len != 5) {
+        ESP_LOGE(TAG, "Sai do dai Payload cua CMD_SET_CONFIG");
+        send_response(CMD_NACK);
+        return;
+    }
+    
+    float new_depth;
+    memcpy(&new_depth, &payload[0], sizeof(float)); 
+    uint8_t new_threshold = payload[4];
+    
+    system_config.bin_depth_cm = new_depth;
+    system_config.full_threshold_pct = new_threshold;
+    
+    if (nvs_save_bin_config(&system_config) == ESP_OK) {
+        ESP_LOGI(TAG, "Cap nhat Config thanh cong: Sau=%.1fcm, Nguong=%d%%", 
+                 system_config.bin_depth_cm, system_config.full_threshold_pct);
+        send_response(CMD_ACK);
+    } else {
+        send_response(CMD_NACK);
+    }
+}
+
+static void handle_cmd_get_version(void) {
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+    uint16_t version_len = strlen(app_desc->version);
+    ESP_LOGI(TAG, "Pi yeu cau check version. Hien tai: %s", app_desc->version);
+    uart_send_frame_hmac(CMD_GET_VERSION, (uint8_t *)app_desc->version, version_len);
+}
+
+static void handle_cmd_ota_start(void) {
+    ESP_LOGI(TAG, "Bat dau OTA...");
+    update_partition = esp_ota_get_next_update_partition(NULL);
+    if (esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &update_handle) == ESP_OK) {
+        send_response(CMD_ACK);
+    } else {
+        send_response(CMD_NACK);
+    }
+}
+
+static void handle_cmd_ota_data(uint16_t len, uint8_t *payload) {
+    if (esp_ota_write(update_handle, (const void *)payload, len) == ESP_OK) {
+        send_response(CMD_ACK);
+    } else {
+        send_response(CMD_NACK);
+    }
+}
+
+static void handle_cmd_ota_end(void) {
+    ESP_LOGI(TAG, "Ket thuc OTA, khoi dong lai...");
+    if (esp_ota_end(update_handle) == ESP_OK) {
+        if (esp_ota_set_boot_partition(update_partition) == ESP_OK) {
+            send_response(CMD_ACK);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            esp_restart(); 
+        }
+    }
+    send_response(CMD_NACK);
+}
+
+static void handle_cmd_report(void) {
+    ESP_LOGI(TAG, "Start measure distance");
+    TrashBinDistances_t dist = ultrasonic_read_all_bins();
+
+    uint8_t fill_level[4] = {0};
+
+    float depth = system_config.bin_depth_cm;
+
+    if (dist.bin1_cm > 0) fill_level[0] = (uint8_t)(((depth - dist.bin1_cm) / depth) * 100);
+    if (dist.bin2_cm > 0) fill_level[1] = (uint8_t)(((depth - dist.bin2_cm) / depth) * 100);
+    if (dist.bin3_cm > 0) fill_level[2] = (uint8_t)(((depth - dist.bin3_cm) / depth) * 100);
+    if (dist.bin4_cm > 0) fill_level[3] = (uint8_t)(((depth - dist.bin4_cm) / depth) * 100);
+
+    for(int i = 0; i < 4; i++) {
+        if (fill_level[i] > 100) fill_level[i] = 100;
+    }
+
+    uart_send_frame_hmac(CMD_REPORT_FILL_LEVEL, fill_level, 4);
+}
+
+static void process_uart_command(uint8_t cmd, uint16_t len, uint8_t *payload) {
+    ESP_LOGI(TAG, "HMAC OK! Lenh: 0x%02X", cmd);
+    
+    switch (cmd) {
+        case CMD_CTRL_SERVO:   handle_cmd_ctrl_servo(len, payload); break;
+        case CMD_CTRL_STEPPER: handle_cmd_ctrl_stepper(len, payload); break;
+        case CMD_SET_CONFIG:   handle_cmd_set_config(len, payload); break;
+        case CMD_GET_VERSION:  handle_cmd_get_version(); break;
+        case CMD_OTA_START:    handle_cmd_ota_start(); break;
+        case CMD_OTA_DATA:     handle_cmd_ota_data(len, payload); break;
+        case CMD_OTA_END:      handle_cmd_ota_end(); break;
+        case CMD_REPORT_FILL_LEVEL: handle_cmd_report(); break;
+        default:
+            ESP_LOGW(TAG, "Lenh khong hop le: 0x%02X", cmd);
+            send_response(CMD_NACK);
+            break;
+    }
+}
+
 void uart_rx_task(void *arg) {
     uint8_t data[BUF_SIZE];
     UartState_t state = WAIT_HEADER_1;
@@ -124,7 +243,7 @@ void uart_rx_task(void *arg) {
                     if (current_len > 0 && current_len <= sizeof(payload_buf)) {
                         state = WAIT_PAYLOAD;
                     } else if (current_len == 0) {
-                        state = WAIT_HMAC; // FIX LỖI Ở ĐÂY: Nhảy thẳng qua chờ HMAC nếu payload rỗng
+                        state = WAIT_HMAC;
                         hmac_index = 0;
                     } else {
                         state = WAIT_HEADER_1;
@@ -147,65 +266,7 @@ void uart_rx_task(void *arg) {
                     if (b == TAIL) {
                         if (verify_hmac(current_cmd, current_len, payload_buf, received_hmac)) {
                             ESP_LOGI(TAG, "HMAC OK! Lenh: 0x%02X", current_cmd);
-                            
-                            if (current_cmd == CMD_CTRL_SERVO) {
-                                set_servo_angle(payload_buf[0]);
-                                send_response(CMD_ACK);
-                            }
-                            else if (current_cmd == CMD_CTRL_STEPPER) {
-                                if (current_len >= 2) {
-                                    int16_t target_degree = (payload_buf[0] << 8) | payload_buf[1];
-                                    xQueueSend(step_action_queue, &target_degree, 0);
-                                    send_response(CMD_ACK);
-                                } else send_response(CMD_NACK);
-                            }
-                            else if (current_cmd == CMD_SET_CONFIG) {
-                                if (current_len == 5) { // 4 bytes Float + 1 byte Uint8_t
-                                    float new_depth;
-                                    // Copy 4 bytes đầu vào biến float (đảm bảo ép kiểu an toàn)
-                                    memcpy(&new_depth, &payload_buf[0], sizeof(float)); 
-                                    uint8_t new_threshold = payload_buf[4];
-                                    
-                                    // Cập nhật vào biến toàn cục đang chạy
-                                    system_config.bin_depth_cm = new_depth;
-                                    system_config.full_threshold_pct = new_threshold;
-                                    
-                                    // Lưu vĩnh viễn xuống Flash (NVS)
-                                    if (nvs_save_bin_config(&system_config) == ESP_OK) {
-                                        ESP_LOGI(TAG, "Cap nhat Config thanh cong: Sau=%.1fcm, Nguong=%d%%", 
-                                                 system_config.bin_depth_cm, system_config.full_threshold_pct);
-                                        send_response(CMD_ACK);
-                                    } else {
-                                        send_response(CMD_NACK);
-                                    }
-                                } else {
-                                    ESP_LOGE(TAG, "Sai do dai Payload cua CMD_SET_CONFIG");
-                                    send_response(CMD_NACK);
-                                }
-                            }
-                            else if (current_cmd == CMD_OTA_START) {
-                                ESP_LOGI(TAG, "Bat dau OTA...");
-                                update_partition = esp_ota_get_next_update_partition(NULL);
-                                if (esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &update_handle) == ESP_OK)
-                                    send_response(CMD_ACK);
-                                else send_response(CMD_NACK);
-                            }
-                            else if (current_cmd == CMD_OTA_DATA) {
-                                if (esp_ota_write(update_handle, (const void *)payload_buf, current_len) == ESP_OK)
-                                    send_response(CMD_ACK);
-                                else send_response(CMD_NACK);
-                            }
-                            else if (current_cmd == CMD_OTA_END) {
-                                ESP_LOGI(TAG, "Ket thuc OTA, khoi dong lai...");
-                                if (esp_ota_end(update_handle) == ESP_OK) {
-                                    if (esp_ota_set_boot_partition(update_partition) == ESP_OK) {
-                                        send_response(CMD_ACK);
-                                        vTaskDelay(pdMS_TO_TICKS(1000));
-                                        esp_restart(); 
-                                    }
-                                }
-                                send_response(CMD_NACK);
-                            }
+                            process_uart_command(current_cmd, current_len, payload_buf);
                         } else {
                             ESP_LOGE(TAG, "Loi HMAC! Tu choi lenh.");
                             send_response(CMD_NACK);

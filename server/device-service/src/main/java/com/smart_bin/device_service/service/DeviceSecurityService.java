@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.time.Instant;
@@ -21,49 +22,99 @@ import java.util.Base64;
 @Service
 @Slf4j
 public class DeviceSecurityService {
-    private PublicKey serverPublicKey;
+    private PrivateKey serverPrivateKey;
 
-    @Value("classpath:public_key.pem")
-    private Resource publicKeyResource;
+    @Value("classpath:private_key.pem")
+    private Resource privateKeyResource;
 
     @PostConstruct
     public void init() {
         try {
-            String path = publicKeyResource.getFile().getAbsolutePath();
-            this.serverPublicKey = PemUtils.readPublicKey(path);
+            String path = privateKeyResource.getFile().getAbsolutePath();
+            this.serverPrivateKey = PemUtils.getPrivateKey(path);
         } catch (Exception e) {
-            log.error("Failed to load RSA Public Key");
+            log.error("Failed to load RSA Private Key of Server", e);
         }
     }
 
-    public String verifyAndExtractMac(String payload, String signature) {
+    // 1. Chỉ parse JSON để lấy thông tin cơ bản
+    public JsonObject parsePayloadAndCheckTimestamp(String payload) {
         try {
-            byte[] digitalSignature = Base64.getDecoder().decode(signature);
-            Signature verify = Signature.getInstance("SHA256withRSA");
-            verify.initVerify(serverPublicKey);
-            verify.update(payload.getBytes(StandardCharsets.UTF_8));
-
-            if (!verify.verify(digitalSignature)) {
-                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
-            }
-
             JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
-            String mac = obj.get("mac").getAsString();
             long timestamp = obj.get("timestamp").getAsLong();
             long now = Instant.now().toEpochMilli();
 
             if (now - timestamp > Constants.TIMESTAMP_EXPIRY) {
-                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
+                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR, "Payload has expired");
             }
-
-            return mac;
-        }
-        catch (ApiException ex){
-            throw ex;
-        }
-        catch (Exception e) {
-            log.error("Verification error: ", e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Signature verification failed");
+            return obj;
+        } catch (Exception e) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid payload format");
         }
     }
+
+    // 2. Xác thực thiết bị: Dùng Public Key CỦA THIẾT BỊ để verify signature thiết bị gửi lên
+    public void verifySignatureWithDeviceKey(String payload, String signature, String devicePublicKeyPem) {
+        try {
+            PublicKey deviceKey = PemUtils.getPublicKeyFromString(devicePublicKeyPem);
+            byte[] digitalSignature = Base64.getDecoder().decode(signature);
+
+            Signature verify = Signature.getInstance("SHA256withRSA");
+            verify.initVerify(deviceKey);
+            verify.update(payload.getBytes(StandardCharsets.UTF_8));
+
+            if (!verify.verify(digitalSignature)) {
+                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR, "Invalid signature from device");
+            }
+        } catch (Exception e) {
+            log.error("Verification error: ", e);
+            throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR, "Signature verification failed");
+        }
+    }
+
+    // 3. Xác thực Server: Tạo chữ ký bằng Private Key CỦA SERVER
+    public String signResponseWithServerKey(String payload) {
+        try {
+            Signature signature = Signature.getInstance("SHA256withRSA");
+            signature.initSign(serverPrivateKey);
+            signature.update(payload.getBytes(StandardCharsets.UTF_8));
+            byte[] signedBytes = signature.sign();
+
+            return Base64.getEncoder().encodeToString(signedBytes);
+        } catch (Exception e) {
+            log.error("Signing error: ", e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Cannot sign response");
+        }
+    }
+
+//    public String verifyAndExtractMac(String payload, String signature) {
+//        try {
+//            byte[] digitalSignature = Base64.getDecoder().decode(signature);
+//            Signature verify = Signature.getInstance("SHA256withRSA");
+//            verify.initVerify(serverPublicKey);
+//            verify.update(payload.getBytes(StandardCharsets.UTF_8));
+//
+//            if (!verify.verify(digitalSignature)) {
+//                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
+//            }
+//
+//            JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
+//            String mac = obj.get("mac").getAsString();
+//            long timestamp = obj.get("timestamp").getAsLong();
+//            long now = Instant.now().toEpochMilli();
+//
+//            if (now - timestamp > Constants.TIMESTAMP_EXPIRY) {
+//                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
+//            }
+//
+//            return mac;
+//        }
+//        catch (ApiException ex){
+//            throw ex;
+//        }
+//        catch (Exception e) {
+//            log.error("Verification error: ", e);
+//            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Signature verification failed");
+//        }
+//    }
 }
