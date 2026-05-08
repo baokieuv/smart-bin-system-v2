@@ -1,9 +1,13 @@
 package com.smart_bin.iam_service.serivce;
 
 import com.smart_bin.core.common.UserRole;
+import com.smart_bin.core.exception.ApiException;
+import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.dto.auth.request.LoginRequest;
 import com.smart_bin.iam_service.dto.auth.response.TokenResponse;
 import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
+import com.smart_bin.iam_service.exception.AuthErrorCode;
+import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.FederatedIdentityRepresentation;
@@ -23,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
+@Slf4j
 public class KeycloakService {
 
     private final Keycloak keycloak;
@@ -38,7 +43,7 @@ public class KeycloakService {
     @Value("${keycloak.client-secret}")
     private String clientSecret;
 
-    public KeycloakService(Keycloak keycloak, String keycloakRealm) {
+    public KeycloakService(Keycloak keycloak, @Value("${keycloak.realm}") String keycloakRealm) {
         this.keycloak = keycloak;
         this.realm = keycloakRealm;
         this.restClient = RestClient.create();
@@ -64,34 +69,33 @@ public class KeycloakService {
         attributes.put("user_state", Collections.singletonList("PENDING"));
         user.setAttributes(attributes);
 
-        try (jakarta.ws.rs.core.Response response =
-                     keycloak.realm(realm).users().create(user)) {
-
+        try (jakarta.ws.rs.core.Response response = keycloak.realm(realm).users().create(user)) {
             if (response.getStatus() == 201) {
                 String locationHeader = response.getHeaderString("Location");
                 String userId = locationHeader.substring(locationHeader.lastIndexOf('/') + 1);
 
                 updateRealmRole(userId, UserRole.USER);
-
                 return userId;
             } else if (response.getStatus() == 409) {
-                throw new RuntimeException("Email already exists in Keycloak");
+                // HTTP 409 Conflict
+                throw new ApiException(CoreErrorCode.BAD_REQUEST, "Email already exists in Keycloak");
             } else {
-                throw new RuntimeException("Failed to create user in Keycloak. Status: " + response.getStatus());
+                log.error("Failed to create user in Keycloak. Status: {}", response.getStatus());
+                throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Failed to create user in identity provider.");
             }
+        } catch (ApiException e) {
+            throw e; // Ném tiếp ApiException không cần bọc lại
         } catch (Exception e) {
-            throw new RuntimeException("Error creating user in Keycloak: " + e.getMessage());
+            log.error("Error creating user in Keycloak", e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi hệ thống khi tạo tài khoản.");
         }
     }
 
-    // Đổi tham số nhận vào thành UserRole
     public void updateRealmRole(String userId, UserRole newRole) {
         try {
             var realmRoleResource = keycloak.realm(realm).users().get(userId).roles().realmLevel();
-
             List<RoleRepresentation> currentRoles = realmRoleResource.listAll();
 
-            // So sánh bằng hằng số của Enum thay vì chuỗi gõ tay
             List<RoleRepresentation> rolesToRemove = currentRoles.stream()
                     .filter(r -> r.getName().equals(UserRole.RoleConstants.USER_LOWER)
                             || r.getName().equals(UserRole.RoleConstants.ADMIN_LOWER)
@@ -102,12 +106,12 @@ public class KeycloakService {
                 realmRoleResource.remove(rolesToRemove);
             }
 
-            // Lấy tên role viết thường (user, admin, super_admin) để gán trên Keycloak
             RoleRepresentation roleToAdd = keycloak.realm(realm).roles().get(newRole.getRoleName()).toRepresentation();
             realmRoleResource.add(Collections.singletonList(roleToAdd));
 
         } catch (Exception e) {
-            throw new RuntimeException("Error updating role to user in Keycloak: " + e.getMessage());
+            log.error("Error updating role to user {} in Keycloak", userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật quyền người dùng.");
         }
     }
 
@@ -115,16 +119,18 @@ public class KeycloakService {
         try {
             UserRepresentation user = keycloak.realm(realm).users().get(userId).toRepresentation();
 
-            Map<String, List<String>> attributes = user.getAttributes();
-            if (attributes == null) {
-                attributes = new HashMap<>();
-            }
+            // Khắc phục lỗi unmodifiable map bằng cách luôn tạo HashMap mới
+            Map<String, List<String>> attributes = user.getAttributes() != null
+                    ? new HashMap<>(user.getAttributes())
+                    : new HashMap<>();
+
             attributes.put(key, Collections.singletonList(value));
             user.setAttributes(attributes);
 
             keycloak.realm(realm).users().get(userId).update(user);
         } catch (Exception e) {
-            throw new RuntimeException("Error updating user attribute in Keycloak: " + e.getMessage());
+            log.error("Error updating attribute {} for user {} in Keycloak", key, userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi cập nhật thông tin hệ thống.");
         }
     }
 
@@ -135,7 +141,8 @@ public class KeycloakService {
             user.setEmailVerified(true);
             keycloak.realm(realm).users().get(userId).update(user);
         } catch (Exception e) {
-            throw new RuntimeException("Error enabling user in Keycloak: " + e.getMessage());
+            log.error("Error enabling user {} in Keycloak", userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi khi kích hoạt tài khoản.");
         }
     }
 
@@ -150,9 +157,11 @@ public class KeycloakService {
 
             return fetchToken(body);
         } catch (RestClientResponseException e) {
-            throw new RuntimeException("Invalid credentials: " + e.getResponseBodyAsString());
+            log.warn("Invalid credentials for user: {}", request.username());
+            throw new ApiException(AuthErrorCode.UNAUTHORIZED, "Email hoặc mật khẩu không chính xác.");
         } catch (Exception e) {
-            throw new RuntimeException("Error during login: " + e.getMessage());
+            log.error("Error during login for user: {}", request.username(), e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi hệ thống khi đăng nhập.");
         }
     }
 
@@ -170,9 +179,11 @@ public class KeycloakService {
 
             return fetchToken(body);
         } catch (RestClientResponseException e) {
-            throw new RuntimeException("Failed to exchange Google token: " + e.getResponseBodyAsString());
+            log.error("Failed to exchange Google token. Keycloak response: {}", e.getResponseBodyAsString());
+            throw new ApiException(AuthErrorCode.UNAUTHORIZED, "Xác thực Google thất bại.");
         } catch (Exception e) {
-            throw new RuntimeException("Error during Google token exchange: " + e.getMessage());
+            log.error("Error during Google token exchange", e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi hệ thống khi xác thực Google.");
         }
     }
 
@@ -186,9 +197,11 @@ public class KeycloakService {
 
             return fetchToken(body);
         } catch (RestClientResponseException e) {
-            throw new RuntimeException("Invalid or expired refresh token: " + e.getResponseBodyAsString());
+            log.warn("Refresh token expired or invalid");
+            throw new ApiException(AuthErrorCode.UNAUTHORIZED, "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
         } catch (Exception e) {
-            throw new RuntimeException("Error refreshing token: " + e.getMessage());
+            log.error("Error refreshing token", e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi làm mới phiên đăng nhập.");
         }
     }
 
@@ -204,12 +217,12 @@ public class KeycloakService {
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(body)
                     .retrieve()
-                    .toBodilessEntity(); // Logout Keycloak thường trả về 204 No Content
-
+                    .toBodilessEntity();
         } catch (RestClientResponseException e) {
-            throw new RuntimeException("Failed to logout from Keycloak: " + e.getResponseBodyAsString());
+            log.warn("Failed to logout from Keycloak: {}", e.getResponseBodyAsString());
+            // Có thể bỏ qua ném lỗi ở đây để người dùng vẫn logout được ở client side
         } catch (Exception e) {
-            throw new RuntimeException("Error during logout: " + e.getMessage());
+            log.error("Error during logout", e);
         }
     }
 
@@ -222,23 +235,18 @@ public class KeycloakService {
 
             keycloak.realm(realm).users().get(userId).resetPassword(credential);
         } catch (Exception e) {
-            throw new RuntimeException("Error updating password in Keycloak: " + e.getMessage());
+            log.error("Error updating password in Keycloak for user {}", userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật mật khẩu.");
         }
     }
 
     public UserRepresentation getUserByEmail(String email) {
         try {
-            List<UserRepresentation> users = keycloak.realm(realm)
-                    .users()
-                    .search(email, true);
-
-            if (users.isEmpty()) {
-                return null;
-            }
-
-            return users.getFirst();
+            List<UserRepresentation> users = keycloak.realm(realm).users().search(email, true);
+            return users.isEmpty() ? null : users.getFirst();
         } catch (Exception e) {
-            throw new RuntimeException("Error fetching user from Keycloak: " + e.getMessage());
+            log.error("Error fetching user by email from Keycloak", e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi truy xuất thông tin từ Identity Provider.");
         }
     }
 
@@ -246,7 +254,8 @@ public class KeycloakService {
         try {
             return keycloak.realm(realm).users().get(userId).toRepresentation();
         } catch (Exception e) {
-            throw new RuntimeException("Error fetching user from Keycloak: " + e.getMessage());
+            log.error("Error fetching user {} from Keycloak", userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi truy xuất thông tin người dùng.");
         }
     }
 
@@ -263,7 +272,8 @@ public class KeycloakService {
 
             keycloak.realm(realm).users().get(userId).update(user);
         } catch (Exception e) {
-            throw new RuntimeException("Error updating user info in Keycloak: " + e.getMessage());
+            log.error("Error updating user info for {} in Keycloak", userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật thông tin người dùng.");
         }
     }
 
@@ -271,48 +281,46 @@ public class KeycloakService {
         try {
             keycloak.realm(realm).users().get(userId).logout();
         } catch (Exception e) {
-            throw new RuntimeException("Error logging out sessions in Keycloak: " + e.getMessage());
+            log.error("Error logging out sessions in Keycloak for user {}", userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi khi đăng xuất các phiên.");
         }
     }
-
 
     public void deleteUser(String userId) {
         try {
             keycloak.realm(realm).users().get(userId).remove();
         } catch (Exception e) {
-            throw new RuntimeException("Error deleting user from Keycloak: " + e.getMessage());
+            log.error("Error deleting user {} from Keycloak", userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi xóa tài khoản.");
         }
     }
 
     public void linkIdentityProvider(String userId, String providerAlias, String providerUserId, String providerUsername) {
         try {
             FederatedIdentityRepresentation identity = new FederatedIdentityRepresentation();
-            identity.setIdentityProvider(providerAlias); // truyền "google"
-            identity.setUserId(providerUserId);          // Subject ID của Google Token
-            identity.setUserName(providerUsername);      // Email
+            identity.setIdentityProvider(providerAlias);
+            identity.setUserId(providerUserId);
+            identity.setUserName(providerUsername);
 
             keycloak.realm(realm).users().get(userId).addFederatedIdentity(providerAlias, identity);
         } catch (Exception e) {
-            // Bỏ qua nếu tài khoản đã được link từ trước đó
-            System.out.println("User is already linked or error: " + e.getMessage());
+            // Thay thế System.out.println bằng log.warn
+            log.warn("User {} is already linked to {} or error occurred: {}", userId, providerAlias, e.getMessage());
         }
     }
 
-    // --- Hàm hỗ trợ dùng chung để giảm lặp code (DRY) ---
     private TokenResponse fetchToken(MultiValueMap<String, String> body) {
-        // Sửa JsonNode.class thành Map.class
         Map response = restClient.post()
                 .uri(serverUrl + "/realms/" + realm + "/protocol/openid-connect/token")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(body)
                 .retrieve()
-                .body(Map.class); // Thay đổi ở đây
+                .body(Map.class);
 
         if (response == null) {
-            throw new RuntimeException("Empty response from Keycloak");
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Hệ thống xác thực không phản hồi.");
         }
 
-        // Lấy dữ liệu từ Map (ép kiểu an toàn)
         return new TokenResponse(
                 (String) response.get("access_token"),
                 (String) response.get("refresh_token"),

@@ -6,7 +6,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGoogleLogin } from '@react-oauth/google';
 import { authApi } from '@/services/api/auth';
-import { usersApi } from '@/services/api/users';
 import Link from 'next/link';
 import { AuthShell } from '@/components/ui/auth-shell';
 import { Input } from '@/components/ui/input';
@@ -87,13 +86,7 @@ export default function LoginPage() {
                     localStorage.setItem('access_token', dataLogin.data.access_token);
                     localStorage.setItem('refresh_token', dataLogin.data.refresh_token);
 
-                    const userData = await usersApi.me();
-
-                    if (userData.data.state === 'PENDING') {
-                        router.push('/auth/complete-profile');
-                    } else {
-                        await redirectAfterLogin();
-                    }
+                    await redirectAfterLogin();
                 } else {
                     setError(dataLogin.message || 'Google sign-in failed');
                 }

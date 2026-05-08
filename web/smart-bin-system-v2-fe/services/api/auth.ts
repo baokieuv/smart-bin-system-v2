@@ -20,11 +20,6 @@ export const authApi = {
         );
     },
 
-    // Complete profile requires auth and uses auto-refresh
-    completeProfile: async (password: string) => {
-        return api.post('/auth/complete-profile', { password });
-    },
-
     // Refresh token does not require auth; skip refresh-token mechanism
     refresh: async (refresh_token: string) => {
         return api.post('/auth/refresh',

@@ -1,18 +1,18 @@
 package com.smart_bin.device_service.controller;
 
-
 import com.smart_bin.core.dto.ApiResponseFormat;
 import com.smart_bin.core.utils.ResponseFactory;
 import com.smart_bin.device_service.common.SuccessCode;
 import com.smart_bin.device_service.dto.request.AppVersionInfo;
 import com.smart_bin.device_service.dto.request.CreateDeviceRequest;
+import com.smart_bin.device_service.dto.request.ImportDeviceRequest;
 import com.smart_bin.device_service.dto.request.UpdateDeviceRequest;
 import com.smart_bin.device_service.service.DeviceService;
 import com.smart_bin.device_service.utils.HardwareSecureResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.apache.kafka.shaded.com.google.protobuf.Api;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +24,17 @@ public class DeviceController {
 
     private final ResponseFactory responseFactory;
     private final DeviceService deviceService;
+
+    @PostMapping("/import")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    public ResponseEntity<ApiResponseFormat<Object>> importDevices(
+            @Valid @RequestBody ImportDeviceRequest request
+    ) {
+        var response = deviceService.importDevices(request);
+        return responseFactory.response(SuccessCode.CREATED, response);
+    }
 
     @PostMapping
     public ResponseEntity<ApiResponseFormat<Object>> addDevice(
@@ -104,9 +115,11 @@ public class DeviceController {
     public ResponseEntity<ApiResponseFormat<Object>> getPresignedUrl(
             @RequestHeader("X-Signature") String signature,
             @RequestHeader("metadata") String metadata,
-            @RequestBody String payload
+            @RequestBody String payload,
+            @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
+            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
     ) {
-        var response = deviceService.getPresignedUrl(payload, signature, metadata);
+        var response = deviceService.getPresignedUrl(payload, signature, metadata, desktopVer, binVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -115,17 +128,21 @@ public class DeviceController {
     public ResponseEntity<ApiResponseFormat<Object>> confirmUpload(
             @RequestHeader("metadata") String metadata,
             @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature
+            @RequestHeader("X-Signature") String signature,
+            @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
+            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
     ){
-        var response = deviceService.confirmUpload(payload, signature, metadata);
+        var response = deviceService.confirmUpload(payload, signature, metadata, desktopVer, binVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
     @PostMapping("/public/activate")
     public ResponseEntity<ApiResponseFormat<Object>> activateDevice(
-            @RequestBody String payload
+            @RequestBody String payload,
+            @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
+            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
     ){
-        var response = deviceService.activateDevice(payload);
+        var response = deviceService.activateDevice(payload, desktopVer, binVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -133,9 +150,11 @@ public class DeviceController {
     @HardwareSecureResponse
     public ResponseEntity<ApiResponseFormat<Object>> getAccessToken(
             @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature
+            @RequestHeader("X-Signature") String signature,
+            @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
+            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
     ){
-        var response = deviceService.getAccessToken(payload, signature);
+        var response = deviceService.getAccessToken(payload, signature, desktopVer, binVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

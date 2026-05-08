@@ -43,5 +43,12 @@ public class Device extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String publicKey;
 
-    private String firmwareVersion;
+    @Column(name = "claimed_at")
+    private Long claimedAt;
+
+    @Column(name = "desktop_version")
+    private String desktopVersion;
+
+    @Column(name = "bin_version")
+    private String binVersion;
 }

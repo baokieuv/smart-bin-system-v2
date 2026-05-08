@@ -1,6 +1,5 @@
 package com.smart_bin.device_service.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.nimbusds.jose.shaded.gson.JsonObject;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.common.NotificationType;
@@ -12,6 +11,8 @@ import com.smart_bin.device_service.common.DeviceStatus;
 import com.smart_bin.device_service.config.MediaServiceClient;
 import com.smart_bin.device_service.dto.request.AppVersionInfo;
 import com.smart_bin.device_service.dto.request.CreateDeviceRequest;
+import com.smart_bin.device_service.dto.request.DeviceImportItem;
+import com.smart_bin.device_service.dto.request.ImportDeviceRequest;
 import com.smart_bin.device_service.dto.request.UpdateDeviceRequest;
 import com.smart_bin.device_service.dto.response.DetectionResultDto;
 import com.smart_bin.device_service.dto.response.DeviceDto;
@@ -30,7 +31,6 @@ import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.redis.core.RedisTemplate;
-// THÊM KAFKA
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import tools.jackson.core.JacksonException;
@@ -62,51 +62,75 @@ public class DeviceService {
     private String secretKey;
 
     @Transactional
-    @CacheEvict(value = "device_list", key = "#keycloakId")
-    public DeviceDto addDevice(CreateDeviceRequest request, String keycloakId) {
-        // BỎ check User. Token có keycloakId là đủ quyền tạo thiết bị.
-        Optional<Device> existingDeviceOpt = repository.findByMac(request.mac());
-        Device device;
+    @CacheEvict(value = "device_list", allEntries = true)
+    public List<DeviceDto> importDevices(ImportDeviceRequest request) {
+        List<Device> savedDevices = new ArrayList<>();
 
-        if (existingDeviceOpt.isPresent()) {
-            device = existingDeviceOpt.get();
-            if (device.isActive()) {
-                throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_EXISTED);
+        for (DeviceImportItem item : request.devices()) {
+            if (repository.findByMac(item.mac()).isPresent()) {
+                log.warn("Bỏ qua thiết bị có MAC {} vì đã tồn tại trong hệ thống.", item.mac());
+                continue;
             }
-            log.info("Restoring soft-deleted device with MAC: {}", request.mac());
-            device.setActive(true);
-        } else {
-            device = new Device();
-            device.setMac(request.mac());
+
+            String tbDeviceName = "SmartBin-" + item.mac().replace(":", "").replace("-", "");
+            JsonNode tbResponse = thingsBoardService.addDevice(tbDeviceName, "SmartBin");
+            String tbDeviceId = tbResponse.get("id").get("id").asText();
+
+            String displayName = (item.name() != null && !item.name().isBlank()) ? item.name() : tbDeviceName;
+
+            Map<String, Object> attributes = new HashMap<>();
+            attributes.put("macAddress", item.mac());
+            attributes.put("name", displayName);
+            thingsBoardService.updateAttributes(tbDeviceId, Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
+
+            JsonNode credentialResponse = thingsBoardService.getDeviceCredentials(tbDeviceId);
+            String accessToken = credentialResponse.get("credentialsId").asText();
+
+            Device device = new Device();
+            device.setMac(item.mac());
+            device.setName(displayName);
+            device.setDeviceId(tbDeviceId);
+            device.setAccessToken(accessToken);
+            device.setKeycloakId(null);
+            device.setActive(false);
+            device.setState(DeviceState.PENDING);
+            device.setStatus(DeviceStatus.OFFLINE);
+            device.setClaimedAt(null);
+
+            savedDevices.add(repository.save(device));
         }
 
-        String tbDeviceName = "SmartBin-" + request.mac().replace(":", "").replace("-", "");
-        JsonNode tbResponse = thingsBoardService.addDevice(tbDeviceName, "SmartBin");
-        String tbDeviceId = tbResponse.get("id").get("id").asText();
+        return savedDevices.stream().map(mapper::toDto).collect(Collectors.toList());
+    }
+
+    @Transactional
+    @CacheEvict(value = "device_list", key = "#keycloakId")
+    public DeviceDto addDevice(CreateDeviceRequest request, String keycloakId) {
+        Device device = repository.findByMac(request.mac())
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND, "Thiết bị chưa được đăng ký vào hệ thống bởi nhà sản xuất."));
+
+        if (device.isActive() || (device.getKeycloakId() != null)) {
+            throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_EXISTED, "Thiết bị này đã được liên kết với một tài khoản khác.");
+        }
 
         String displayName = (request.name() != null && !request.name().isBlank())
                 ? request.name()
-                : tbDeviceName;
+                : device.getName();
+
+        device.setName(displayName);
+        device.setLongitude(request.longitude());
+        device.setLatitude(request.latitude());
+        device.setKeycloakId(keycloakId);
+        device.setActive(true);
+        device.setState(DeviceState.PENDING);
+        device.setClaimedAt(System.currentTimeMillis());
 
         Map<String, Object> attributes = new HashMap<>();
         attributes.put("macAddress", request.mac());
         attributes.put("longitude", request.longitude());
         attributes.put("latitude", request.latitude());
         attributes.put("name", displayName);
-
-        thingsBoardService.updateAttributes(tbDeviceId, Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
-
-        JsonNode credentialResponse = thingsBoardService.getDeviceCredentials(tbDeviceId);
-        String accessToken = credentialResponse.get("credentialsId").asText();
-
-        device.setName(displayName);
-        device.setLongitude(request.longitude());
-        device.setLatitude(request.latitude());
-        device.setDeviceId(tbDeviceId);
-        device.setAccessToken(accessToken);
-        device.setKeycloakId(keycloakId); // THAY THẾ: Lưu Khóa ngoại logic
-        device.setState(DeviceState.PENDING);
-        device.setStatus(DeviceStatus.OFFLINE);
+        thingsBoardService.updateAttributes(device.getDeviceId(), Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
 
         Device savedDevice = repository.save(device);
 
@@ -118,7 +142,6 @@ public class DeviceService {
 
     @Cacheable(value = "device_list", key = "#keycloakId")
     public List<DeviceDto> getListDevices(String keycloakId){
-        // SỬA: Query thẳng bằng keycloakId
         List<Device> devices = repository.findByKeycloakIdAndActiveTrue(keycloakId);
         return devices.stream().map(mapper::toDto).collect(Collectors.toList());
     }
@@ -188,39 +211,47 @@ public class DeviceService {
     public void deleteDevice(String id, String keycloakId){
         Device device = getDeviceAndVerifyOwnership(id, keycloakId);
 
-        if (device.getDeviceId() != null) {
-            thingsBoardService.deleteDevice(device.getDeviceId());
-        }
-
+        // Chuyển thiết bị về trạng thái lưu kho, KHÔNG xóa trên ThingsBoard
         device.setActive(false);
+        device.setKeycloakId(null);
+        device.setState(DeviceState.PENDING);
+        device.setClaimedAt(null);
         repository.save(device);
+
+        String redisKey = Constants.PENDING_DEVICE_PREFIX + keycloakId + ":" + device.getId();
+        redisTemplate.delete(redisKey);
 
         NotificationEventDto payload = new NotificationEventDto(
                 keycloakId,
                 "Device Deleted",
-                "The device " + device.getName() + " has been successfully removed.",
+                "The device " + device.getName() + " has been successfully unbinded from your account.",
                 NotificationType.DEVICE_DELETED
         );
 
         kafkaService.publishNotification(payload);
-//        kafkaTemplate.send("notification-events", eventPayload);
     }
 
     @CacheEvict(value = "device_list", allEntries = true)
-    public DeviceDto activateDevice(String payload){
+    public DeviceDto activateDevice(String payload, String desktopVer, String binVer){
         JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
         String mac = payloadObj.get("mac").getAsString();
         String publicKey = payloadObj.get("publicKey").getAsString();
 
         Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
-                new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+                new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND, "Thiết bị chưa được người dùng thêm vào tài khoản."));
 
-        if (device.getState().equals(DeviceState.ACTIVE)){
+        if (device.getState() == DeviceState.ACTIVE){
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED);
+        }
+
+        if (device.getState() != DeviceState.PENDING) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Trạng thái thiết bị không hợp lệ để kích hoạt.");
         }
 
         device.setState(DeviceState.ACTIVE);
         device.setPublicKey(publicKey);
+        updateVersionInfo(device, desktopVer, binVer);
+
         Device savedDevice = repository.save(device);
 
         String key = Constants.PENDING_DEVICE_PREFIX + savedDevice.getKeycloakId() + ":" + savedDevice.getId();
@@ -238,7 +269,8 @@ public class DeviceService {
         return mapper.toDto(savedDevice);
     }
 
-    public DeviceDto getAccessToken(String payload, String signature){
+    @Transactional
+    public DeviceDto getAccessToken(String payload, String signature, String desktopVer, String binVer){
         JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
         String mac = payloadObj.get("mac").getAsString();
 
@@ -250,11 +282,23 @@ public class DeviceService {
         if (device.getState() != DeviceState.ACTIVE){
             throw new ApiException(DeviceErrorCode.DEVICE_NOT_ACTIVE_YET);
         }
+
+        updateVersionInfo(device, desktopVer, binVer);
+        repository.save(device);
+
         return mapper.toDto(device);
     }
 
     public JsonNode getTelemetries(String id, String keycloakId, String keys, Long startTs, Long endTs) {
         Device device = getDeviceAndVerifyOwnership(id, keycloakId);
+
+        // Bảo mật: Nếu startTs cũ hơn lúc nhận máy, ép về mốc claimedAt
+        if (device.getClaimedAt() != null) {
+            if (startTs == null || startTs < device.getClaimedAt()) {
+                startTs = device.getClaimedAt();
+            }
+        }
+
         return thingsBoardService.getTelemetries(device.getDeviceId(), keys, startTs, endTs);
     }
 
@@ -264,7 +308,7 @@ public class DeviceService {
     }
 
     @Transactional
-    public String getPresignedUrl(String payload, String signature, String metadata) {
+    public String getPresignedUrl(String payload, String signature, String metadata, String desktopVer, String binVer) {
         try {
             DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
 
@@ -274,8 +318,10 @@ public class DeviceService {
             Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
                     new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
-
             securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
+
+            updateVersionInfo(device, desktopVer, binVer);
+            repository.save(device);
 
             JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
                     internalSecret,
@@ -306,14 +352,13 @@ public class DeviceService {
             log.error("Lỗi parse metadata: {}", metadata, e);
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata format");
         } catch (Exception e) {
-            // Feign sẽ ném ra FeignException nếu HTTP status lỗi (ví dụ 403, 500)
             log.error("Lỗi khi gọi Media Service qua Feign: ", e);
             throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Cannot generate upload URL");
         }
     }
 
     @Transactional
-    public String confirmUpload(String payload, String signature, String metadata){
+    public String confirmUpload(String payload, String signature, String metadata, String desktopVer, String binVer){
         try {
             DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
 
@@ -325,15 +370,17 @@ public class DeviceService {
 
             securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
 
+            updateVersionInfo(device, desktopVer, binVer);
+
             DeviceDetectionResult result = new DeviceDetectionResult();
             result.setConfidence(fileInfo.confidence());
             result.setFeedback(fileInfo.feedback());
             result.setDevice(device);
             result.setType(fileInfo.type());
-            // Frontend/Device sẽ truyền imageUrl tĩnh về đây
             result.setImageUrl(fileInfo.imageUrl());
 
             detectionRepository.save(result);
+            repository.save(device);
 
             return "Upload confirmed and saved.";
         } catch (JacksonException e) {
@@ -342,15 +389,6 @@ public class DeviceService {
     }
 
     public Object getAppVersionInfo(String signature, String payload) {
-//        JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
-//        String mac = payloadObj.get("mac").getAsString();
-//
-//        Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
-//                new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
-//
-//
-//        securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
-
         String redisKey = com.smart_bin.device_service.common.Constants.APP_VERSION_PREFIX;
 
         String res = redisTemplate.opsForValue().get(redisKey);
@@ -359,8 +397,11 @@ public class DeviceService {
             return null;
         }
 
-        return objectMapper.readValue(res, AppVersionInfo.class);
-
+        try {
+            return objectMapper.readValue(res, AppVersionInfo.class);
+        } catch (JacksonException e) {
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Error reading version info");
+        }
     }
 
     public Object updateAppVersionInfo(AppVersionInfo request, String key) {
@@ -371,21 +412,34 @@ public class DeviceService {
         String redisKey = com.smart_bin.device_service.common.Constants.APP_VERSION_PREFIX;
         String res = redisTemplate.opsForValue().get(redisKey);
 
-        if (res != null && !res.isEmpty()) {
-            AppVersionInfo info = objectMapper.readValue(res, AppVersionInfo.class);
+        try {
+            if (res != null && !res.isEmpty()) {
+                AppVersionInfo info = objectMapper.readValue(res, AppVersionInfo.class);
 
-            int binCompare = compareVersions(request.binVer(), info.binVer());
-            int desktopCompare = compareVersions(request.desktopVer(), info.desktopVer());
+                int binCompare = compareVersions(request.binVer(), info.binVer());
+                int desktopCompare = compareVersions(request.desktopVer(), info.desktopVer());
 
-            if (binCompare <= 0 && desktopCompare <= 0) {
-                throw new ApiException(CoreErrorCode.BAD_REQUEST); // Hoặc mã lỗi tương ứng của bạn
+                if (binCompare <= 0 && desktopCompare <= 0) {
+                    throw new ApiException(CoreErrorCode.BAD_REQUEST, "Version mới phải lớn hơn version hiện tại");
+                }
             }
+
+            String newVersionData = objectMapper.writeValueAsString(request);
+            redisTemplate.opsForValue().set(redisKey, newVersionData);
+        } catch (JacksonException e) {
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Error updating version info");
         }
 
-        String newVersionData = objectMapper.writeValueAsString(request);
-        redisTemplate.opsForValue().set(redisKey, newVersionData);
-
         return request;
+    }
+
+    private void updateVersionInfo(Device device, String desktopVer, String binVer) {
+        if (StringUtils.hasText(desktopVer)) {
+            device.setDesktopVersion(desktopVer);
+        }
+        if (StringUtils.hasText(binVer)) {
+            device.setBinVersion(binVer);
+        }
     }
 
     private Device getDeviceAndVerifyOwnership(String deviceIdStr, String keycloakId) {
@@ -399,7 +453,6 @@ public class DeviceService {
         Device device = repository.findByIdAndActiveTrue(deviceId)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
-        // CHỈNH SỬA: Check quyền bằng keycloakId thay vì User.getId()
         if (!device.getKeycloakId().equals(keycloakId)) {
             throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
         }
@@ -414,13 +467,12 @@ public class DeviceService {
 
         int length = Math.max(arr1.length, arr2.length);
         for (int i = 0; i < length; i++) {
-            // Nếu một version ngắn hơn (vd "1.0" so với "1.0.1"), phần thiếu sẽ coi như là 0
             int n1 = (i < arr1.length) ? Integer.parseInt(arr1[i]) : 0;
             int n2 = (i < arr2.length) ? Integer.parseInt(arr2[i]) : 0;
 
             if (n1 < n2) return -1;
             if (n1 > n2) return 1;
         }
-        return 0; // Bằng nhau
+        return 0;
     }
 }
