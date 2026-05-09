@@ -6,22 +6,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Surface } from '@/components/ui/surface';
 import { shopApi } from '@/services/api/shop';
-import {
-  formatCurrency,
-  formatDateTime,
-  formatOrderStatus,
-  formatPaymentMethod,
-  toNumber,
-  useValidAuthToken,
-} from '@/lib/shop-utils';
+import { formatCurrency, formatDateTime, formatOrderStatus, formatPaymentMethod, toNumber, useValidAuthToken } from '@/lib/shop-utils';
 import { useToast } from '@/components/ui/use-toast';
 import type { OrderDetailDto } from '@/types/shop';
 
-type OrderDetailState = {
-  status: 'loading' | 'ready' | 'error';
-  message?: string;
-  order?: OrderDetailDto;
-};
+type OrderDetailState = { status: 'loading' | 'ready' | 'error'; message?: string; order?: OrderDetailDto };
 
 export default function OrderDetailPage() {
   const params = useParams<{ orderId: string }>();
@@ -48,10 +37,7 @@ export default function OrderDetailPage() {
         if (cancelled) return;
 
         const errorMsg = error instanceof Error ? error.message : 'Không tải được chi tiết đơn hàng.';
-        setState({
-          status: 'error',
-          message: errorMsg,
-        });
+        setState({ status: 'error', message: errorMsg });
         pushToast(errorMsg, 'error');
       }
     };
@@ -64,11 +50,7 @@ export default function OrderDetailPage() {
   }, [isLoggedIn, orderId]);
 
   const order = state.order;
-
-  const pricing = useMemo(() => {
-    const total = toNumber(order?.totalAmount) ?? 0;
-    return { total };
-  }, [order]);
+  const pricing = useMemo(() => ({ total: toNumber(order?.totalAmount) ?? 0 }), [order]);
 
   const handleBuyAgain = async () => {
     if (!order?.items?.length) return;
@@ -120,12 +102,8 @@ export default function OrderDetailPage() {
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Không thể mở chi tiết đơn hàng</h2>
           <p className="text-sm text-slate-600">{state.message}</p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/shop/cart" className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
-              Quay lại lịch sử đơn
-            </Link>
-            <Link href="/shop" className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
-              Xem sản phẩm
-            </Link>
+            <Link href="/shop/cart" className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Quay lại lịch sử đơn</Link>
+            <Link href="/shop" className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Xem sản phẩm</Link>
           </div>
         </div>
       </Surface>
@@ -169,9 +147,7 @@ export default function OrderDetailPage() {
             return (
               <div key={`${item.productSku || title}-${index}`} className="flex flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="h-16 w-16 overflow-hidden rounded-xl bg-slate-100">
-                    {item.imageUrl || item.thumbnailUrl ? <img src={item.imageUrl || item.thumbnailUrl} alt={title} className="h-full w-full object-cover" /> : null}
-                  </div>
+                  <div className="h-16 w-16 overflow-hidden rounded-xl bg-slate-100">{item.imageUrl || item.thumbnailUrl ? <img src={item.imageUrl || item.thumbnailUrl} alt={title} className="h-full w-full object-cover" /> : null}</div>
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{title}</p>
                     <p className="text-xs text-slate-500">SL {quantity} · {formatCurrency(price)}</p>
@@ -200,16 +176,8 @@ export default function OrderDetailPage() {
           </div>
 
           <div className="mt-5 flex flex-col gap-2">
-            <Button onClick={() => void handleBuyAgain()} disabled={!order?.items?.length}>
-              Mua lại
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                pushToast('Đang chuyển sang trang giỏ hàng.', 'success');
-                router.push('/shop/cart');
-              }}
-            >
+            <Button onClick={() => void handleBuyAgain()} disabled={!order?.items?.length}>Mua lại</Button>
+            <Button variant="secondary" onClick={() => { pushToast('Đang chuyển sang trang giỏ hàng.', 'success'); router.push('/shop/cart'); }}>
               Về lịch sử đơn
             </Button>
           </div>

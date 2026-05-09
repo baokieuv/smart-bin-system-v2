@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { shopApi } from '@/services/api/shop';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,6 @@ function VnPayReturnContent() {
     const forward = async () => {
       setStatus('loading');
 
-      // Collect all query params into an object
       const paramsObj: Record<string, string> = {};
       if (!searchParams) {
         setMessage('No parameters found');
@@ -34,10 +33,8 @@ function VnPayReturnContent() {
           setStatus('success');
           setMessage(res.message || 'Thanh toán được xử lý thành công.');
 
-          // If backend returned an order id or txn ref, try to navigate user to order details
           const txnRef = paramsObj['vnp_TxnRef'] || (res.data && res.data.orderId);
           if (txnRef) {
-            // Give a short delay so user sees the message
             setTimeout(() => {
               router.push(`/shop/orders/${txnRef}`);
             }, 1200);

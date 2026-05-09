@@ -1,5 +1,3 @@
-// Root layout: wires global styles, metadata, and top-level providers.
-
 import type { Metadata } from "next";
 import Script from "next/script";
 import { Geist } from "next/font/google";
@@ -12,8 +10,8 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Smart Bin Platform | Operations",
-  description: "Monitor, manage, and optimize smart bin operations in one platform.",
+  title: "Smart Bin Shop",
+  description: "Standalone shopping experience for Smart Bin products.",
 };
 
 const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
@@ -24,10 +22,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} antialiased text-slate-900`}
-      >
+    <html lang="vi">
+      <body className={`${geistSans.variable} antialiased text-slate-900`}>
         {recaptchaSiteKey ? (
           <Script
             src={`https://www.google.com/recaptcha/api.js?render=${recaptchaSiteKey}`}

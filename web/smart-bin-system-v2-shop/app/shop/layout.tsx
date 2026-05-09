@@ -7,10 +7,12 @@ import { Surface } from '@/components/ui/surface';
 
 export default function ShopLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname() || '/shop';
+
   const isActive = (path: string) => {
     if (path === '/shop') return pathname === '/shop' || pathname.startsWith('/shop/products');
     return pathname === path || pathname.startsWith(path + '/');
   };
+
   return (
     <main className="shop-page-bg min-h-screen px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-5">
@@ -21,33 +23,27 @@ export default function ShopLayout({ children }: { children: ReactNode }) {
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Smart Bin Marketplace</p>
                 <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Shop thiết bị, theo dõi đơn, và mua lại chỉ trong vài giây.</h1>
-                <p className="max-w-2xl text-sm text-slate-600">Giao diện mua sắm tinh gọn, ưu tiên thao tác nhanh và thống nhất với dashboard hiện tại.</p>
+                <p className="max-w-2xl text-sm text-slate-600">Giao diện mua sắm chạy độc lập với dashboard, ưu tiên thao tác nhanh và đơn giản.</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                 <Link
                   href="/shop"
-                  className={
-                    `rounded-full px-4 py-2 transition ${isActive('/shop') ? 'bg-slate-900 text-white' : 'bg-white/90 text-slate-700 shadow-sm hover:bg-white'}`
-                  }
+                  className={`rounded-full px-4 py-2 transition ${isActive('/shop') ? 'bg-slate-900 text-white' : 'bg-white/90 text-slate-700 shadow-sm hover:bg-white'}`}
                 >
                   Sản phẩm
                 </Link>
                 <Link
                   href="/shop/cart"
-                  className={
-                    `rounded-full px-4 py-2 transition ${isActive('/shop/cart') ? 'bg-slate-900 text-white' : 'bg-white/90 text-slate-700 shadow-sm hover:bg-white'}`
-                  }
+                  className={`rounded-full px-4 py-2 transition ${isActive('/shop/cart') ? 'bg-slate-900 text-white' : 'bg-white/90 text-slate-700 shadow-sm hover:bg-white'}`}
                 >
                   Giỏ hàng & đơn hàng
                 </Link>
                 <Link
-                  href="/dashboard"
-                  className={
-                    `rounded-full px-4 py-2 transition ${isActive('/dashboard') ? 'bg-slate-900 text-white' : 'bg-white/70 text-slate-700 border border-white/70 hover:bg-white'}`
-                  }
+                  href="/auth/login"
+                  className={`rounded-full px-4 py-2 transition ${isActive('/auth/login') ? 'bg-slate-900 text-white' : 'bg-white/70 text-slate-700 border border-white/70 hover:bg-white'}`}
                 >
-                  Dashboard
+                  Đăng nhập
                 </Link>
               </div>
             </div>

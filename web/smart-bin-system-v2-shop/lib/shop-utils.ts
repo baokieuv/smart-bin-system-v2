@@ -72,7 +72,6 @@ export const hasValidAuthToken = () => {
   if (!token) return false;
 
   const exp = parseTokenExpiry(token);
-  // Some backends return opaque tokens without exp claim.
   if (!exp) return true;
 
   const nowInSeconds = Math.floor(Date.now() / 1000);
@@ -88,7 +87,6 @@ const subscribeToAuthToken = (onStoreChange: () => void) => {
 
 const getAuthTokenSnapshot = () => hasAuthToken();
 const getValidAuthTokenSnapshot = () => hasValidAuthToken();
-
 const getServerAuthTokenSnapshot = () => false;
 
 export const useAuthToken = () => {

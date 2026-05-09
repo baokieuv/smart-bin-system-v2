@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { StatusMessage } from '@/components/ui/status-message';
 import { PasswordVisibilityButton } from '@/components/ui/password-visibility-button';
 import { getRecaptchaToken } from '@/lib/recaptcha';
-import { syncGuestCartToServer } from '@/lib/shop-cart';
 import { useToast } from '@/components/ui/use-toast';
 
 export default function LoginPage() {
@@ -34,12 +33,6 @@ export default function LoginPage() {
             const returnUrl = new URLSearchParams(window.location.search).get('returnUrl');
             return returnUrl && returnUrl.startsWith('/') ? returnUrl : '/dashboard';
         })();
-
-        try {
-            await syncGuestCartToServer();
-        } catch {
-            // Keep login successful even if guest-cart sync fails.
-        }
 
         pushToast('Đăng nhập thành công. Đang chuyển trang...', 'success');
         router.push(safeReturnUrl);

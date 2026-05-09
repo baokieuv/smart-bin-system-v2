@@ -96,9 +96,7 @@ export const upsertGuestCartItem = (item: GuestCartItem) => {
 
 export const updateGuestCartQuantity = (sku: string, quantity: number) => {
   const safeQuantity = Math.max(1, toNumber(quantity) ?? 1);
-  const updated = readGuestCart().map((item) => (
-    item.sku === sku ? { ...item, quantity: safeQuantity } : item
-  ));
+  const updated = readGuestCart().map((item) => (item.sku === sku ? { ...item, quantity: safeQuantity } : item));
 
   writeGuestCart(updated);
 };
@@ -124,24 +122,23 @@ const toCartLine = (item: unknown, index: number): CartLineDto => {
   }
 
   const source = item as Record<string, unknown>;
-  const product = (source.product && typeof source.product === 'object')
-    ? (source.product as Record<string, unknown>)
-    : null;
+  const product = source.product && typeof source.product === 'object' ? (source.product as Record<string, unknown>) : null;
 
   return {
     id: String(source.id ?? source.productSku ?? source.sku ?? `line-${index}`),
     productSku: String(source.productSku ?? source.sku ?? product?.sku ?? ''),
-    productName: source.productName || source.name || product?.name || product?.title
-      ? String(source.productName ?? source.name ?? product?.name ?? product?.title)
-      : undefined,
+    productName:
+      source.productName || source.name || product?.name || product?.title
+        ? String(source.productName ?? source.name ?? product?.name ?? product?.title)
+        : undefined,
     quantity: toNumber(source.quantity) ?? toNumber(source.qty) ?? 1,
     price: toNumber(source.price) ?? toNumber(source.unitPrice) ?? toNumber(product?.price) ?? undefined,
-    imageUrl: source.imageUrl || source.productImage || product?.imageUrl
-      ? String(source.imageUrl ?? source.productImage ?? product?.imageUrl)
-      : undefined,
-    thumbnailUrl: source.thumbnailUrl || source.productThumbnail || product?.thumbnailUrl
-      ? String(source.thumbnailUrl ?? source.productThumbnail ?? product?.thumbnailUrl)
-      : undefined,
+    imageUrl:
+      source.imageUrl || source.productImage || product?.imageUrl ? String(source.imageUrl ?? source.productImage ?? product?.imageUrl) : undefined,
+    thumbnailUrl:
+      source.thumbnailUrl || source.productThumbnail || product?.thumbnailUrl
+        ? String(source.thumbnailUrl ?? source.productThumbnail ?? product?.thumbnailUrl)
+        : undefined,
   };
 };
 
@@ -171,9 +168,7 @@ export const hydrateCartLines = async (lines: CartLineDto[]): Promise<CartLineDt
   try {
     const productsResponse = await shopApi.getProductsBySkus(skus);
     const products = productsResponse.data || [];
-    const bySku = new Map<string, Record<string, unknown>>(
-      products.map((product: Record<string, unknown>) => [String(product.sku), product]),
-    );
+    const bySku = new Map<string, Record<string, unknown>>(products.map((product: Record<string, unknown>) => [String(product.sku), product]));
 
     return lines.map((line) => {
       const product = line.productSku ? bySku.get(line.productSku) : undefined;

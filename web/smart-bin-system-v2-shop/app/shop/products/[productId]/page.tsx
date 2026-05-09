@@ -12,11 +12,7 @@ import { formatCurrency, useValidAuthToken } from '@/lib/shop-utils';
 import { useToast } from '@/components/ui/use-toast';
 import type { ProductCardDto, ProductDetailDto } from '@/types/shop';
 
-type DetailState = {
-  status: 'loading' | 'ready' | 'error';
-  message?: string;
-  product?: ProductDetailDto;
-};
+type DetailState = { status: 'loading' | 'ready' | 'error'; message?: string; product?: ProductDetailDto };
 
 const fallbackRelated: ProductCardDto[] = [
   {
@@ -61,10 +57,7 @@ export default function ProductDetailPage() {
         if (cancelled) return;
 
         const errorMsg = error instanceof Error ? error.message : 'Không tải được chi tiết sản phẩm.';
-        setState({
-          status: 'error',
-          message: errorMsg,
-        });
+        setState({ status: 'error', message: errorMsg });
         pushToast(errorMsg, 'error');
       }
     };
@@ -77,7 +70,6 @@ export default function ProductDetailPage() {
   }, [productId]);
 
   const relatedProducts = useMemo(() => fallbackRelated, []);
-
   const product = state.product;
   const image = product?.imageUrl || product?.thumbnailUrl || product?.gallery?.[0] || product?.images?.[0] || '';
   const title = product?.name || product?.title || 'Chi tiết sản phẩm';
@@ -138,9 +130,7 @@ export default function ProductDetailPage() {
               <p className="text-sm leading-6 text-slate-600">{product?.description || product?.shortDescription || 'Xem chi tiết sản phẩm, giá tiền, và thông số trước khi thêm vào giỏ.'}</p>
             </div>
 
-            {state.status === 'error' ? (
-              <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{state.message}</div>
-            ) : null}
+            {state.status === 'error' ? <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{state.message}</div> : null}
 
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <span className="rounded-full bg-emerald-50 px-4 py-1.5 font-semibold text-emerald-700">{formatCurrency(price)}</span>
@@ -160,17 +150,9 @@ export default function ProductDetailPage() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Số lượng</p>
                   <div className="mt-2 flex w-fit items-center gap-2 rounded-full bg-white p-1 shadow-sm">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setQuantity((current) => Math.max(1, current - 1))}>
-                      -
-                    </Button>
-                    <Input
-                      value={quantity}
-                      onChange={(event) => setQuantity(Math.max(1, Number(event.target.value) || 1))}
-                      className="w-20 border-0 text-center shadow-none focus:ring-0"
-                    />
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setQuantity((current) => current + 1)}>
-                      +
-                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setQuantity((current) => Math.max(1, current - 1))}>-</Button>
+                    <Input value={quantity} onChange={(event) => setQuantity(Math.max(1, Number(event.target.value) || 1))} className="w-20 border-0 text-center shadow-none focus:ring-0" />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setQuantity((current) => current + 1)}>+</Button>
                   </div>
                 </div>
 
@@ -183,7 +165,6 @@ export default function ProductDetailPage() {
                   </Button>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
@@ -193,22 +174,10 @@ export default function ProductDetailPage() {
         <Surface className="border-0 bg-white/85 p-5 shadow-[0_16px_40px_-32px_rgba(15,23,42,0.4)]">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Thông tin sản phẩm</p>
           <div className="mt-4 grid gap-3 text-sm">
-            <div className="rounded-xl bg-slate-50 p-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">SKU</span>
-              <span className="mt-1 block font-medium text-slate-900">{product?.sku || '—'}</span>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Bảo hành</span>
-              <span className="mt-1 block font-medium text-slate-900">{product?.warranty || '—'}</span>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Xuất xứ</span>
-              <span className="mt-1 block font-medium text-slate-900">{product?.origin || '—'}</span>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-3">
-              <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Kích thước / cân nặng</span>
-              <span className="mt-1 block font-medium text-slate-900">{product?.dimensions || '—'} {product?.weight ? `· ${product.weight}` : ''}</span>
-            </div>
+            <div className="rounded-xl bg-slate-50 p-3"><span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">SKU</span><span className="mt-1 block font-medium text-slate-900">{product?.sku || '—'}</span></div>
+            <div className="rounded-xl bg-slate-50 p-3"><span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Bảo hành</span><span className="mt-1 block font-medium text-slate-900">{product?.warranty || '—'}</span></div>
+            <div className="rounded-xl bg-slate-50 p-3"><span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Xuất xứ</span><span className="mt-1 block font-medium text-slate-900">{product?.origin || '—'}</span></div>
+            <div className="rounded-xl bg-slate-50 p-3"><span className="block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Kích thước / cân nặng</span><span className="mt-1 block font-medium text-slate-900">{product?.dimensions || '—'} {product?.weight ? `· ${product.weight}` : ''}</span></div>
           </div>
         </Surface>
 
@@ -226,9 +195,7 @@ export default function ProductDetailPage() {
           <div className="mt-4 space-y-3">
             {relatedProducts.map((item) => (
               <Link key={item.id} href={`/shop/products/${item.id}`} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm transition hover:bg-slate-50">
-                <div className="h-14 w-14 overflow-hidden rounded-xl bg-slate-100">
-                  {item.imageUrl ? <img src={item.imageUrl} alt={item.name || 'related'} className="h-full w-full object-cover" /> : null}
-                </div>
+                <div className="h-14 w-14 overflow-hidden rounded-xl bg-slate-100">{item.imageUrl ? <img src={item.imageUrl} alt={item.name || 'related'} className="h-full w-full object-cover" /> : null}</div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
                   <p className="text-xs text-slate-500">{formatCurrency(item.price ?? 0)}</p>

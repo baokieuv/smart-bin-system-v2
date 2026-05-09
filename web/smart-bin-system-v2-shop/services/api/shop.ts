@@ -11,10 +11,8 @@ import type {
 } from '@/types/shop';
 
 export const shopApi = {
-  // Products
   getProducts: async (params?: { page?: number; size?: number; categoryId?: string; searchParams?: string }) => {
     const key = `products:${JSON.stringify(params || {})}`;
-    // cache product list for 2 minutes
     const cached = getCache<ProductListPayload>(key);
     if (cached) return { success: true, data: cached } as any;
 
@@ -75,7 +73,6 @@ export const shopApi = {
     return res;
   },
 
-  // Categories
   getCategories: async (params?: { page?: number; size?: number }) => {
     const key = `categories:${JSON.stringify(params || {})}`;
     const cached = getCache<any>(key);
@@ -100,7 +97,6 @@ export const shopApi = {
     return res;
   },
 
-  // Cart
   getCart: async () => {
     return api.get<CartSummaryDto>('/cart');
   },
@@ -113,7 +109,6 @@ export const shopApi = {
     return api.delete<string>('/cart');
   },
 
-  // Orders
   checkout: async (request: CheckoutRequest) => {
     return api.post<OrderDetailDto>('/orders/checkout', request);
   },
@@ -150,7 +145,6 @@ export const shopApi = {
     return api.put<OrderDetailDto>(`/orders/${orderId}/cancel`);
   },
 
-  // Payments
   processVnpayReturn: async (params?: any) => {
     return api.get<any>('/payments/vnpay_return', params, { skipAuthRefresh: true });
   },
