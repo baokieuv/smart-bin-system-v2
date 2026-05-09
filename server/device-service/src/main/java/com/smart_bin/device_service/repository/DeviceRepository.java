@@ -1,6 +1,8 @@
 package com.smart_bin.device_service.repository;
 
 import com.smart_bin.device_service.entity.Device;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -17,7 +19,8 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> { // Đổ
 
     Optional<Device> findByMac(String mac);
 
+    Page<Device> findByKeycloakIdAndActiveTrue(String keycloakId, Pageable pageable);
     // BỎ: List<Device> findByUserAndActiveTrue(User user);
     // THÊM: Sử dụng khóa ngoại logic keycloakId (Lấy trực tiếp từ Token của Client)
-    List<Device> findByKeycloakIdAndActiveTrue(String keycloakId);
+//    List<Device> findByKeycloakIdAndActiveTrue(String keycloakId);
 }

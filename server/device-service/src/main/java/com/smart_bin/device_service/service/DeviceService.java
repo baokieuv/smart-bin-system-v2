@@ -30,6 +30,9 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -63,7 +66,7 @@ public class DeviceService {
 
     @Transactional
     @CacheEvict(value = "device_list", allEntries = true)
-    public List<DeviceDto> importDevices(ImportDeviceRequest request) {
+    public List<DeviceDto> importDevices(ImportDeviceRequest request, String actorId) {
         List<Device> savedDevices = new ArrayList<>();
 
         for (DeviceImportItem item : request.devices()) {
@@ -87,11 +90,11 @@ public class DeviceService {
             String accessToken = credentialResponse.get("credentialsId").asText();
 
             Device device = new Device();
+            device.setKeycloakId(actorId);
             device.setMac(item.mac());
             device.setName(displayName);
             device.setDeviceId(tbDeviceId);
             device.setAccessToken(accessToken);
-            device.setKeycloakId(null);
             device.setActive(false);
             device.setState(DeviceState.PENDING);
             device.setStatus(DeviceStatus.OFFLINE);
@@ -140,10 +143,24 @@ public class DeviceService {
         return mapper.toDto(savedDevice);
     }
 
-    @Cacheable(value = "device_list", key = "#keycloakId")
-    public List<DeviceDto> getListDevices(String keycloakId){
-        List<Device> devices = repository.findByKeycloakIdAndActiveTrue(keycloakId);
-        return devices.stream().map(mapper::toDto).collect(Collectors.toList());
+    @Cacheable(value = "device_list", key = "#keycloakId + '-' + #page + '-' + #size")
+    public Page<DeviceDto> getListDevices(String keycloakId, int page, int size) {
+        int pageIndex = (page > 0) ? page - 1 : 0;
+        int pageSize = (size > 0) ? size : 10;
+        Pageable pageable = PageRequest.of(pageIndex, pageSize);
+
+        Page<Device> devices = repository.findByKeycloakIdAndActiveTrue(keycloakId, pageable);
+        return devices.map(mapper::toDto);
+    }
+
+    public Page<DeviceDto> getAllDevicesForAdmin(int page, int size) {
+        int pageIndex = (page > 0) ? page - 1 : 0;
+        int pageSize = (size > 0) ? size : 10;
+        Pageable pageable = PageRequest.of(pageIndex, pageSize);
+
+        // Lấy toàn bộ thiết bị (kể cả chưa active/lưu kho)
+        Page<Device> devices = repository.findAll(pageable);
+        return devices.map(mapper::toDto);
     }
 
     @Cacheable(value = "device_detail", key = "#deviceId")

@@ -58,8 +58,17 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("https://kvbhust.id.vn", "http://localhost:3000", "http://localhost:5173"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedOrigins(
+                Arrays.asList(
+                        "https://kvbhust.id.vn",
+                        "https://shop.kvbhust.id.vn",
+                        "https://cms.kvbhust.id.vn",
+                        "http://localhost:3000",
+                        "http://localhost:3001",
+                        "http://localhost:3002"
+                )
+        );
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
 

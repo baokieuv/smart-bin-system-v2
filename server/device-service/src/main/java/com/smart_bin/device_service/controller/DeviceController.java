@@ -30,9 +30,11 @@ public class DeviceController {
             "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
             "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> importDevices(
-            @Valid @RequestBody ImportDeviceRequest request
+            @Valid @RequestBody ImportDeviceRequest request,
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        var response = deviceService.importDevices(request);
+        String actorId = jwt.getSubject();
+        var response = deviceService.importDevices(request, actorId);
         return responseFactory.response(SuccessCode.CREATED, response);
     }
 
@@ -48,10 +50,24 @@ public class DeviceController {
 
     @GetMapping
     public ResponseEntity<ApiResponseFormat<Object>> getListDevices(
-            @AuthenticationPrincipal Jwt jwt
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "10") int size
     ){
         String keycloakId = jwt.getSubject();
-        var response = deviceService.getListDevices(keycloakId);
+        var response = deviceService.getListDevices(keycloakId, page, size);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @GetMapping("/admin")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    public ResponseEntity<ApiResponseFormat<Object>> getAllDevicesForAdmin(
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "10") int size
+    ){
+        var response = deviceService.getAllDevicesForAdmin(page, size);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

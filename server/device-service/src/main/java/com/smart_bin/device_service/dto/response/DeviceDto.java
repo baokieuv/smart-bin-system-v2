@@ -16,6 +16,9 @@ public record DeviceDto (
         Double latitude,
         DeviceState state,
         DeviceStatus status,
-        Instant createdDate
+        Instant createdDate,
+        Long claimedAt,
+        String desktopVersion,
+        String binVersion
 ) {
 }
