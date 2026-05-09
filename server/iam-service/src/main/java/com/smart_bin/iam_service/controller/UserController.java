@@ -7,6 +7,7 @@ import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.core.utils.ResponseFactory;
 import com.smart_bin.iam_service.common.SuccessCode;
 import com.smart_bin.iam_service.dto.auth.request.UpdateUserAccessRequest;
+import com.smart_bin.iam_service.dto.auth.request.UpdateUserStateRequest;
 import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
 import com.smart_bin.iam_service.dto.user.request.UpdateUserRequest;
 import com.smart_bin.iam_service.serivce.UserService;
@@ -35,12 +36,44 @@ public class UserController {
         return responseFactory.response(SuccessCode.CREATED, user);
     }
 
+    @GetMapping
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    public ResponseEntity<ApiResponseFormat<Object>> getUsers(
+            @RequestParam(required = false, defaultValue = "1") Long page,
+            @RequestParam(required = false, defaultValue = "10") Long size,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String actorId = jwt.getSubject();
+        var users = userService.getUsers(page, size, actorId);
+        return responseFactory.response(SuccessCode.OK, users);
+    }
+
     @GetMapping("/{userId}")
     @PreAuthorize("hasAnyRole(" +
             "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
             "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
-    public ResponseEntity<ApiResponseFormat<Object>> getUserById(@PathVariable String userId){
-        var user = userService.getUserById(userId);
+    public ResponseEntity<ApiResponseFormat<Object>> getUserById(
+            @PathVariable String userId,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String actorId = jwt.getSubject();
+        var user = userService.getUserByIdForAdmin(userId, actorId);
+        return responseFactory.response(SuccessCode.OK, user);
+    }
+
+    @PatchMapping("/{userId}/state")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    public ResponseEntity<ApiResponseFormat<Object>> updateUserStateById(
+            @PathVariable String userId,
+            @Valid @RequestBody UpdateUserStateRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String actorId = jwt.getSubject();
+        var user = userService.updateUserStateById(userId, request, actorId);
         return responseFactory.response(SuccessCode.OK, user);
     }
 

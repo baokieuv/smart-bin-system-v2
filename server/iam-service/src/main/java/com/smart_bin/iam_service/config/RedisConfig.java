@@ -1,5 +1,7 @@
 package com.smart_bin.iam_service.config;
 
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +22,7 @@ import java.time.Duration;
 @Configuration
 @EnableCaching
 public class RedisConfig {
+
     @Value("${spring.data.redis.host}")
     private String redisHost;
 
@@ -30,8 +33,10 @@ public class RedisConfig {
     private String redisPassword;
 
     @Bean
-    public LettuceConnectionFactory redisConnectionFactory(){
-        RedisStandaloneConfiguration config = new RedisStandaloneConfiguration(redisHost, redisPort);
+    public LettuceConnectionFactory redisConnectionFactory() {
+
+        RedisStandaloneConfiguration config =
+                new RedisStandaloneConfiguration(redisHost, redisPort);
 
         config.setPassword(redisPassword);
 
@@ -39,27 +44,49 @@ public class RedisConfig {
     }
 
     @Bean
-    public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory redisConnectionFactory){
-        RedisTemplate<String, String> template = new RedisTemplate<>();
+    public RedisTemplate<String, Object> redisTemplate(
+            RedisConnectionFactory redisConnectionFactory
+    ) {
+
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
+
         template.setConnectionFactory(redisConnectionFactory);
+
         return template;
     }
 
     @Bean
-    public RedisMessageListenerContainer keyExpirationListenerContainer(RedisConnectionFactory connectionFactory) {
-        RedisMessageListenerContainer listenerContainer = new RedisMessageListenerContainer();
+    public RedisMessageListenerContainer keyExpirationListenerContainer(
+            RedisConnectionFactory connectionFactory
+    ) {
+
+        RedisMessageListenerContainer listenerContainer =
+                new RedisMessageListenerContainer();
+
         listenerContainer.setConnectionFactory(connectionFactory);
+
         return listenerContainer;
     }
 
     @Bean
-    public RedisCacheManager cacheManager(LettuceConnectionFactory connectionFactory) {
+    public RedisCacheManager cacheManager(
+            RedisConnectionFactory connectionFactory
+    ) {
+
         ObjectMapper objectMapper = new ObjectMapper();
 
-        RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(60)) // Set thời gian sống của Cache là 60 phút
-                .disableCachingNullValues()
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJacksonJsonRedisSerializer(objectMapper)));
+        GenericJacksonJsonRedisSerializer serializer =
+                new GenericJacksonJsonRedisSerializer(objectMapper);
+
+        RedisCacheConfiguration cacheConfig =
+                RedisCacheConfiguration.defaultCacheConfig()
+                        .entryTtl(Duration.ofMinutes(60))
+                        .disableCachingNullValues()
+                        .serializeValuesWith(
+                                RedisSerializationContext
+                                        .SerializationPair
+                                        .fromSerializer(serializer)
+                        );
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(cacheConfig)

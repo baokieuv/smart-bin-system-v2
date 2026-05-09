@@ -10,6 +10,7 @@ import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.common.TokenType;
 import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.ResendVerificationRequest;
+import com.smart_bin.iam_service.dto.auth.request.UpdateUserStateRequest;
 import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
 import com.smart_bin.iam_service.dto.user.request.UpdateUserRequest;
 import com.smart_bin.iam_service.dto.user.response.UserDto;
@@ -27,6 +28,9 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -76,6 +80,7 @@ public class UserService {
         user.setActionToken(UUID.randomUUID().toString());
         user.setActionTokenExpiry(System.currentTimeMillis() + Constants.VERIFICATION_TOKEN_EXPIRY);
         user.setTokenType(TokenType.VERIFY_EMAIL);
+        user.setRole(UserRole.USER);
 
         User savedUser = userRepository.save(user);
 
@@ -83,6 +88,15 @@ public class UserService {
         keycloakService.updateUserAttribute(user.getKeycloakId(), "user_state", UserState.PENDING.name());
 
         return mapper.toDto(savedUser);
+    }
+
+    public Page<UserDto> getUsers(Long page, Long size, String actorId){
+        int pageIndex = (page != null && page > 0) ? page.intValue() - 1 : 0;
+        int pageSize = (size != null && size > 0) ? size.intValue() : 10;
+        Pageable pageable = PageRequest.of(pageIndex, pageSize);
+
+        return userRepository.findByRoleOrKeycloakId(UserRole.USER, actorId, pageable)
+                .map(mapper::toDto);
     }
 
     @Transactional
@@ -113,18 +127,13 @@ public class UserService {
     }
 
     @Cacheable(value = "users", key = "#userId")
-    public UserDto getUserById(String userId) {
-        UUID uuid;
-        try {
-            uuid = UUID.fromString(userId);
-        } catch (IllegalArgumentException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Định dạng ID không hợp lệ");
-        }
-
-        User user = userRepository.findByIdAndActiveTrue(uuid)
+    public UserDto getUserByIdForAdmin(String targetUserId, String actorId) {
+        User targetUser = userRepository.findByIdAndActiveTrue(parseUUID(targetUserId))
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
-        return mapper.toDto(user);
+        validateAdminPermissionOnTarget(actorId, targetUser);
+
+        return mapper.toDto(targetUser);
     }
 
     @Cacheable(value = "usersByKcId", key = "#keycloakId")
@@ -133,6 +142,16 @@ public class UserService {
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         return mapper.toDto(user);
+    }
+
+    public UserDto updateUserStateById(String userId, UpdateUserStateRequest request, String actorId) {
+        User targetUser = userRepository.findById(parseUUID(userId))
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
+
+        validateAdminPermissionOnTarget(actorId, targetUser);
+
+        targetUser.setState(request.state());
+        return mapper.toDto(userRepository.save(targetUser));
     }
 
     @Transactional
@@ -200,7 +219,7 @@ public class UserService {
     @Transactional // Bổ sung cho an toàn mặc dù chỉ thay đổi trên Keycloak (tránh cache desync)
     @CacheEvict(value = "users", key = "#targetUserId")
     public void updateUserRole(String actorId, String targetUserId, UserRole newRole) {
-        User targetUser = userRepository.findByIdAndActiveTrue(UUID.fromString(targetUserId))
+        User targetUser = userRepository.findByIdAndActiveTrue(parseUUID(targetUserId))
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         if (targetUser.getKeycloakId().equals(actorId)) {
@@ -211,9 +230,13 @@ public class UserService {
             throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Tài khoản Root của hệ thống là bất khả xâm phạm.");
         }
 
+        // Cập nhật Role vào Database
+        targetUser.setRole(newRole);
+        userRepository.save(targetUser);
+
+        // Đồng bộ Role sang Keycloak
         keycloakService.updateRealmRole(targetUser.getKeycloakId(), newRole);
 
-        // Đảm bảo cache usersByKcId cũng bị xóa vì vai trò đã thay đổi
         var cache = cacheManager.getCache("usersByKcId");
         if (cache != null) {
             cache.evict(targetUser.getKeycloakId());
@@ -264,5 +287,25 @@ public class UserService {
             emailData.put("activationCode", activationCode);
         }
         kafkaService.sendEmailToUser(emailData, emailType);
+    }
+
+    private UUID parseUUID(String id) {
+        try {
+            return UUID.fromString(id);
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid ID format");
+        }
+    }
+
+    private void validateAdminPermissionOnTarget(String actorId, User targetUser) {
+        // Cho phép thao tác/xem trên chính tài khoản của mình
+        if (actorId.equals(targetUser.getKeycloakId())) {
+            return;
+        }
+
+        // Nếu người bị thao tác là ADMIN hoặc SUPER_ADMIN thì cấm
+        if (targetUser.getRole() == UserRole.ADMIN || targetUser.getRole() == UserRole.SUPER_ADMIN) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không có quyền thao tác hoặc xem thông tin của Admin khác.");
+        }
     }
 }

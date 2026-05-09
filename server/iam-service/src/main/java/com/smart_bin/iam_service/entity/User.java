@@ -1,5 +1,6 @@
 package com.smart_bin.iam_service.entity;
 
+import com.smart_bin.core.common.UserRole;
 import com.smart_bin.core.entity.BaseEntity;
 import com.smart_bin.iam_service.common.TokenType;
 import com.smart_bin.iam_service.common.UserState;
@@ -43,4 +44,8 @@ public class User extends BaseEntity {
     private UserState state;
 
     private String avatarUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private UserRole role = UserRole.USER;
 }
