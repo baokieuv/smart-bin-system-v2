@@ -8,5 +8,7 @@ public record DeviceImportItem(
         @Pattern(regexp = "^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$", message = "Địa chỉ MAC không đúng định dạng (VD: AA:BB:CC:DD:EE:FF)")
         String mac,
 
-        String name
+        String name,
+
+        String groupCode
 ) {}

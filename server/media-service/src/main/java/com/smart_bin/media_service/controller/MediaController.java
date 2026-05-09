@@ -65,6 +65,21 @@ public class MediaController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
+    @PostMapping("/internal/upload")
+    public ResponseEntity<ApiResponseFormat<Object>> uploadFileInternal(
+            @RequestHeader("x-internal-secret") String secret,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("extra") String extra,
+            @RequestParam(value = "folder", required = false, defaultValue = "") String folder
+    ) {
+        if (!internalSecret.equals(secret)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Invalid internal secret key");
+        }
+
+        var response = mediaStorageService.uploadFileInternal(file, extra, folder);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
 //    @GetMapping("/download-url")
 //    public ResponseEntity<ApiResponseFormat<Object>> createPresignedDownloadUrl(
 //            @RequestParam("objectName") String objectName,

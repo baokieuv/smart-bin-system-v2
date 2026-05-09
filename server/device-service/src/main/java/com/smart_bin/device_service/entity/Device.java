@@ -51,4 +51,11 @@ public class Device extends BaseEntity {
 
     @Column(name = "bin_version")
     private String binVersion;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "group_id")
+    private DeviceGroup deviceGroup;
+
+    @OneToOne(mappedBy = "device", fetch = FetchType.LAZY)
+    private DeviceConfig deviceConfig;
 }

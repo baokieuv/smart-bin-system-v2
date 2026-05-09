@@ -9,7 +9,6 @@ import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.common.DeviceStatus;
 import com.smart_bin.device_service.config.MediaServiceClient;
-import com.smart_bin.device_service.dto.request.AppVersionInfo;
 import com.smart_bin.device_service.dto.request.CreateDeviceRequest;
 import com.smart_bin.device_service.dto.request.DeviceImportItem;
 import com.smart_bin.device_service.dto.request.ImportDeviceRequest;
@@ -18,9 +17,11 @@ import com.smart_bin.device_service.dto.response.DetectionResultDto;
 import com.smart_bin.device_service.dto.response.DeviceDto;
 import com.smart_bin.device_service.entity.Device;
 import com.smart_bin.device_service.entity.DeviceDetectionResult;
+import com.smart_bin.device_service.entity.DeviceGroup;
 import com.smart_bin.device_service.exception.DeviceErrorCode;
 import com.smart_bin.device_service.mapper.DeviceMapper;
 import com.smart_bin.device_service.repository.DetectionResultRepository;
+import com.smart_bin.device_service.repository.DeviceGroupRepository;
 import com.smart_bin.device_service.repository.DeviceRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -57,24 +58,58 @@ public class DeviceService {
     private final MediaServiceClient mediaServiceClient;
     private final KafkaService kafkaService;
     private final DeviceSecurityService securityService;
+    private final DeviceGroupRepository groupRepository;
 
     @Value("${media-service.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
     private String internalSecret;
 
-    @Value("${app.secret-key:SECRET_KEY_12345}")
-    private String secretKey;
-
     @Transactional
     @CacheEvict(value = "device_list", allEntries = true)
     public List<DeviceDto> importDevices(ImportDeviceRequest request, String actorId) {
-        List<Device> savedDevices = new ArrayList<>();
+        List<Device> devicesToSave = new ArrayList<>();
+
+        Set<String> macsToImport = request.devices().stream()
+                .map(DeviceImportItem::mac)
+                .collect(Collectors.toSet());
+
+        Set<String> existingMacs = repository.findByMacIn(macsToImport).stream()
+                .map(Device::getMac)
+                .collect(Collectors.toSet());
+
+        Set<String> groupCodes = request.devices().stream()
+                .map(DeviceImportItem::groupCode)
+                .filter(code -> code != null && !code.isBlank())
+                .collect(Collectors.toSet());
+
+        Map<String, DeviceGroup> groupMap = new HashMap<>();
+        if (!groupCodes.isEmpty()) {
+            List<DeviceGroup> fetchedGroups = groupRepository.findByCodeIn(groupCodes);
+            for (DeviceGroup group : fetchedGroups) {
+                groupMap.put(group.getCode(), group);
+            }
+
+            // Kiểm tra xem có groupCode nào truyền lên mà không tồn tại trong DB không
+            for (String code : groupCodes) {
+                if (!groupMap.containsKey(code)) {
+                    throw new ApiException(CoreErrorCode.BAD_REQUEST, "Không tìm thấy Device Group với code: " + code);
+                }
+            }
+        }
 
         for (DeviceImportItem item : request.devices()) {
-            if (repository.findByMac(item.mac()).isPresent()) {
+            // Tra cứu MAC với O(1)
+            if (existingMacs.contains(item.mac())) {
                 log.warn("Bỏ qua thiết bị có MAC {} vì đã tồn tại trong hệ thống.", item.mac());
                 continue;
             }
 
+            // Tra cứu Group với O(1)
+            DeviceGroup group = null;
+            if (item.groupCode() != null && !item.groupCode().isBlank()) {
+                group = groupMap.get(item.groupCode());
+            }
+
+            // Giao tiếp với ThingsBoard (Vẫn phải gọi HTTP Call từng cái do API ThingsBoard)
             String tbDeviceName = "SmartBin-" + item.mac().replace(":", "").replace("-", "");
             JsonNode tbResponse = thingsBoardService.addDevice(tbDeviceName, "SmartBin");
             String tbDeviceId = tbResponse.get("id").get("id").asText();
@@ -99,11 +134,16 @@ public class DeviceService {
             device.setState(DeviceState.PENDING);
             device.setStatus(DeviceStatus.OFFLINE);
             device.setClaimedAt(null);
+            device.setDeviceGroup(group);
 
-            savedDevices.add(repository.save(device));
+            devicesToSave.add(device);
         }
 
-        return savedDevices.stream().map(mapper::toDto).collect(Collectors.toList());
+        if (!devicesToSave.isEmpty()) {
+            devicesToSave = repository.saveAll(devicesToSave);
+        }
+
+        return devicesToSave.stream().map(mapper::toDto).collect(Collectors.toList());
     }
 
     @Transactional
@@ -159,7 +199,7 @@ public class DeviceService {
         Pageable pageable = PageRequest.of(pageIndex, pageSize);
 
         // Lấy toàn bộ thiết bị (kể cả chưa active/lưu kho)
-        Page<Device> devices = repository.findAll(pageable);
+        Page<Device> devices = repository.findAllForAdminWithConfig(pageable);
         return devices.map(mapper::toDto);
     }
 
@@ -403,51 +443,6 @@ public class DeviceService {
         } catch (JacksonException e) {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata structure");
         }
-    }
-
-    public Object getAppVersionInfo(String signature, String payload) {
-        String redisKey = com.smart_bin.device_service.common.Constants.APP_VERSION_PREFIX;
-
-        String res = redisTemplate.opsForValue().get(redisKey);
-
-        if (!StringUtils.hasText(res)) {
-            return null;
-        }
-
-        try {
-            return objectMapper.readValue(res, AppVersionInfo.class);
-        } catch (JacksonException e) {
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Error reading version info");
-        }
-    }
-
-    public Object updateAppVersionInfo(AppVersionInfo request, String key) {
-        if (!key.equals(secretKey)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
-        }
-
-        String redisKey = com.smart_bin.device_service.common.Constants.APP_VERSION_PREFIX;
-        String res = redisTemplate.opsForValue().get(redisKey);
-
-        try {
-            if (res != null && !res.isEmpty()) {
-                AppVersionInfo info = objectMapper.readValue(res, AppVersionInfo.class);
-
-                int binCompare = compareVersions(request.binVer(), info.binVer());
-                int desktopCompare = compareVersions(request.desktopVer(), info.desktopVer());
-
-                if (binCompare <= 0 && desktopCompare <= 0) {
-                    throw new ApiException(CoreErrorCode.BAD_REQUEST, "Version mới phải lớn hơn version hiện tại");
-                }
-            }
-
-            String newVersionData = objectMapper.writeValueAsString(request);
-            redisTemplate.opsForValue().set(redisKey, newVersionData);
-        } catch (JacksonException e) {
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Error updating version info");
-        }
-
-        return request;
     }
 
     private void updateVersionInfo(Device device, String desktopVer, String binVer) {

@@ -6,6 +6,7 @@ export interface DeviceDto {
   name: string;
   accessToken?: string;
   mac: string;
+  groupCode?: string;
   longitude?: number;
   latitude?: number;
   state?: DeviceState;
@@ -14,4 +15,13 @@ export interface DeviceDto {
   claimedAt?: number;
   desktopVersion?: string;
   binVersion?: string;
+  targetBinVersion?: string;
+  targetDesktopVersion?: string;
+}
+
+export interface DeviceAdminConfigDto {
+  targetBinFirmwareId?: string | null;
+  targetDesktopFirmwareId?: string | null;
+  targetBinVersion?: string | null;
+  targetDesktopVersion?: string | null;
 }

@@ -173,22 +173,4 @@ public class DeviceController {
         var response = deviceService.getAccessToken(payload, signature, desktopVer, binVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
-
-    @PostMapping("/public/get-app-version")
-    public ResponseEntity<ApiResponseFormat<Object>> getAppVersionInfo(
-            @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature
-    ) {
-        var response = deviceService.getAppVersionInfo(signature, payload);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
-
-    @PostMapping("/public/app-version")
-    public ResponseEntity<ApiResponseFormat<Object>> updateAppVersionInfo(
-            @RequestBody AppVersionInfo request,
-            @RequestHeader("X-Secret-Key") String key
-    ) {
-        var response = deviceService.updateAppVersionInfo(request, key);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
 }

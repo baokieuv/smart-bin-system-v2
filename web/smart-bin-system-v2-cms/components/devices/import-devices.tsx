@@ -4,7 +4,7 @@ import { useState } from "react";
 import * as XLSX from "xlsx";
 import { devicesAdminApi } from "@/services/api/devices-admin";
 
-type DeviceImportItem = { mac: string; name?: string };
+type DeviceImportItem = { mac: string; name?: string; groupCode?: string };
 
 export default function ImportDevicesPanel({ onImported }: { onImported?: () => void }) {
   const [fileName, setFileName] = useState<string | null>(null);
@@ -36,19 +36,22 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
         const keys = Object.keys(first);
         const macKey = keys.find((k) => /mac|ma[cC]|mac_address|macaddress/.test(k.toLowerCase()));
         const nameKey = keys.find((k) => /name|device|ten/.test(k.toLowerCase()));
+        const groupCodeKey = keys.find((k) => /groupcode|group_code|group|nhom|ma_nhom/.test(k.toLowerCase()));
 
         for (const r of rows as Record<string, unknown>[]) {
           const mac = macKey ? String((r as Record<string, unknown>)[macKey] ?? "").trim() : "";
           const name = nameKey ? String((r as Record<string, unknown>)[nameKey] ?? "").trim() : undefined;
-          if (mac) items.push({ mac, name });
+          const groupCode = groupCodeKey ? String((r as Record<string, unknown>)[groupCodeKey] ?? "").trim() : undefined;
+          if (mac) items.push({ mac, name, groupCode: groupCode || undefined });
         }
       } else {
-        // Rows are arrays, treat as [mac, name]
+        // Rows are arrays, treat as [mac, name, groupCode]
         for (const r of rows as unknown[]) {
           const arr = Array.isArray(r) ? (r as unknown[]) : Object.values(r as Record<string, unknown>);
           const mac = String(arr[0] ?? "").trim();
           const name = String(arr[1] ?? "").trim() || undefined;
-          if (mac) items.push({ mac, name });
+          const groupCode = String(arr[2] ?? "").trim() || undefined;
+          if (mac) items.push({ mac, name, groupCode });
         }
       }
 
@@ -69,7 +72,13 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
     if (preview.length === 0) return setError("No devices to import");
     setLoading(true);
     try {
-      await devicesAdminApi.importDevices({ devices: preview.map((p) => ({ mac: p.mac, name: p.name })) });
+      await devicesAdminApi.importDevices({
+        devices: preview.map((p) => ({
+          mac: p.mac,
+          name: p.name,
+          groupCode: p.groupCode,
+        })),
+      });
       setPreview([]);
       setFileName(null);
       if (onImported) onImported();
@@ -103,6 +112,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
                 <tr className="text-left text-slate-600">
                   <th className="py-1">MAC</th>
                   <th className="py-1">Name</th>
+                  <th className="py-1">Group Code</th>
                 </tr>
               </thead>
               <tbody>
@@ -110,6 +120,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
                   <tr key={idx} className="border-t border-slate-100">
                     <td className="py-1 font-medium">{p.mac}</td>
                     <td className="py-1 text-slate-600">{p.name ?? "-"}</td>
+                    <td className="py-1 text-slate-600">{p.groupCode ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>

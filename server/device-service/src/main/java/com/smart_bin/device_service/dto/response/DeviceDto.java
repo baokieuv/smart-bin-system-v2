@@ -19,6 +19,10 @@ public record DeviceDto (
         Instant createdDate,
         Long claimedAt,
         String desktopVersion,
-        String binVersion
+        String binVersion,
+        String groupCode,
+
+        String targetBinVersion,
+        String targetDesktopVersion
 ) {
 }

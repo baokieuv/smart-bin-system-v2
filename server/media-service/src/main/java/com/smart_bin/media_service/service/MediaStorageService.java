@@ -70,7 +70,7 @@ public class MediaStorageService {
     }
 
     public UploadFileResponse uploadFile(String keycloakId, MultipartFile file, String folder, String oldObjectName) {
-        validateFile(file);
+        validateFile(file, false);
 
         // Sinh ra tên file hợp lý dựa trên logic
         String finalObjectName = determineFinalObjectName(keycloakId, folder, oldObjectName, file.getContentType());
@@ -207,7 +207,34 @@ public class MediaStorageService {
         }
     }
 
-    private void validateFile(MultipartFile file) {
+    public UploadFileResponse uploadFileInternal(
+            MultipartFile file, String extra, String folder
+    ){
+        validateFile(file, true);
+
+        // Sinh ra tên file hợp lý dựa trên logic
+        String finalObjectName = generateFinalObjectName(folder, file.getContentType(), extra);
+
+        try {
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(bucketName)
+                            .object(finalObjectName)
+                            .stream(file.getInputStream(), file.getSize(), -1)
+                            .contentType(file.getContentType())
+                            .build()
+            );
+
+            String objectUrl = String.format("%s/%s/%s", minioUrl, bucketName, finalObjectName);
+            return new UploadFileResponse(finalObjectName, objectUrl, file.getContentType(), file.getSize());
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Upload to MinIO failed");
+        }
+    }
+
+    private void validateFile(MultipartFile file, boolean isInternal) {
         try {
             if (file == null || file.isEmpty()) throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
             if (file.getSize() > maxFileSizeBytes) throw new ApiException(CoreErrorCode.FILE_TOO_LARGE);
@@ -215,11 +242,20 @@ public class MediaStorageService {
             if (!StringUtils.hasText(originalFileName)) throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
             try (InputStream inputStream = file.getInputStream()) {
                 String detectedMimeType = tika.detect(inputStream);
-                if (!allowedMimeTypes().contains(detectedMimeType.toLowerCase(Locale.ROOT))) {
-                    throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
+
+                Set<String> allowed = allowedMimeTypes();
+
+                if (isInternal) {
+                    allowed.add("application/octet-stream");
+                    allowed.add("application/macbinary");
+                }
+
+                if (!allowed.contains(detectedMimeType)) {
+                    throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID, "Định dạng file không được hỗ trợ: " + detectedMimeType);
                 }
             }
-        } catch (ApiException ex) { throw ex; }
+        }
+        catch (ApiException ex) { throw ex; }
         catch (Exception ex) { throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID); }
     }
 
@@ -254,6 +290,22 @@ public class MediaStorageService {
 
         // Kết quả: users/123/ + avatar/ + uuid.jpg
         String newObjectName = userPrefix + folderPath + Constants.generateFileName(contentType, "");
+        log.info("Generating URL for NEW file: {}", newObjectName);
+        return newObjectName;
+    }
+
+    private String generateFinalObjectName(String folder, String extra, String contentType) {
+        String folderPath = "";
+
+        if (StringUtils.hasText(folder)) {
+            folderPath = normalizePrefix(folder);
+            // Thêm dấu "/" vào cuối folder để rẽ nhánh đúng vào thư mục, không bị dính liền tên
+            if (!folderPath.isEmpty() && !folderPath.endsWith("/")) {
+                folderPath += "/";
+            }
+        }
+
+        String newObjectName = folderPath + Constants.generateFileName(contentType, extra);
         log.info("Generating URL for NEW file: {}", newObjectName);
         return newObjectName;
     }

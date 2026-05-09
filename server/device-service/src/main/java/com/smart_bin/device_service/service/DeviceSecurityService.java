@@ -11,8 +11,11 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
@@ -87,34 +90,33 @@ public class DeviceSecurityService {
         }
     }
 
-//    public String verifyAndExtractMac(String payload, String signature) {
-//        try {
-//            byte[] digitalSignature = Base64.getDecoder().decode(signature);
-//            Signature verify = Signature.getInstance("SHA256withRSA");
-//            verify.initVerify(serverPublicKey);
-//            verify.update(payload.getBytes(StandardCharsets.UTF_8));
-//
-//            if (!verify.verify(digitalSignature)) {
-//                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
-//            }
-//
-//            JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
-//            String mac = obj.get("mac").getAsString();
-//            long timestamp = obj.get("timestamp").getAsLong();
-//            long now = Instant.now().toEpochMilli();
-//
-//            if (now - timestamp > Constants.TIMESTAMP_EXPIRY) {
-//                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR);
-//            }
-//
-//            return mac;
-//        }
-//        catch (ApiException ex){
-//            throw ex;
-//        }
-//        catch (Exception e) {
-//            log.error("Verification error: ", e);
-//            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Signature verification failed");
-//        }
-//    }
+    public String calculateSha256(MultipartFile file) {
+        try (InputStream is = file.getInputStream()) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+
+            // Đọc từng chunk 8KB một thay vì load toàn bộ file vào RAM
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                digest.update(buffer, 0, bytesRead);
+            }
+
+            byte[] hashBytes = digest.digest();
+
+            // Chuyển mảng byte thành chuỗi Hexadecimal (Hệ cơ số 16)
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hashBytes) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) {
+                    hexString.append('0');
+                }
+                hexString.append(hex);
+            }
+
+            return hexString.toString();
+        } catch (Exception e) {
+            log.error("Lỗi khi đọc hoặc băm file firmware", e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể xử lý file firmware.");
+        }
+    }
 }

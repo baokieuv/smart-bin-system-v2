@@ -14,7 +14,9 @@ const navItems = [
   { href: "/products", label: "Products" },
   { href: "/orders", label: "Orders" },
   { href: "/users", label: "Users" },
+  { href: "/device-groups", label: "Device Groups" },
   { href: "/devices", label: "Devices" },
+  { href: "/firmwares", label: "Firmwares" },
   { href: "/notifications", label: "Notifications" },
 ];
 
