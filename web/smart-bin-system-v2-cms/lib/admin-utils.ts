@@ -7,6 +7,20 @@ export const unwrapListPayload = <T>(payload: PagedPayload<T> | undefined): T[] 
   return payload.items || payload.content || payload.data || payload.result || payload.list || [];
 };
 
+export const getListCount = <T>(payload: PagedPayload<T> | undefined): number => {
+  if (!payload) return 0;
+  if (Array.isArray(payload)) return payload.length;
+
+  // Prefer explicit total counts if backend provides them
+  if (typeof payload.totalElements === "number") return payload.totalElements;
+  const payloadObj = payload as Record<string, unknown>;
+  if (typeof payloadObj.numberOfElements === "number") return payloadObj.numberOfElements as number;
+
+  const list = (payload as Record<string, unknown>).items || (payload as Record<string, unknown>).content || (payload as Record<string, unknown>).data || (payload as Record<string, unknown>).result || (payload as Record<string, unknown>).list;
+  if (Array.isArray(list)) return list.length;
+  return 0;
+};
+
 export const toNumber = (value: string | number | undefined | null): number => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {

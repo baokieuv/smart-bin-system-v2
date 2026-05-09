@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
-import { unwrapListPayload } from "@/lib/admin-utils";
+import { unwrapListPayload, getListCount } from "@/lib/admin-utils";
+import type { BaseResponse, PagedPayload } from "@/types/core";
+import type { NotificationDto } from "@/types/notification";
 import { devicesAdminApi } from "@/services/api/devices-admin";
 import { notificationsAdminApi } from "@/services/api/notifications-admin";
 import { shopAdminApi } from "@/services/api/shop-admin";
@@ -33,31 +35,36 @@ export default function DashboardPage() {
     let cancelled = false;
 
     const load = async () => {
+      // Use allSettled so one failing endpoint doesn't prevent other counts from showing
+      const results = await Promise.allSettled([
+        shopAdminApi.getCategories(),
+        shopAdminApi.getProducts({ page: 1, size: 999 }),
+        shopAdminApi.getOrders({ page: 1, size: 999 }),
+        usersAdminApi.getUsers({ page: 1, size: 999 }),
+        devicesAdminApi.getDevices(),
+        notificationsAdminApi.getNotifications({ page: 1, size: 200 }),
+      ]);
+
+      if (cancelled) return;
+
+      const settledValues = results.map((r) => (r.status === "fulfilled" ? (r as PromiseFulfilledResult<BaseResponse<unknown>>).value : undefined));
+      const [catRes, prodRes, orderRes, usersRes, devicesRes, notifRes] = settledValues as Array<BaseResponse<unknown> | undefined>;
+
       try {
-        const [categories, products, orders, users, devices, notifications] = await Promise.all([
-          shopAdminApi.getCategories(),
-          shopAdminApi.getProducts({ page: 1, size: 999 }),
-          shopAdminApi.getOrders({ page: 1, size: 999 }),
-          usersAdminApi.getUsers({ page: 1, size: 999 }),
-          devicesAdminApi.getDevices(),
-          notificationsAdminApi.getNotifications({ page: 1, size: 200 }),
-        ]);
-
-        if (cancelled) return;
-
-        const notificationList = unwrapListPayload(notifications.data);
+        const notificationList = notifRes
+          ? unwrapListPayload<NotificationDto>(notifRes.data as PagedPayload<NotificationDto>)
+          : [];
 
         setStats({
-          categories: unwrapListPayload(categories.data).length,
-          products: unwrapListPayload(products.data).length,
-          orders: unwrapListPayload(orders.data).length,
-          users: unwrapListPayload(users.data).length,
-          devices: unwrapListPayload(devices.data).length,
+          categories: catRes ? getListCount((catRes.data as PagedPayload<unknown>) ?? undefined) : 0,
+          products: prodRes ? getListCount((prodRes.data as PagedPayload<unknown>) ?? undefined) : 0,
+          orders: orderRes ? getListCount((orderRes.data as PagedPayload<unknown>) ?? undefined) : 0,
+          users: usersRes ? getListCount((usersRes.data as PagedPayload<unknown>) ?? undefined) : 0,
+          devices: devicesRes ? getListCount((devicesRes.data as PagedPayload<unknown>) ?? undefined) : 0,
           unreadNotifications: notificationList.filter((item) => !item.isRead).length,
         });
       } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load dashboard stats");
+        setError(e instanceof Error ? e.message : "Failed to compute dashboard stats");
       }
     };
 

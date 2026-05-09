@@ -2,7 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { extractRolesFromAccessToken, hasCmsAdminAccess } from "@/lib/auth-session";
 import { authApi } from "@/services/api/auth";
+import { getRecaptchaToken } from "@/lib/recaptcha";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,10 +19,21 @@ export default function LoginPage() {
     setMessage("");
 
     try {
-      const response = await authApi.loginPassword({ email, password });
+      const captcha = await getRecaptchaToken('LOGIN');
+      const response = await authApi.loginPassword({ email, password, captcha });
 
       if (!response.success || !response.data.access_token) {
         setMessage(response.message || "Login failed");
+        return;
+      }
+
+      const roles = extractRolesFromAccessToken(response.data.access_token);
+      if (!hasCmsAdminAccess(roles)) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("admin_email");
+        localStorage.removeItem("admin_roles");
+        setMessage("Tài khoản không có quyền truy cập CMS");
         return;
       }
 
@@ -28,6 +41,7 @@ export default function LoginPage() {
       if (response.data.refresh_token) {
         localStorage.setItem("refresh_token", response.data.refresh_token);
       }
+      localStorage.setItem("admin_roles", JSON.stringify(roles));
       localStorage.setItem("admin_email", email);
       router.push("/dashboard");
     } catch (error) {

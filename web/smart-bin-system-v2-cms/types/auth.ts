@@ -1,6 +1,7 @@
 export interface LoginRequest {
   email: string;
   password: string;
+  captcha: string;
 }
 
 export interface TokenResponse {

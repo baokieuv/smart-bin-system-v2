@@ -1,9 +1,24 @@
 import type { BaseResponse } from "@/types/core";
+import { emitToast } from "@/lib/toast";
+
+export class ApiError extends Error {
+  status?: number;
+  constructor(message?: string, status?: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9999/api/v1";
 
 interface RequestOptions extends RequestInit {
   skipAuthRefresh?: boolean;
+  suppressPermissionToast?: boolean;
+  /** milliseconds to keep GET responses in cache */
+  cacheTTL?: number;
+  /** optional explicit cache key */
+  cacheKey?: string;
 }
 
 let isRefreshing = false;
@@ -20,8 +35,29 @@ const processQueue = (error: Error | null) => {
   failedQueue = [];
 };
 
+// Simple in-memory cache for GET list endpoints. Keys are strings (endpoint + query by default).
+const getCache = new Map<string, { expiresAt: number; response: BaseResponse<unknown> }>();
+
+const isPermissionRelatedError = (status: number, message: string) => {
+  if (status === 403) {
+    return true;
+  }
+
+  return /(role|permission|forbidden|unauthori[sz]ed|không có quyền|khong co quyen)/i.test(message);
+};
+
 export const apiClient = async <T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<BaseResponse<T>> => {
-  const { skipAuthRefresh = false, ...fetchOptions } = options;
+  const { skipAuthRefresh = false, suppressPermissionToast = false, cacheTTL, cacheKey, ...fetchOptions } = options;
+  const method = (fetchOptions.method || "GET").toString().toUpperCase();
+
+  // Return cached GET response when available and fresh
+  if (method === "GET" && typeof cacheTTL === "number" && cacheTTL > 0) {
+    const key = cacheKey || endpoint;
+    const cached = getCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.response as BaseResponse<T>;
+    }
+  }
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
   const headers: Record<string, string> = {
@@ -42,12 +78,37 @@ export const apiClient = async <T = unknown>(endpoint: string, options: RequestO
     headers,
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+  } catch {
+    const message = "Không thể kết nối đến máy chủ";
+    emitToast(message, "error");
+    throw new ApiError(message);
+  }
 
   if (response.status !== 401 || skipAuthRefresh) {
-    const data = (await response.json()) as BaseResponse<T>;
+    let data: BaseResponse<T>;
+
+    try {
+      data = (await response.json()) as BaseResponse<T>;
+    } catch {
+      data = { success: false, message: response.statusText || "Request failed", data: undefined as T };
+    }
+
     if (!response.ok) {
-      throw new Error(data.message || "Request failed");
+      const message = data.message || response.statusText || "Request failed";
+      if (!suppressPermissionToast && isPermissionRelatedError(response.status, message)) {
+        emitToast(message || "Không có quyền truy cập");
+      }
+      throw new ApiError(message, response.status);
+    }
+
+    // Cache successful GET list responses when requested
+    if (method === "GET" && typeof cacheTTL === "number" && cacheTTL > 0) {
+      const key = cacheKey || endpoint;
+      getCache.set(key, { expiresAt: Date.now() + cacheTTL, response: data as BaseResponse<unknown> });
     }
     return data;
   }
@@ -63,7 +124,7 @@ export const apiClient = async <T = unknown>(endpoint: string, options: RequestO
   try {
     const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
     if (!refreshToken) {
-      throw new Error("No refresh token available");
+      throw new ApiError("No refresh token available", 401);
     }
 
     const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
@@ -73,13 +134,13 @@ export const apiClient = async <T = unknown>(endpoint: string, options: RequestO
     });
 
     if (!refreshResponse.ok) {
-      throw new Error("Refresh token failed");
+      throw new ApiError("Refresh token failed", refreshResponse.status);
     }
 
     const refreshData = (await refreshResponse.json()) as BaseResponse<{ access_token: string; refresh_token?: string }>;
 
     if (!refreshData.success || !refreshData.data?.access_token) {
-      throw new Error("Invalid refresh token response");
+      throw new ApiError("Invalid refresh token response", refreshResponse.status);
     }
 
     if (typeof window !== "undefined") {

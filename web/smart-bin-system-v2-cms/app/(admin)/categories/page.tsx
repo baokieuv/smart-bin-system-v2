@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { shopAdminApi } from "@/services/api/shop-admin";
+// Import panel removed: categories now added one-by-one via form
 import type { CategoryDto } from "@/types/shop";
 
 export default function CategoriesPage() {
@@ -18,7 +19,9 @@ export default function CategoriesPage() {
   };
 
   useEffect(() => {
-    void load();
+    void load().catch((error) => {
+      setMessage(error instanceof Error ? error.message : "Load failed");
+    });
   }, []);
 
   const createCategory = async (event: FormEvent) => {
@@ -46,10 +49,10 @@ export default function CategoriesPage() {
   };
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
       <Panel title="Categories" subtitle="Manage product grouping for public shop">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm">
+          <table className="w-full min-w-140 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
                 <th className="py-2">Name</th>
@@ -80,27 +83,29 @@ export default function CategoriesPage() {
         </div>
       </Panel>
 
-      <Panel title="New Category">
-        <form onSubmit={createCategory} className="space-y-3">
-          <input
-            className="w-full rounded-xl border border-slate-200 px-3 py-2"
-            placeholder="Category name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-          />
-          <textarea
-            className="h-28 w-full rounded-xl border border-slate-200 px-3 py-2"
-            placeholder="Description"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-          <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
-            Create category
-          </button>
-          {message ? <p className="text-sm text-slate-600">{message}</p> : null}
-        </form>
-      </Panel>
+      <div className="space-y-4">
+        <Panel title="New Category">
+          <form onSubmit={createCategory} className="space-y-3">
+            <input
+              className="w-full rounded-xl border border-slate-200 px-3 py-2"
+              placeholder="Category name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
+            <textarea
+              className="h-28 w-full rounded-xl border border-slate-200 px-3 py-2"
+              placeholder="Description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+            <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
+              Create category
+            </button>
+            {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+          </form>
+        </Panel>
+      </div>
     </div>
   );
 }

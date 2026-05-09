@@ -1,0 +1,46 @@
+export type AccessTokenPayload = {
+  realm_access?: {
+    roles?: string[];
+  };
+  preferred_username?: string;
+  email?: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+};
+
+export const CMS_ADMIN_ROLES = new Set(["admin", "super_admin"]);
+
+const base64UrlDecode = (input: string) => {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return decodeURIComponent(
+    atob(padded)
+      .split("")
+      .map((character) => `%${character.charCodeAt(0).toString(16).padStart(2, "0")}`)
+      .join(""),
+  );
+};
+
+export const decodeJwtPayload = (token: string): AccessTokenPayload | null => {
+  const [, payload] = token.split(".");
+
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(base64UrlDecode(payload)) as AccessTokenPayload;
+  } catch {
+    return null;
+  }
+};
+
+export const extractRolesFromAccessToken = (token: string) => {
+  const payload = decodeJwtPayload(token);
+  const roles = payload?.realm_access?.roles;
+
+  return Array.isArray(roles) ? roles.filter((role): role is string => typeof role === "string") : [];
+};
+
+export const hasCmsAdminAccess = (roles: string[]) => roles.some((role) => CMS_ADMIN_ROLES.has(role));

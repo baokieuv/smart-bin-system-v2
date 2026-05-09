@@ -4,6 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { extractRolesFromAccessToken, hasCmsAdminAccess } from "@/lib/auth-session";
+import { authApi } from "@/services/api/auth";
+import { ApiError } from "@/lib/api-client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
@@ -27,8 +30,61 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       return;
     }
 
-    const cachedEmail = localStorage.getItem("admin_email") || "admin@smartbin.local";
-    setEmail(cachedEmail);
+    const cachedRoles = localStorage.getItem("admin_roles");
+    let roles: string[] = [];
+
+    if (cachedRoles) {
+      try {
+        const parsedRoles = JSON.parse(cachedRoles) as unknown;
+        if (Array.isArray(parsedRoles)) {
+          roles = parsedRoles.filter((role): role is string => typeof role === "string");
+        }
+      } catch {
+        roles = [];
+      }
+    }
+
+    if (!roles.length) {
+      roles = extractRolesFromAccessToken(token);
+    }
+
+    if (!hasCmsAdminAccess(roles)) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("admin_email");
+      localStorage.removeItem("admin_roles");
+      router.push("/auth/login");
+      return;
+    }
+
+    // Verify token by calling /users/me which will trigger refresh if needed.
+    (async () => {
+      try {
+        const me = await authApi.me();
+        if (!me.success) {
+          throw new Error(me.message || "Unauthorized");
+        }
+        const cachedEmail = localStorage.getItem("admin_email") || me.data?.email || "admin@smartbin.local";
+        setEmail(cachedEmail);
+      } catch (err) {
+        const error = err as unknown as Error;
+        const isAuthFailure =
+          (err instanceof ApiError && (err as ApiError).status === 401) ||
+          (error && /No refresh token available|Refresh token failed|Invalid refresh token response|Unauthorized/i.test(error.message));
+
+        if (isAuthFailure) {
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("refresh_token");
+          localStorage.removeItem("admin_email");
+          localStorage.removeItem("admin_roles");
+          router.push("/auth/login");
+        } else {
+          // Non-auth errors: keep user on page and fallback to cached email if available
+          const cachedEmail = localStorage.getItem("admin_email") || "admin@smartbin.local";
+          setEmail(cachedEmail);
+        }
+      }
+    })();
   }, [router]);
 
   const title = useMemo(() => {
@@ -40,12 +96,13 @@ export default function AdminShell({ children }: { children: ReactNode }) {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("admin_email");
+    localStorage.removeItem("admin_roles");
     router.push("/auth/login");
   };
 
   return (
     <div className="min-h-screen bg-sky-50 text-foreground">
-      <div className="mx-auto grid min-h-screen max-w-[1400px] grid-cols-1 gap-4 p-4 lg:grid-cols-[280px_1fr]">
+      <div className="mx-auto grid min-h-screen max-w-350 grid-cols-1 gap-4 p-4 lg:grid-cols-[280px_1fr]">
         <aside className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#0b2d45_0%,#134b6f_100%)] p-5 text-white shadow-[0_20px_45px_rgba(14,41,65,0.38)]">
           <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">Smart Bin</p>
           <h1 className="mt-2 text-2xl font-semibold">CMS Console</h1>

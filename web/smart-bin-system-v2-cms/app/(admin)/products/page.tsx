@@ -4,11 +4,13 @@ import { FormEvent, useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
 import { formatCurrency, toNumber, unwrapListPayload } from "@/lib/admin-utils";
 import { shopAdminApi } from "@/services/api/shop-admin";
+import ImportProductsPanel from "@/components/products/import-products";
+import ImportInventoryPanel from "@/components/products/import-inventory";
 import type { ProductDto } from "@/types/shop";
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<ProductDto[]>([]);
-  const [form, setForm] = useState({ name: "", price: "", stock: "", categoryId: "", description: "" });
+  const [form, setForm] = useState({ name: "", price: "", categoryId: "", description: "" });
   const [message, setMessage] = useState("");
 
   const load = async () => {
@@ -17,7 +19,9 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    void load();
+    void load().catch((error) => {
+      setMessage(error instanceof Error ? error.message : "Load failed");
+    });
   }, []);
 
   const createProduct = async (event: FormEvent) => {
@@ -29,11 +33,10 @@ export default function ProductsPage() {
         name: form.name,
         description: form.description,
         categoryId: form.categoryId || undefined,
-        price: toNumber(form.price),
-        stock: toNumber(form.stock),
+        price: form.price || undefined,
         isPublished: true,
       });
-      setForm({ name: "", price: "", stock: "", categoryId: "", description: "" });
+      setForm({ name: "", price: "", categoryId: "", description: "" });
       setMessage("Product created");
       await load();
     } catch (error) {
@@ -52,10 +55,10 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
       <Panel title="Products" subtitle="Maps directly to /shop listing and product detail pages">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px] text-left text-sm">
+          <table className="w-full min-w-175 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
                 <th className="py-2">Name</th>
@@ -71,7 +74,7 @@ export default function ProductsPage() {
                   <td className="py-2 font-medium text-foreground">{product.name}</td>
                   <td className="py-2 text-slate-600">{product.categoryName || product.categoryId || "-"}</td>
                   <td className="py-2 text-slate-600">{formatCurrency(product.price)}</td>
-                  <td className="py-2 text-slate-600">{toNumber(product.stock)}</td>
+                  <td className="py-2 text-slate-600">{toNumber(product.quantityAvailable)}</td>
                   <td className="py-2">
                     <button
                       type="button"
@@ -88,49 +91,59 @@ export default function ProductsPage() {
         </div>
       </Panel>
 
-      <Panel title="New Product">
-        <form onSubmit={createProduct} className="space-y-3">
-          <input
-            className="w-full rounded-xl border border-slate-200 px-3 py-2"
-            placeholder="Product name"
-            value={form.name}
-            onChange={(event) => setForm((v) => ({ ...v, name: event.target.value }))}
-            required
-          />
-          <input
-            className="w-full rounded-xl border border-slate-200 px-3 py-2"
-            placeholder="Category ID"
-            value={form.categoryId}
-            onChange={(event) => setForm((v) => ({ ...v, categoryId: event.target.value }))}
-          />
-          <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-4">
+        <Panel title="Import Products">
+          <ImportProductsPanel onImported={load} />
+        </Panel>
+
+        <Panel title="Import Inventory">
+          <ImportInventoryPanel onImported={load} />
+        </Panel>
+
+        <Panel title="New Product">
+          <form onSubmit={createProduct} className="space-y-3">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Price"
-              value={form.price}
-              onChange={(event) => setForm((v) => ({ ...v, price: event.target.value }))}
+              placeholder="Product name"
+              value={form.name}
+              onChange={(event) => setForm((v) => ({ ...v, name: event.target.value }))}
               required
             />
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Stock"
-              value={form.stock}
-              onChange={(event) => setForm((v) => ({ ...v, stock: event.target.value }))}
-              required
+              placeholder="Category ID"
+              value={form.categoryId}
+              onChange={(event) => setForm((v) => ({ ...v, categoryId: event.target.value }))}
             />
-          </div>
-          <textarea
-            className="h-28 w-full rounded-xl border border-slate-200 px-3 py-2"
-            placeholder="Description"
-            value={form.description}
-            onChange={(event) => setForm((v) => ({ ...v, description: event.target.value }))}
-          />
-          <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
-            Create product
-          </button>
-          {message ? <p className="text-sm text-slate-600">{message}</p> : null}
-        </form>
-      </Panel>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                placeholder="Price"
+                value={form.price}
+                onChange={(event) => setForm((v) => ({ ...v, price: event.target.value }))}
+                required
+              />
+              {/* <input
+                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                placeholder="Stock"
+                value={form.stock}
+                onChange={(event) => setForm((v) => ({ ...v, stock: event.target.value }))}
+                required
+              /> */}
+            </div>
+            <textarea
+              className="h-28 w-full rounded-xl border border-slate-200 px-3 py-2"
+              placeholder="Description"
+              value={form.description}
+              onChange={(event) => setForm((v) => ({ ...v, description: event.target.value }))}
+            />
+            <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
+              Create product
+            </button>
+            {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+          </form>
+        </Panel>
+      </div>
     </div>
   );
 }

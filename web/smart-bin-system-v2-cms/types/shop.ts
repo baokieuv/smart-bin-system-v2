@@ -17,7 +17,8 @@ export interface ProductDto {
   categoryId?: string;
   categoryName?: string;
   price?: number | string;
-  stock?: number | string;
+  // Backend now returns `quantityAvailable` in ProductResponse
+  quantityAvailable?: number | string;
   sku?: string;
   isPublished?: boolean;
   createdAt?: string;

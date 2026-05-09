@@ -18,7 +18,9 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    void load();
+    void load().catch((error) => {
+      setMessage(error instanceof Error ? error.message : "Load failed");
+    });
   }, []);
 
   const updateStatus = async (id: string, status: string) => {
@@ -34,7 +36,7 @@ export default function OrdersPage() {
   return (
     <Panel title="Orders" subtitle="Customer orders from checkout in user app">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-225 text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-600">
               <th className="py-2">Order</th>

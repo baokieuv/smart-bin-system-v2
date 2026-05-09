@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
@@ -11,6 +12,7 @@ const states: UserDto["state"][] = ["ACTIVE", "PENDING", "SUSPENDED", "DELETED"]
 export default function UsersPage() {
   const [users, setUsers] = useState<UserDto[]>([]);
   const [message, setMessage] = useState("");
+  const [currentEmail, setCurrentEmail] = useState<string | null>(null);
 
   const load = async () => {
     const response = await usersAdminApi.getUsers({ page: 1, size: 100 });
@@ -18,7 +20,11 @@ export default function UsersPage() {
   };
 
   useEffect(() => {
-    void load();
+    void load().catch((error) => {
+      setMessage(error instanceof Error ? error.message : "Load failed");
+    });
+    const email = typeof window !== "undefined" ? localStorage.getItem("admin_email") : null;
+    setCurrentEmail(email);
   }, []);
 
   const updateState = async (id: string, state: UserDto["state"]) => {
@@ -31,12 +37,17 @@ export default function UsersPage() {
     }
   };
 
+  const getInitials = (firstName: string, lastName: string) => {
+    return `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase();
+  };
+
   return (
     <Panel title="Users" subtitle="Admin moderation for account state">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
+        <table className="w-full min-w-240 text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-600">
+              <th className="py-2">Avatar</th>
               <th className="py-2">Full name</th>
               <th className="py-2">Email</th>
               <th className="py-2">State</th>
@@ -44,26 +55,49 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
-              <tr key={user.id} className="border-b border-slate-200/70">
-                <td className="py-2 font-medium text-foreground">{`${user.firstName} ${user.lastName}`.trim()}</td>
-                <td className="py-2 text-slate-600">{user.email}</td>
-                <td className="py-2 text-slate-600">{user.state}</td>
-                <td className="py-2">
-                  <select
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-1"
-                    value={user.state}
-                    onChange={(event) => void updateState(user.id, event.target.value as UserDto["state"])}
-                  >
-                    {states.map((state) => (
-                      <option key={state} value={state}>
-                        {state}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
+            {users.map((user) => {
+              const isSelf = currentEmail && user.email === currentEmail;
+              return (
+                <tr key={user.id} className="border-b border-slate-200/70">
+                  <td className="py-2">
+                    {user.avatarUrl ? (
+                      <div className="relative h-10 w-10 overflow-hidden rounded-lg border border-slate-200">
+                        <Image
+                          src={user.avatarUrl}
+                          alt={`${user.firstName} ${user.lastName}`}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-sky-100 text-xs font-semibold text-sky-700">
+                        {getInitials(user.firstName, user.lastName)}
+                      </div>
+                    )}
+                  </td>
+                  <td className="py-2 font-medium text-foreground">{`${user.firstName} ${user.lastName}`.trim()}</td>
+                  <td className="py-2 text-slate-600">{user.email}</td>
+                  <td className="py-2 text-slate-600">{user.state}</td>
+                  <td className="py-2">
+                    {isSelf ? (
+                      <span className="text-slate-500">-</span>
+                    ) : (
+                      <select
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1"
+                        value={user.state}
+                        onChange={(event) => void updateState(user.id, event.target.value as UserDto["state"])}
+                      >
+                        {states.map((state) => (
+                          <option key={state} value={state}>
+                            {state}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
