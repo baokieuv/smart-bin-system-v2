@@ -3,6 +3,7 @@ package com.smart_bin.product_service.service;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.product_service.dto.request.CreateProductRequest;
+import com.smart_bin.product_service.dto.request.ImportProductsRequest;
 import com.smart_bin.product_service.dto.request.InventoryItemDto;
 import com.smart_bin.product_service.dto.request.UpdateProductRequest;
 import com.smart_bin.product_service.dto.response.ProductResponse;
@@ -14,6 +15,7 @@ import com.smart_bin.product_service.repository.CategoryRepository;
 import com.smart_bin.product_service.repository.ProductRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
@@ -21,11 +23,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ProductService {
     private final ProductRepository repository;
     private final CategoryRepository categoryRepository;
@@ -40,7 +43,18 @@ public class ProductService {
         UUID catId = parseUUIDOrNull(categoryId);
         String search = (searchParams != null && !searchParams.trim().isEmpty()) ? searchParams.trim() : null;
 
-        return repository.searchProducts(catId, search, pageable).map(mapper::toResponse);
+        Page<Product> productPage = repository.searchProducts(catId, search, pageable);
+
+        List<String> skus = productPage.getContent().stream()
+                .map(Product::getSku)
+                .toList();
+
+        Map<String, Long> inventoryMap = inventoryService.getAvailableQuantityMapBySkus(skus);
+
+        return productPage.map(product -> {
+            Long qty = inventoryMap.getOrDefault(product.getSku(), 0L);
+            return mapper.toResponseWithQuantity(product, qty);
+        });
     }
 
     @Cacheable(value = "product", key = "#id")
@@ -56,7 +70,7 @@ public class ProductService {
         }
 
         // Kiểm tra Category có tồn tại không
-        Category category = categoryRepository.findByIdAndActiveTrue(request.categoryId())
+        Category category = categoryRepository.findByIdAndActiveTrue(parseUUID(request.categoryId()))
                 .orElseThrow(() -> new ApiException(ProductErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
 
         Product product = mapper.toEntity(request);
@@ -68,6 +82,68 @@ public class ProductService {
         inventoryService.initializeInventory(product.getSku());
 
         return mapper.toResponse(product);
+    }
+
+    @Transactional
+    @CacheEvict(value = "product", allEntries = true)
+    public List<ProductResponse> importProducts(ImportProductsRequest request, String actorId) {
+        if (request.products() == null || request.products().isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> requestedSkus = request.products().stream()
+                .map(CreateProductRequest::sku)
+                .toList();
+
+        Set<UUID> requestedCategoryIds = request.products().stream()
+                .map(CreateProductRequest::categoryId)
+                .map(this::parseUUIDOrNull)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Set<String> existingSkus = repository.findBySkuInAndActiveTrue(requestedSkus)
+                .stream()
+                .map(Product::getSku)
+                .collect(Collectors.toSet());
+
+        Map<UUID, Category> categoryMap = categoryRepository.findByIdInAndActiveTrue(requestedCategoryIds)
+                .stream()
+                .collect(Collectors.toMap(Category::getId, cat -> cat));
+
+        List<Product> validProductsToSave = new ArrayList<>();
+
+        for (CreateProductRequest item : request.products()) {
+            // Check trùng SKU nhanh gọn
+            if (existingSkus.contains(item.sku())) {
+                log.warn("Bỏ qua Import: SKU [{}] đã tồn tại.", item.sku());
+                continue; // Skip lỗi, chạy tiếp sản phẩm sau
+            }
+
+            UUID catId = parseUUIDOrNull(item.categoryId());
+            Category category = categoryMap.get(catId);
+
+            // Check Category tồn tại
+            if (category == null) {
+                log.warn("Bỏ qua Import: Category ID [{}] không hợp lệ cho SKU [{}].", item.categoryId(), item.sku());
+                continue;
+            }
+
+            Product product = mapper.toEntity(item);
+            product.setCategory(category);
+            product.setActive(true);
+            validProductsToSave.add(product);
+        }
+
+        if (!validProductsToSave.isEmpty()) {
+            List<Product> savedEntities = repository.saveAll(validProductsToSave);
+
+            List<String> newSkus = savedEntities.stream().map(Product::getSku).toList();
+            inventoryService.initializeInventoryBatch(newSkus);
+
+            return savedEntities.stream().map(mapper::toResponse).toList();
+        }
+
+        return Collections.emptyList();
     }
 
     @Transactional

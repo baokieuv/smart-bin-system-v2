@@ -22,4 +22,7 @@ public interface ProductMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "category", ignore = true)
     void updateProductFromRequest(UpdateProductRequest request, @MappingTarget Product product);
+
+    @Mapping(target = "quantityAvailable", source = "quantity")
+    ProductResponse toResponseWithQuantity(Product product, Long quantity);
 }

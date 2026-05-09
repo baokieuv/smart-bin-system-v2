@@ -10,5 +10,6 @@ public record ProductResponse(
         BigDecimal price,
         String sku,
         String imageUrl,
-        CategoryResponse category
+        CategoryResponse category,
+        Long quantityAvailable
 ) {}

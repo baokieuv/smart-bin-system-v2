@@ -12,6 +12,7 @@ import com.smart_bin.product_service.repository.InventoryRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -34,6 +35,22 @@ public class InventoryService {
             repository.save(inventory);
             log.info("Initialized inventory for SKU: {}", sku);
         }
+    }
+
+    @Transactional
+    public void initializeInventoryBatch(List<String> skus) {
+        if (skus == null || skus.isEmpty()) return;
+
+        // Giả sử Entity của bạn tên là InventoryItem
+        List<Inventory> newInventories = skus.stream().map(sku -> {
+            Inventory inv = new Inventory();
+            inv.setProductSku(sku);
+            inv.setQuantityAvailable(0L); // Khởi tạo số lượng bằng 0
+            inv.setQuantityReserved(0L);
+            return inv;
+        }).toList();
+
+        repository.saveAll(newInventories); // Lưu 1 lần xuống DB
     }
 
     // 2. Admin nhập kho
@@ -158,4 +175,15 @@ public class InventoryService {
         });
     }
 
+    public Map<String, Long> getAvailableQuantityMapBySkus(List<String> skus) {
+        if (skus == null || skus.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        return repository.findByProductSkuIn(skus).stream()
+                .collect(Collectors.toMap(
+                        Inventory::getProductSku,
+                        Inventory::getQuantityAvailable
+                ));
+    }
 }

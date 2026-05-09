@@ -23,5 +23,5 @@ public record CreateProductRequest(
         String imageUrl,
 
         @NotNull(message = "Category ID is required")
-        UUID categoryId
+        String categoryId
 ) {}
