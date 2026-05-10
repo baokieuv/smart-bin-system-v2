@@ -1,21 +1,21 @@
-import base64
-import uuid
+import hashlib
 import json
-import time
 import logging
+import shutil
+import time
+import uuid
+import mimetypes
 from pathlib import Path
 from typing import Any
 import re
 
 from src.models.api_response import ApiResponseFormat
 from src.models.device_dto import DeviceDto
-from src.models.app_version_dto import AppVersionDto
+from src.models.device_config_dto import DeviceConfigDto
+from src.models.ota_check_response_dto import OtaCheckResponseDto
 from src.repository.http_client import HttpClient, HttpResponse, RequestsHttpClient
+from src.services.device_key_manager import DeviceKeyManager
 from src.utils.config import APP_CONFIG
-from src.repository.actuator_repository import ActuatorRepository
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 
 class DeviceClient:
@@ -28,17 +28,22 @@ class DeviceClient:
     def __init__(self, http_client: HttpClient | None = None):
         self.logger = logging.getLogger("smart_bin.device_repository")
         self.base_url = APP_CONFIG.api.device_base_url
+        self.config_base_url = APP_CONFIG.api.config_base_url
         self.timeout = APP_CONFIG.api.request_timeout_seconds
-        self.private_key_path = APP_CONFIG.paths.private_key_path
+        self.key_manager = DeviceKeyManager(APP_CONFIG.paths.devices_key_dir, self.logger)
+        self._device_key_pair = self.key_manager.ensure_key_pair()
+        self._public_key_uploaded = False
         self.http_client = http_client or RequestsHttpClient()
 
     @staticmethod
     def get_mac_address() -> str:
         # uuid.getnode() returns host MAC as integer; normalize to AA:BB:CC:DD:EE:FF.
-        mac_num = hex(uuid.getnode()).replace('0x', '').zfill(12).upper()
-        return ':'.join(mac_num[i: i + 2] for i in range(0, 11, 2))
+        # mac_num = hex(uuid.getnode()).replace('0x', '').zfill(12).upper()
+        # return ':'.join(mac_num[i: i + 2] for i in range(0, 11, 2))
         
-    def _generate_payload_and_signature(self) -> tuple[bool, str, str]:
+        return "F0:E7:63:51:1C:8D"
+        
+    def _generate_payload_and_signature(self, extra_fields: dict[str, Any] | None = None) -> tuple[bool, str, str]:
         """Create compact JSON payload and corresponding RSA signature."""
         mac = self.get_mac_address()
         timestamp = int(time.time() * 1000)
@@ -47,11 +52,13 @@ class DeviceClient:
             "mac": mac,
             "timestamp": timestamp
         }
+        if extra_fields:
+            payload_dict.update(extra_fields)
         
         # Compact JSON string ensures signature consistency with server-side verification.
         payload_str = json.dumps(payload_dict, separators=(',', ':'))
         
-        ok, signature_or_error = self._encrypt_data(payload_str)
+        ok, signature_or_error = self._encrypt_data(payload_str, True)
         
         return ok, payload_str, signature_or_error
 
@@ -76,9 +83,12 @@ class DeviceClient:
         params: dict[str, Any] | None = None,
         signature_header: str = "X-Signature",
         metadata_header: str | None = None,
+        base_url: str | None = None,
+        extra_fields: dict[str, Any] | None = None,
+        allow_key_refresh: bool = True,
     ) -> tuple[bool, HttpResponse | str]:
         """Send signed POST request where body must match signed payload exactly."""
-        ok, payload_str, signature_or_error = self._generate_payload_and_signature()
+        ok, payload_str, signature_or_error = self._generate_payload_and_signature(extra_fields)
         if not ok:
             return False, signature_or_error
 
@@ -87,7 +97,7 @@ class DeviceClient:
             signature_header=signature_header,
             metadata_header=metadata_header,
         )
-        url = f"{self.base_url}/{path}"
+        url = f"{base_url or self.base_url}/{path}"
 
         try:
             response = self.http_client.post(
@@ -98,10 +108,37 @@ class DeviceClient:
                 timeout=self.timeout,
             )
             self.logger.info("%s status_code=%s", path, response.status_code)
+
+            if allow_key_refresh and self._is_avt0012_response(response):
+                upload_ok, upload_result = self.upload_public_key(force=True)
+                if not upload_ok:
+                    return False, upload_result
+
+                return self._post_signed_request(
+                    path,
+                    params=params,
+                    signature_header=signature_header,
+                    metadata_header=metadata_header,
+                    base_url=base_url,
+                    extra_fields=extra_fields,
+                    allow_key_refresh=False,
+                )
+
             return True, response
         except Exception as e:
             self.logger.warning("%s network error: %s", path, e)
             return False, f"Network error: {str(e)}"
+
+    def _is_avt0012_response(self, response: HttpResponse) -> bool:
+        if response.status_code != 400:
+            return False
+
+        try:
+            parsed = response.json()
+        except ValueError:
+            return False
+
+        return str(parsed.get("code") or "").upper() == "AVT0012"
 
     @staticmethod
     def _parse_device_api_response(
@@ -112,36 +149,26 @@ class DeviceClient:
         if api_response.success:
             return True, api_response
         return False, api_response.message
-    
+
     @staticmethod
-    def _parse_app_version_api_response(
+    def _parse_device_config_api_response(
         response_json: dict[str, Any],
-    ) -> tuple[bool, ApiResponseFormat[AppVersionDto] | str]:
-        """Parse backend wrapper JSON into typed ApiResponseFormat[AppVersionDto]."""
-        api_response = ApiResponseFormat.from_dict(response_json, details_class=AppVersionDto)
+    ) -> tuple[bool, ApiResponseFormat[DeviceConfigDto] | str]:
+        """Parse backend wrapper JSON into typed ApiResponseFormat[DeviceConfigDto]."""
+        api_response = ApiResponseFormat.from_dict(response_json, details_class=DeviceConfigDto)
         if api_response.success:
             return True, api_response
         return False, api_response.message
-
+    
     @staticmethod
-    def _normalize_version(version: str | None) -> tuple[int, ...]:
-        """Convert version strings like 1.2.3 into a comparable integer tuple."""
-        if not version:
-            return (0,)
-
-        parts = re.findall(r"\d+", str(version))
-        if not parts:
-            return (0,)
-        return tuple(int(part) for part in parts)
-
-    def _is_version_older(self, current_version: str | None, target_version: str | None) -> bool:
-        """Return True when current_version is older than target_version."""
-        current = self._normalize_version(current_version)
-        target = self._normalize_version(target_version)
-        max_len = max(len(current), len(target))
-        current = current + (0,) * (max_len - len(current))
-        target = target + (0,) * (max_len - len(target))
-        return current < target
+    def _parse_ota_check_api_response(
+        response_json: dict[str, Any],
+    ) -> tuple[bool, ApiResponseFormat[OtaCheckResponseDto] | str]:
+        """Parse OTA check response wrapper JSON."""
+        api_response = ApiResponseFormat.from_dict(response_json, details_class=OtaCheckResponseDto)
+        if api_response.success:
+            return True, api_response
+        return False, api_response.message
 
     def _download_binary_file(self, url: str, destination: Path) -> tuple[bool, str]:
         """Download a binary resource and save it to destination."""
@@ -160,13 +187,105 @@ class DeviceClient:
         except Exception as exc:
             self.logger.warning("Failed to download binary file: %s", exc)
             return False, f"Failed to download firmware: {str(exc)}"
+
+    def _calculate_file_sha256(self, file_path: Path) -> str:
+        digest = hashlib.sha256()
+        with open(file_path, "rb") as file_handle:
+            while True:
+                chunk = file_handle.read(8192)
+                if not chunk:
+                    break
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _verify_downloaded_firmware(self, file_path: Path, expected_signature: str) -> tuple[bool, str]:
+        try:
+            file_hash = self._calculate_file_sha256(file_path)
+            
+            ok, message = self.key_manager.verify_server(file_hash, expected_signature)
+            
+            if not ok:
+                return False, message
+            
+            return True, "Firmware signature verified"
+        except Exception as exc:
+            self.logger.warning("Failed to verify downloaded firmware: %s", exc)
+            return False, f"Failed to verify firmware: {str(exc)}"
+
+    def download_and_verify_esp32_firmware(
+        self,
+        update_info,
+        destination: Path | None = None,
+    ) -> tuple[bool, str]:
+        destination_path = Path(destination) if destination else APP_CONFIG.esp32_ota.firmware_file
+        if not update_info or not update_info.download_url:
+            return False, "Missing ESP32 firmware download URL"
+        if not update_info.signature:
+            return False, "Missing ESP32 firmware signature"
+
+        temp_path = destination_path.with_suffix(destination_path.suffix + ".download")
+        download_ok, download_message = self._download_binary_file(update_info.download_url, temp_path)
+        if not download_ok:
+            return False, download_message
+
+        verify_ok, verify_message = self._verify_downloaded_firmware(temp_path, update_info.signature)
+        if not verify_ok:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return False, verify_message
+
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(temp_path), str(destination_path))
+        return True, str(destination_path)
+
+    def _device_public_key(self) -> str:
+        return self.key_manager.ensure_key_pair().public_key_pem
+
+    def ensure_device_key_uploaded_on_boot(self) -> tuple[bool, str]:
+        key_pair = self.key_manager.ensure_key_pair()
+        if self._public_key_uploaded or not key_pair.created_new:
+            return True, "Device keypair already exists"
+
+        upload_ok, upload_result = self.upload_public_key(force=True)
+        if upload_ok:
+            self._public_key_uploaded = True
+        return upload_ok, upload_result
+
+    def upload_public_key(self, force: bool = False) -> tuple[bool, str]:
+        key_pair = self.key_manager.ensure_key_pair()
+        if not force and self._public_key_uploaded and not key_pair.created_new:
+            return True, "Device public key already uploaded"
+
+        ok, response_or_error = self._post_signed_request(
+            "upload-key",
+            base_url=self.base_url,
+            extra_fields={"publicKey": key_pair.public_key_pem},
+            allow_key_refresh=False,
+        )
+        if not ok:
+            return False, response_or_error
+
+        response = response_or_error
+        try:
+            if not response.ok:
+                return False, self._parse_error_response(response)
+
+            self._public_key_uploaded = True
+            return True, "Device public key uploaded"
+        except ValueError:
+            return False, "Failed to parse upload-key response"
     
     
     def activate_device(self) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
         """Activate current device by signed MAC/timestamp payload."""
         self.logger.info("Call activate_device")
 
-        ok, response_or_error = self._post_signed_request("activate")
+        ok, response_or_error = self._post_signed_request(
+            "activate",
+            extra_fields={"publicKey": self._device_public_key()},
+        )
         if not ok:
             return False, response_or_error
 
@@ -180,11 +299,14 @@ class DeviceClient:
             self.logger.warning("activate_device parse response error")
             return False, "Failed to parse server response"
         
-    def get_access_token(self) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
-        """Get access token for telemetry and secure backend operations."""
-        self.logger.info("Call get_access_token")
+    def get_device_config(self) -> tuple[bool, ApiResponseFormat[DeviceConfigDto] | str]:
+        """Fetch device config, including access token and runtime parameters."""
+        self.logger.info("Call get_device_config")
 
-        ok, response_or_error = self._post_signed_request("get-access-token")
+        ok, response_or_error = self._post_signed_request(
+            "public/devices/config",
+            base_url=self.config_base_url,
+        )
         if not ok:
             return False, response_or_error
 
@@ -193,9 +315,9 @@ class DeviceClient:
             if not response.ok:
                 return False, self._parse_error_response(response)
 
-            return self._parse_device_api_response(response.json())
+            return self._parse_device_config_api_response(response.json())
         except ValueError:
-            self.logger.warning("get_access_token parse response error")
+            self.logger.warning("get_device_config parse response error")
             return False, "Failed to parse server response"
 
     def _parse_error_response(self, response: HttpResponse) -> dict:
@@ -228,14 +350,14 @@ class DeviceClient:
         if not image_file.exists():
             return False, f"Image file not found: {image_path}"
 
-        filename = str(metadata.get("filename") or image_file.name)
-        content_type = "image/jpeg"
-
+        content_type, _ = mimetypes.guess_type(str(image_file))
+        if not content_type:
+            content_type = "image/jpeg"
+            
+        metadata["contentType"] = content_type
+        
         ok, presigned_data = self._request_detection_presigned_url(
-            filename=filename,
             metadata=metadata,
-            file_size=image_file.stat().st_size,
-            content_type=content_type,
         )
         if not ok:
             return False, presigned_data
@@ -249,10 +371,7 @@ class DeviceClient:
             return False, upload_info
 
         ok, confirm_result = self._confirm_detection_upload(
-            filename=filename,
             metadata=metadata,
-            presigned_data=presigned_data,
-            upload_info=upload_info,
         )
         if not ok:
             return False, confirm_result
@@ -261,10 +380,7 @@ class DeviceClient:
 
     def _request_detection_presigned_url(
         self,
-        filename: str,
         metadata: dict,
-        file_size: int,
-        content_type: str,
     ) -> tuple[bool, dict | str]:
         """Request a presigned URL from backend to upload one detection image."""
         metadata_header = json.dumps(metadata, separators=(',', ':'))
@@ -346,10 +462,7 @@ class DeviceClient:
 
     def _confirm_detection_upload(
         self,
-        filename: str,
         metadata: dict,
-        presigned_data: dict,
-        upload_info: dict,
     ) -> tuple[bool, dict | str]:
         """Confirm to backend that file upload via presigned URL completed."""
         metadata_query = json.dumps(metadata, separators=(',', ':'))
@@ -372,16 +485,16 @@ class DeviceClient:
             return False, "Failed to parse upload confirmation response"
         
         
-    def get_app_version(self) -> tuple[bool, str | AppVersionDto | dict[str, Any]]:
-        """Fetch backend app version, compare ESP32 firmware, and download newer BIN if needed.
+    def check_ota(self) -> tuple[bool, ApiResponseFormat[OtaCheckResponseDto] | str]:
+        """Fetch OTA status for ESP32 and Raspberry Pi.
 
         Returns:
             (True, payload) when the check runs successfully.
-            payload contains the parsed app version data plus update status.
+            payload contains the parsed OTA check response.
         """
-        self.logger.info("Call get_app_version")
+        self.logger.info("Call check_ota")
 
-        ok, response_or_error = self._post_signed_request("get-app-version")
+        ok, response_or_error = self._post_signed_request("public/ota/check", base_url=self.config_base_url)
         if not ok:
             return False, response_or_error
 
@@ -390,76 +503,51 @@ class DeviceClient:
             if not response.ok:
                 return False, self._parse_error_response(response)
 
-            ok, parsed_or_error = self._parse_app_version_api_response(response.json())
+            ok, parsed_or_error = self._parse_ota_check_api_response(response.json())
             if not ok:
                 return False, parsed_or_error
 
-            api_response = parsed_or_error
-            app_version = api_response.data
-            if not app_version:
-                return False, "Backend returned empty app version data"
-
-            actuator_client = ActuatorRepository()
-            ok, esp_version_or_error = actuator_client.get_firmware_version()
-            if not ok:
-                return False, f"Failed to read ESP32 version: {esp_version_or_error}"
-
-            esp_version = esp_version_or_error or ""
-            desktop_version = APP_CONFIG.desktop_version
-            result: dict[str, Any] = {
-                "backend": {
-                    "bin_version": app_version.bin_version,
-                    "desktop_version": app_version.desktop_version,
-                    "bin_url": app_version.bin_url,
-                    "desktop_url": app_version.desktop_url,
-                },
-                "local": {
-                    "desktop_version": desktop_version,
-                    "esp32_version": esp_version,
-                },
-                "downloaded": False,
-                "firmware_file": str(APP_CONFIG.esp32_ota.firmware_file),
-            }
-
-            if self._is_version_older(esp_version, app_version.bin_version):
-                if not app_version.bin_url:
-                    return False, "Backend returned empty binUrl"
-
-                download_ok, download_message = self._download_binary_file(
-                    app_version.bin_url,
-                    APP_CONFIG.esp32_ota.firmware_file,
-                )
-                if not download_ok:
-                    return False, download_message
-
-                result["downloaded"] = True
-                result["download_message"] = download_message
-
-            return True, result
+            return True, parsed_or_error
         except ValueError:
-            self.logger.warning("get_app_version parse response error")
+            self.logger.warning("check_ota parse response error")
             return False, "Failed to parse server response"
-    
-    def _encrypt_data(self, payload: str) -> tuple[bool, str]:
-        """Sign payload using local RSA private key and return base64 signature."""
+
+    def get_app_version(self) -> tuple[bool, ApiResponseFormat[OtaCheckResponseDto] | str]:
+        """Backward-compatible alias for check_ota()."""
+        return self.check_ota()
+
+    def report_ota_status(self, status: str, message: str) -> tuple[bool, str]:
+        """Report OTA result back to backend."""
+        self.logger.info("Call report_ota_status status=%s", status)
+
+        ok, response_or_error = self._post_signed_request(
+            "public/ota/status",
+            base_url=self.config_base_url,
+            extra_fields={"status": status, "message": message},
+        )
+        if not ok:
+            return False, response_or_error
+
+        response = response_or_error
         try:
-            with open(self.private_key_path, "rb") as key_file:
-                private_key = load_pem_private_key(key_file.read(), password=None)
+            if not response.ok:
+                return False, self._parse_error_response(response)
 
-                signature = private_key.sign(
-                    payload.encode('utf-8'),
-                    padding.PKCS1v15(),
-                    hashes.SHA256()
-                )
-            signature_b64 = base64.b64encode(signature).decode('utf-8')
-
+            return True, "OTA status reported"
+        except ValueError:
+            return False, "Failed to parse OTA status response"
+    
+    def _encrypt_data(self, payload: str, is_private: bool) -> tuple[bool, str]:
+        """Sign payload using RSA key and return base64 signature."""
+        try:
+            signature_b64 = self.key_manager.sign(payload)
             return True, signature_b64
-        except FileNotFoundError:
-            self.logger.warning("Private key file not found: %s", self.private_key_path)
-            return False, f"Private key file not found at {self.private_key_path}"
-        except ValueError as e:
-            self.logger.warning("Failed to read key or generate signature: %s", e)
-            return False, f"Failed to read key or generate signature: {str(e)}"
-        except Exception as e:
-            self.logger.exception("Unexpected error while signing payload: %s", e)
-            return False, f"Unexpected signing error: {str(e)}"
+        except FileNotFoundError as exc:
+            self.logger.warning("Key file not found: %s", exc)
+            return False, f"Key file not found: {str(exc)}"
+        except ValueError as exc:
+            self.logger.warning("Failed to read key or generate signature: %s", exc)
+            return False, f"Failed to read key or generate signature: {str(exc)}"
+        except Exception as exc:
+            self.logger.exception("Unexpected error while signing payload: %s", exc)
+            return False, f"Unexpected signing error: {str(exc)}"

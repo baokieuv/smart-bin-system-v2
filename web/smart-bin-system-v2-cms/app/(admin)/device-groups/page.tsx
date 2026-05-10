@@ -64,20 +64,22 @@ export default function DeviceGroupsPage() {
           <table className="w-full min-w-180 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">Code</th>
-                <th className="py-2">Name</th>
-                <th className="py-2">Bin Height (cm)</th>
-                <th className="py-2">Description</th>
-                <th className="py-2">Action</th>
+                <th className="py-2 px-3">Code</th>
+                <th className="py-2 px-3">Name</th>
+                <th className="py-2 px-3">Bin Height (cm)</th>
+                <th className="py-2 px-3">Description</th>
+                <th className="py-2 px-3">Action</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.id} className="border-b border-slate-200/70">
-                  <td className="py-2 font-medium text-foreground">{item.code}</td>
-                  <td className="py-2 text-slate-600">{item.name}</td>
-                  <td className="py-2 text-slate-600">{item.binHeight}</td>
-                  <td className="py-2 text-slate-600">{item.description || "-"}</td>
+                  <td className="py-2 px-3 font-medium text-foreground">{item.code}</td>
+                  <td className="py-2 px-3 text-slate-600">{item.name}</td>
+                  <td className="py-2 px-3 text-slate-600">{item.binHeight}</td>
+                  <td className="py-2 px-3 text-slate-600">
+                    <div className="max-w-[28rem] max-h-20 overflow-auto whitespace-pre-wrap break-words">{item.description || "-"}</div>
+                  </td>
                   <td className="py-2">
                     <button
                       type="button"

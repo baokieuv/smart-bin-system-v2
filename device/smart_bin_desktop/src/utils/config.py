@@ -77,17 +77,18 @@ class DetectionConfig:
 
 @dataclass(frozen=True)
 class ViewModelConfig:
-	telemetry_interval_ms: int = _env_int("SMART_BIN_TELEMETRY_INTERVAL_MS", 5 * 60 * 1000)
+	telemetry_interval_ms: int = _env_int("SMART_BIN_TELEMETRY_INTERVAL_MS", 1 * 60 * 1000)
 	app_version_check_interval_ms: int = _env_int("SMART_BIN_APP_VERSION_CHECK_INTERVAL_MS", 24 * 60 * 60 * 1000)
 	feedback_timeout_ms: int = _env_int("SMART_BIN_FEEDBACK_TIMEOUT_MS", 10000)
 	thanks_timeout_ms: int = _env_int("SMART_BIN_THANKS_TIMEOUT_MS", 5000)
-	upload_interval_ms: int = _env_int("SMART_BIN_UPLOAD_INTERVAL_MS", 30 * 60 * 1000)
+	upload_interval_ms: int = _env_int("SMART_BIN_UPLOAD_INTERVAL_MS", 1 * 60 * 1000)
 	upload_batch_size: int = _env_int("SMART_BIN_UPLOAD_BATCH_SIZE", 10)
 
 
 @dataclass(frozen=True)
 class ApiConfig:
 	device_base_url: str = _env_str("SMART_BIN_DEVICE_API_BASE", "https://api.kvbhust.id.vn/api/v1/devices/public")
+	config_base_url: str = _env_str("SMART_BIN_CONFIG_API_BASE", "https://api.kvbhust.id.vn/api/v1/configs")
 	thingsboard_base_url: str = _env_str("SMART_BIN_THINGSBOARD_API_BASE", "https://thingsboard.kvbhust.id.vn/api/v1")
 	request_timeout_seconds: int = _env_int("SMART_BIN_API_TIMEOUT", 10)
 
@@ -111,6 +112,9 @@ class Esp32OtaConfig:
 	# Command bytes shared with ESP32 config.h / uart_handler.c.
 	cmd_ctrl_servo: int = 0x10
 	cmd_ctrl_stepper: int = 0x11
+	cmd_ctrl_device_config: int = 0x50
+	cmd_report_fill_level: int = 0x40
+	cmd_get_version: int = 0x60
 	cmd_ota_start: int = 0x20
 	cmd_ota_data: int = 0x21
 	cmd_ota_end: int = 0x22
@@ -127,6 +131,10 @@ class Esp32OtaConfig:
 class PathConfig:
 	# Root folder for deriving models/assets/key paths.
 	base_dir: Path = Path(__file__).resolve().parent.parent.parent
+
+	@property
+	def data_dir(self) -> Path:
+		return self.base_dir / "data"
 
 	@property
 	def models_dir(self) -> Path:
@@ -158,7 +166,31 @@ class PathConfig:
 
 	@property
 	def private_key_path(self) -> Path:
-		return self.base_dir / "key" / "private_key.pem"
+		return self.devices_key_dir / "private_key.pem"
+
+	@property
+	def public_key_path(self) -> Path:
+		return self.devices_key_dir / "public_key.pem"
+
+	@property
+	def devices_key_dir(self) -> Path:
+		return self.base_dir / "key" / "devices"
+
+	@property
+	def server_key_dir(self) -> Path:
+		return self.base_dir / "key" / "server"
+
+	@property
+	def public_server_key_path(self) -> Path:
+		return self.server_key_dir / "public_key.pem"
+
+	@property
+	def device_config_cache_path(self) -> Path:
+		return self.data_dir / "device_config_cache.json"
+
+	@property
+	def bin_version_cache_path(self) -> Path:
+		return self.data_dir / "bin_version_cache.txt"
 
     
 

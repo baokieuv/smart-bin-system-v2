@@ -49,6 +49,12 @@ const isPermissionRelatedError = (status: number, message: string) => {
 export const apiClient = async <T = unknown>(endpoint: string, options: RequestOptions = {}): Promise<BaseResponse<T>> => {
   const { skipAuthRefresh = false, suppressPermissionToast = false, cacheTTL, cacheKey, ...fetchOptions } = options;
   const method = (fetchOptions.method || "GET").toString().toUpperCase();
+  const isFormData = fetchOptions.body instanceof FormData;
+
+  // Debug log for file uploads
+  if (isFormData) {
+    console.log(`[API] Starting ${method} request to ${endpoint} with FormData`);
+  }
 
   // Return cached GET response when available and fresh
   if (method === "GET" && typeof cacheTTL === "number" && cacheTTL > 0) {
@@ -69,21 +75,34 @@ export const apiClient = async <T = unknown>(endpoint: string, options: RequestO
     headers.Authorization = `Bearer ${token}`;
   }
 
-  if (fetchOptions.body instanceof FormData) {
+  if (isFormData) {
     delete headers["Content-Type"];
   }
 
   const config: RequestInit = {
     ...fetchOptions,
     headers,
+    // Set timeout for uploads: 5 minutes (300s) for large files
+    signal: AbortSignal.timeout(isFormData ? 300000 : 30000),
   };
 
   let response: Response;
 
   try {
+    if (isFormData) {
+      console.log(`[API] Sending ${method} request with FormData body...`);
+    }
     response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-  } catch {
-    const message = "Không thể kết nối đến máy chủ";
+    if (isFormData) {
+      console.log(`[API] Response received: ${response.status} ${response.statusText}`);
+    }
+  } catch (error) {
+    if (isFormData) {
+      console.error(`[API] Fetch error for FormData:`, error);
+    }
+    const message = error instanceof Error && error.name === 'AbortError'
+      ? "Yêu cầu quá lâu, hãy thử lại"
+      : "Không thể kết nối đến máy chủ";
     emitToast(message, "error");
     throw new ApiError(message);
   }
@@ -92,8 +111,17 @@ export const apiClient = async <T = unknown>(endpoint: string, options: RequestO
     let data: BaseResponse<T>;
 
     try {
+      if (isFormData) {
+        console.log(`[API] Parsing response body...`);
+      }
       data = (await response.json()) as BaseResponse<T>;
-    } catch {
+      if (isFormData) {
+        console.log(`[API] Response parsed successfully:`, data);
+      }
+    } catch (parseError) {
+      if (isFormData) {
+        console.error(`[API] Failed to parse response:`, parseError);
+      }
       data = { success: false, message: response.statusText || "Request failed", data: undefined as T };
     }
 

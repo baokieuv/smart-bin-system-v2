@@ -5,6 +5,7 @@ import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { devicesAdminApi } from "@/services/api/devices-admin";
 import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
+import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
 import type { DeviceDto } from "@/types/device";
 import type { FirmwareDto } from "@/types/firmware";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -29,6 +30,7 @@ export default function DevicesPage() {
   const [devices, setDevices] = useState<DeviceDto[]>([]);
   const [firmwares, setFirmwares] = useState<FirmwareDto[]>([]);
   const [form, setForm] = useState({ name: "", mac: "", groupCode: "" });
+  const [deviceGroups, setDeviceGroups] = useState<{ id: string; code: string; name: string }[]>([]);
   const [message, setMessage] = useState("");
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(10);
@@ -56,8 +58,9 @@ export default function DevicesPage() {
 
   const isConfigDirty =
     Boolean(selectedDeviceId) &&
-    (configForm.targetBinFirmwareId !== configInitial.targetBinFirmwareId ||
-      configForm.targetDesktopFirmwareId !== configInitial.targetDesktopFirmwareId);
+    Boolean(configForm?.targetBinFirmwareId || configForm?.targetDesktopFirmwareId) &&
+    (configForm?.targetBinFirmwareId !== configInitial?.targetBinFirmwareId ||
+      configForm?.targetDesktopFirmwareId !== configInitial?.targetDesktopFirmwareId);
 
   const load = async (nextPage = page, nextSize = size) => {
     const response = await devicesAdminApi.getDevices({ page: nextPage, size: nextSize });
@@ -87,7 +90,23 @@ export default function DevicesPage() {
     void loadFirmwares().catch(() => {
       setConfigMessage("Unable to load firmware list");
     });
+    void (async () => {
+      try {
+        const resp = await deviceGroupsAdminApi.getDeviceGroups({ page: 1, size: 200 });
+        const items = unwrapListPayload(resp.data);
+        setDeviceGroups(items.map((i: any) => ({ id: i.id, code: i.code, name: i.name })));
+      } catch (err) {
+        // ignore
+      }
+    })();
   }, []);
+
+  // Debug: log isConfigDirty changes
+  useEffect(() => {
+    if (selectedDeviceId) {
+      console.log(`[ConfigState] dirty=${isConfigDirty}, form=${JSON.stringify(configForm)}, initial=${JSON.stringify(configInitial)}`);
+    }
+  }, [isConfigDirty, configForm, configInitial, selectedDeviceId]);
 
   const create = async (event: FormEvent) => {
     event.preventDefault();
@@ -112,13 +131,15 @@ export default function DevicesPage() {
     try {
       const firmwareItems = firmwares.length > 0 ? firmwares : await loadFirmwares();
       const response = await devicesAdminApi.getDeviceConfig(device.id);
-      const config = response.data;
+      const config = response?.data || {};
 
       const targetBinFirmwareId =
         config.targetBinFirmwareId || firmwareItems.find((firmware) => firmware.type === "ESP32" && firmware.version === config.targetBinVersion)?.id || getLatestFirmware(firmwareItems, "ESP32")?.id || "";
       const targetDesktopFirmwareId =
         config.targetDesktopFirmwareId || firmwareItems.find((firmware) => firmware.type === "RASPBERRY_PI" && firmware.version === config.targetDesktopVersion)?.id || getLatestFirmware(firmwareItems, "RASPBERRY_PI")?.id || "";
 
+      console.log(`[DeviceConfig] Device: ${device.name}, Bin FW ID: ${targetBinFirmwareId}, Desktop FW ID: ${targetDesktopFirmwareId}`);
+      
       setConfigForm({ targetBinFirmwareId, targetDesktopFirmwareId });
       setConfigInitial({ targetBinFirmwareId, targetDesktopFirmwareId });
       setDevices((current) =>
@@ -199,43 +220,35 @@ export default function DevicesPage() {
         <div className="max-w-full overflow-x-auto">
           <table className="w-full min-w-300 text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2 whitespace-nowrap">Name</th>
-                <th className="py-2 whitespace-nowrap">MAC</th>
-                <th className="py-2 whitespace-nowrap">Group Code</th>
-                <th className="py-2 whitespace-nowrap">Target Bin Version</th>
-                <th className="py-2 whitespace-nowrap">Target Desktop Version</th>
-                <th className="py-2 whitespace-nowrap">Access Token</th>
-                <th className="py-2 whitespace-nowrap">Status</th>
-                <th className="py-2 whitespace-nowrap">State</th>
-                <th className="py-2 whitespace-nowrap">Latitude</th>
-                <th className="py-2 whitespace-nowrap">Longitude</th>
-                <th className="py-2 whitespace-nowrap">Desktop Ver</th>
-                <th className="py-2 whitespace-nowrap">Bin Ver</th>
-                <th className="py-2 whitespace-nowrap">Claimed At</th>
-                <th className="py-2 whitespace-nowrap">Created Date</th>
-                <th className="py-2 whitespace-nowrap">Action</th>
-              </tr>
+                <tr className="border-b border-slate-200 text-slate-600">
+                  <th className="py-2 px-3 whitespace-nowrap">Name</th>
+                  <th className="py-2 px-3 whitespace-nowrap">MAC</th>
+                  <th className="py-2 px-3 whitespace-nowrap">Group Code</th>
+                  <th className="py-2 px-3 whitespace-nowrap">Target Bin</th>
+                  <th className="py-2 px-3 whitespace-nowrap">Target Desktop</th>
+                  <th className="py-2 px-3 whitespace-nowrap">Status</th>
+                  <th className="py-2 px-3 whitespace-nowrap">State</th>
+                  <th className="py-2 px-3 whitespace-nowrap">Desktop Ver</th>
+                  <th className="py-2 px-3 whitespace-nowrap">Bin Ver</th>
+                  <th className="py-2 px-3 whitespace-nowrap">Claimed At</th>
+                  <th className="py-2 px-3 whitespace-nowrap">Created Date</th>
+                  <th className="py-2 px-3 whitespace-nowrap">Action</th>
+                </tr>
             </thead>
             <tbody>
               {devices.map((device) => (
                 <tr key={device.id} className={`border-b border-slate-200/70 ${selectedDeviceId === device.id ? "bg-sky-50/60" : ""}`}>
-                  <td className="py-2 font-medium text-foreground whitespace-nowrap">{device.name}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.mac}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.groupCode || "-"}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.targetBinVersion || "-"}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.targetDesktopVersion || "-"}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">
-                    <div className="max-w-55 overflow-x-auto whitespace-nowrap">{device.accessToken || "-"}</div>
-                  </td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.status}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.state || "-"}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.latitude ?? "-"}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.longitude ?? "-"}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.desktopVersion || "-"}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.binVersion || "-"}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.claimedAt ?? "-"}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{device.createdDate || "-"}</td>
+                    <td className="py-2 px-3 font-medium text-foreground whitespace-nowrap">{device.name}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.mac}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.groupCode || "-"}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.targetBinVersion || "-"}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.targetDesktopVersion || "-"}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.status}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.state || "-"}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.desktopVersion || "-"}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.binVersion || "-"}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.claimedAt ?? "-"}</td>
+                    <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.createdDate || "-"}</td>
                   <td className="py-2">
                     <button
                       type="button"
@@ -302,8 +315,12 @@ export default function DevicesPage() {
                 <label className="block text-sm font-medium text-slate-700">Target Bin Firmware</label>
                 <select
                   className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  value={configForm.targetBinFirmwareId}
-                  onChange={(event) => setConfigForm((current) => ({ ...current, targetBinFirmwareId: event.target.value }))}
+                  value={configForm?.targetBinFirmwareId || ""}
+                  onChange={(event) => {
+                    const newId = event.target.value;
+                    console.log(`[Select] Bin firmware changed to: ${newId}`);
+                    setConfigForm((current) => ({ ...current, targetBinFirmwareId: newId }));
+                  }}
                   disabled={binFirmwares.length === 0}
                 >
                   <option value="">{binFirmwares.length > 0 ? "Select target bin firmware" : "No bin firmware available"}</option>
@@ -314,7 +331,7 @@ export default function DevicesPage() {
                   ))}
                 </select>
                 <p className="text-xs text-slate-500">
-                  Current saved version: {selectedDevice.targetBinVersion || "-"}
+                  Current saved version: {selectedDevice?.targetBinVersion || "-"}
                 </p>
               </div>
 
@@ -322,8 +339,12 @@ export default function DevicesPage() {
                 <label className="block text-sm font-medium text-slate-700">Target Desktop Firmware</label>
                 <select
                   className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  value={configForm.targetDesktopFirmwareId}
-                  onChange={(event) => setConfigForm((current) => ({ ...current, targetDesktopFirmwareId: event.target.value }))}
+                  value={configForm?.targetDesktopFirmwareId || ""}
+                  onChange={(event) => {
+                    const newId = event.target.value;
+                    console.log(`[Select] Desktop firmware changed to: ${newId}`);
+                    setConfigForm((current) => ({ ...current, targetDesktopFirmwareId: newId }));
+                  }}
                   disabled={desktopFirmwares.length === 0}
                 >
                   <option value="">
@@ -336,7 +357,7 @@ export default function DevicesPage() {
                   ))}
                 </select>
                 <p className="text-xs text-slate-500">
-                  Current saved version: {selectedDevice.targetDesktopVersion || "-"}
+                  Current saved version: {selectedDevice?.targetDesktopVersion || "-"}
                 </p>
               </div>
 
@@ -345,6 +366,7 @@ export default function DevicesPage() {
                   className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                   type="submit"
                   disabled={!isConfigDirty || configLoading}
+                  onClick={() => console.log(`[Button] isConfigDirty=${isConfigDirty}, configLoading=${configLoading}, configForm=${JSON.stringify(configForm)}, configInitial=${JSON.stringify(configInitial)}`)}
                 >
                   {configLoading ? "Saving..." : "Confirm change"}
                 </button>
@@ -376,12 +398,19 @@ export default function DevicesPage() {
               onChange={(event) => setForm((v) => ({ ...v, mac: event.target.value }))}
               required
             />
-            <input
-              className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Group code"
-              value={form.groupCode}
-              onChange={(event) => setForm((v) => ({ ...v, groupCode: event.target.value }))}
-            />
+            <div>
+              <label className="sr-only">Group code</label>
+              <select
+                className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                value={form.groupCode}
+                onChange={(event) => setForm((v) => ({ ...v, groupCode: event.target.value }))}
+              >
+                <option value="">(no group)</option>
+                {deviceGroups.map((g) => (
+                  <option key={g.id} value={g.code}>{g.code} - {g.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="flex items-center gap-2">
               <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
                 Add 1 device via import

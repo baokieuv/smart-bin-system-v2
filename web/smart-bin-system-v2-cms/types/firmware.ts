@@ -8,7 +8,7 @@ export interface FirmwareDto {
   type: FirmwareType;
   description?: string;
   fileName?: string;
-  fileUrl?: string;
+  objectPath?: string;
   createdDate?: string;
 }
 

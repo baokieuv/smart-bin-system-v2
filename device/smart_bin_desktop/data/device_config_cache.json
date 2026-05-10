@@ -1,0 +1,8 @@
+{
+  "accessToken": "weFy2HCL3w1WfYBXXR0N",
+  "pollingInterval": 300,
+  "fullThreshold": 90.0,
+  "targetBinFirmwareVersion": "0.0.4",
+  "targetDesktopVersion": "0.0.3",
+  "deviceHeight": 100.0
+}

@@ -1,170 +1,19 @@
-import json
 import logging
 import re
 from datetime import datetime, timezone
-from dataclasses import dataclass
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 from src.models.trash_model import TrashData
 from src.repository.device_repository import DeviceClient
-from src.repository.thingsboard_repository import ThingsboardClient
 from src.repository.actuator_repository import ActuatorRepository
+from src.repository.thingsboard_repository import ThingsboardClient
+from src.services.device_config_store import DeviceConfigStore
+from src.services.detection_metadata_store import DetectionMetadataStore
+from src.services.detection_upload_manager import DetectionUploadManager
+from src.services.main_viewmodel_runtime import MainViewModelRuntime
 from src.utils.config import APP_CONFIG
 
-
-@dataclass(frozen=True)
-class PendingUploadItem:
-    """One detection record ready to be uploaded to backend."""
-
-    filename: str
-    image_path: str
-    metadata_path: str
-    metadata: dict
-
-
-class DetectionMetadataStore:
-    """Encapsulates metadata JSON read/write concerns for detection events."""
-
-    def __init__(self, metadata_dir: Path, logger: logging.Logger):
-        self.metadata_dir = metadata_dir
-        self.logger = logger
-        self.metadata_dir.mkdir(parents=True, exist_ok=True)
-
-    def save_detection(self, trash_data: TrashData, feedback: str) -> Path:
-        """Persist initial detection metadata so upload can happen asynchronously."""
-        detected_at = datetime.now(timezone.utc).isoformat()
-        filename = Path(trash_data.image_path).name if trash_data.image_path else None
-        metadata = {
-            "detectionId": trash_data.detection_id,
-            "detectedAt": detected_at,
-            "image": trash_data.image_path,
-            "filename": filename,
-            "category": trash_data.category,
-            "confidence": round(float(trash_data.confidence), 6),
-            "label": trash_data.label,
-            "userFeedback": feedback,
-        }
-
-        metadata_name = trash_data.detection_id or f"detection_{int(datetime.now().timestamp() * 1000)}"
-        metadata_path = self.metadata_dir / f"{metadata_name}.json"
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, ensure_ascii=True, indent=2)
-
-        self.logger.info("Metadata saved: %s", metadata_path.name)
-        return metadata_path
-
-    def update_feedback(self, metadata_path: Path, feedback: str) -> None:
-        """Patch user feedback into previously stored metadata file."""
-        if not metadata_path.exists():
-            return
-
-        try:
-            with open(metadata_path, "r", encoding="utf-8") as f:
-                metadata = json.load(f)
-
-            metadata["userFeedback"] = feedback
-            metadata["feedbackAt"] = datetime.now(timezone.utc).isoformat()
-
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                json.dump(metadata, f, ensure_ascii=True, indent=2)
-            self.logger.info("Feedback updated=%s for %s", feedback, metadata_path.name)
-        except (OSError, json.JSONDecodeError) as e:
-            self.logger.exception("Failed to update feedback metadata: %s", e)
-
-    def collect_pending_items(self, upload_batch_size: int) -> list[PendingUploadItem]:
-        """Read metadata files and build a validated upload batch."""
-        candidates: list[PendingUploadItem] = []
-        metadata_files = sorted(self.metadata_dir.glob("*.json"), key=lambda p: p.stat().st_mtime)
-
-        for metadata_path in metadata_files:
-            if len(candidates) >= upload_batch_size:
-                break
-
-            try:
-                with open(metadata_path, "r", encoding="utf-8") as f:
-                    metadata = json.load(f)
-            except (OSError, json.JSONDecodeError) as e:
-                self.logger.warning("Skipping invalid metadata %s: %s", metadata_path.name, e)
-                continue
-
-            image_path = metadata.get("image")
-            if not image_path:
-                self.logger.warning("Skipping metadata without image path: %s", metadata_path.name)
-                continue
-
-            image_file = Path(image_path)
-            if not image_file.exists():
-                self.logger.warning("Image does not exist, skipping: %s", image_path)
-                continue
-
-            filename = metadata.get("filename") or image_file.name
-            candidates.append(
-                PendingUploadItem(
-                    filename=filename,
-                    image_path=str(image_file),
-                    metadata_path=str(metadata_path),
-                    metadata=metadata,
-                )
-            )
-
-        return candidates
-
-    def safe_delete(self, file_path: str) -> None:
-        """Best-effort delete used after successful upload confirmation."""
-        try:
-            Path(file_path).unlink(missing_ok=True)
-        except OSError as e:
-            self.logger.warning("Failed to delete file %s: %s", file_path, e)
-
-
-class DetectionUploadManager:
-    """Coordinates upload batch execution; keeps upload state out of ViewModel."""
-
-    def __init__(self, metadata_store: DetectionMetadataStore, device_client: DeviceClient, logger: logging.Logger):
-        self.metadata_store = metadata_store
-        self.device_client = device_client
-        self.logger = logger
-        self._upload_in_progress = False
-
-    def run_batch(self, upload_batch_size: int) -> None:
-        """Upload pending detections and cleanup local files when confirmed."""
-        if self._upload_in_progress:
-            self.logger.info("Skipping upload tick because previous batch is still running")
-            return
-
-        items = self.metadata_store.collect_pending_items(upload_batch_size)
-        if not items:
-            self.logger.info("No pending detections to upload")
-            return
-
-        self._upload_in_progress = True
-        try:
-            success_count = 0
-            for item in items:
-                ok, response = self.device_client.send_report_classification(
-                    image_path=item.image_path,
-                    metadata=item.metadata,
-                )
-                if not ok:
-                    self.logger.warning(
-                        "Detection upload via presigned URL failed file=%s: %s",
-                        item.filename,
-                        response,
-                    )
-                    continue
-
-                self.metadata_store.safe_delete(item.image_path)
-                self.metadata_store.safe_delete(item.metadata_path)
-                success_count += 1
-
-            self.logger.info(
-                "Detection upload batch completed: success=%s/%s",
-                success_count,
-                len(items),
-            )
-        finally:
-            self._upload_in_progress = False
 
 class MainViewModel(QObject):
     """Application coordinator between worker, repositories and UI states.
@@ -174,12 +23,17 @@ class MainViewModel(QObject):
     """
 
     # State signals consumed by MainWindow for screen transitions.
+        # State signals consumed by MainWindow for screen transitions.
     state_loading = pyqtSignal(str)
     state_welcome = pyqtSignal()
     state_feedback = pyqtSignal(TrashData)
     state_thanks = pyqtSignal()
     state_activation_required = pyqtSignal(bool, str)
     state_toast = pyqtSignal(str, bool)
+    
+    # state_thanks = pyqtSignal()
+    # state_activation_required = pyqtSignal(bool, str)
+    # state_toast = pyqtSignal(str, bool)
 
     def __init__(self, worker):
         super().__init__()
@@ -188,12 +42,15 @@ class MainViewModel(QObject):
         self.device_client = DeviceClient()
         self.thingsboard_client = ThingsboardClient()
         self.actuator_client = ActuatorRepository()
+        self.device_config_store = DeviceConfigStore(APP_CONFIG.paths.device_config_cache_path, self.logger)
+        self.runtime = MainViewModelRuntime(self)
         # Disposal counters used for telemetry payloads
         self._disposal_count_total = 0
         self._disposal_count_since_last_heartbeat = 0
         self._firmware_update_state = None
         self.metadata_store = DetectionMetadataStore(APP_CONFIG.paths.detection_metadata_dir, self.logger)
         self.upload_manager = DetectionUploadManager(self.metadata_store, self.device_client, self.logger)
+        self.device_config = None
         self.access_token = None
         self.telemetry_interval_ms = APP_CONFIG.viewmodel.telemetry_interval_ms
         self.app_version_check_interval_ms = APP_CONFIG.viewmodel.app_version_check_interval_ms
@@ -202,6 +59,17 @@ class MainViewModel(QObject):
         self.current_detection_metadata_path = None
         self.fill_levels_poll_interval_seconds = APP_CONFIG.esp32_ota.fill_levels_poll_interval_seconds
         self.latest_fill_levels = None  # Store latest fill levels from polling
+        self.device_config_polling_seconds = 5 * 60
+        self.full_threshold = 90.0
+        self.device_height = 100.0
+        self.target_bin_firmware_version = None
+        self.target_desktop_version = None
+        self.latest_bin_version = None
+        self.latest_app_version_result = None
+        self.latest_ota_result = None
+        self._app_version_refresh_running = False
+        self._fill_levels_refresh_running = False
+        self._ota_upload_running = False
         
         # Connect worker events to ViewModel handlers.
         self.worker.trash_detected.connect(self._on_trash_detected)
@@ -221,10 +89,10 @@ class MainViewModel(QObject):
         self.telemetry_timer.setInterval(self.telemetry_interval_ms)
         self.telemetry_timer.timeout.connect(self._send_periodic_telemetry)
 
-        self.access_token_retry_timer = QTimer()
-        self.access_token_retry_timer.setSingleShot(False)
-        self.access_token_retry_timer.setInterval(self.telemetry_interval_ms)
-        self.access_token_retry_timer.timeout.connect(self._retry_get_access_token)
+        self.config_refresh_timer = QTimer()
+        self.config_refresh_timer.setSingleShot(False)
+        self.config_refresh_timer.setInterval(self.device_config_polling_seconds * 1000)
+        self.config_refresh_timer.timeout.connect(self._retry_refresh_device_config)
 
         self.app_version_timer = QTimer()
         self.app_version_timer.setSingleShot(False)
@@ -256,9 +124,9 @@ class MainViewModel(QObject):
             return
 
         self.state_loading.emit("Initialization complete. Connecting services...")
+        self.runtime.refresh_device_config(reason="startup")
         self.reset_to_welcome()
-        self._check_app_version()
-        self._refresh_access_token(reason="startup")
+        self.runtime.check_app_version()
 
         if not self.app_version_timer.isActive():
             self.app_version_timer.start()
@@ -344,10 +212,6 @@ class MainViewModel(QObject):
         self.logger.info("Reset to welcome screen")
 
 
-    def get_access_token(self):
-        """Proxy DeviceClient token API for UI/orchestration flow."""
-        return self.device_client.get_access_token()
-    
     def activate_device(self):
         """Proxy DeviceClient activation API for manual user action."""
         return self.device_client.activate_device()
@@ -384,142 +248,27 @@ class MainViewModel(QObject):
         return self.device_client.get_mac_address()
 
     def _initialize_telemetry_loop(self):
-        # Backward-compatible wrapper; real flow is handled by _refresh_access_token.
-        self._refresh_access_token(reason="initialize_telemetry")
+        self.runtime.refresh_device_config(reason="initialize_telemetry")
 
-    def _refresh_access_token(self, reason: str):
-        """Refresh token and synchronize activation prompt + telemetry timers."""
-        self.logger.info("Attempting get-access-token, reason=%s", reason)
-        success, result = self.get_access_token()
-        if not success:
-            self.logger.warning("Unable to get access token, telemetry disabled: %s", result)
-            self.telemetry_timer.stop()
-            self.access_token = None
+    def _refresh_device_config(self, reason: str):
+        self.runtime.refresh_device_config(reason)
 
-            activation_message = self._build_activation_hint_message(result)
-            self.state_activation_required.emit(True, activation_message)
-
-            if not self.access_token_retry_timer.isActive():
-                self.access_token_retry_timer.start()
-                self.logger.info("Started get-access-token retry every %sms", self.telemetry_interval_ms)
-            return
-
-        token = result.data.access_token if result and result.data else None
-        if not token:
-            self.logger.warning("No access token in response, telemetry disabled")
-            self.telemetry_timer.stop()
-            self.access_token = None
-            self.state_activation_required.emit(
-                True,
-                "No access token available. Press Activate Device, then the app will retry automatically every 5 minutes.",
-            )
-            if not self.access_token_retry_timer.isActive():
-                self.access_token_retry_timer.start()
-            return
-
-        self.access_token_retry_timer.stop()
-        self.access_token = token
-        self.state_activation_required.emit(False, "")
-        self.telemetry_timer.start()
-        self.logger.info("Access token acquired, telemetry loop started")
-
-    def _retry_get_access_token(self):
-        """Timer callback for periodic token retry when backend is unavailable."""
-        self._refresh_access_token(reason="retry_timer")
+    def _retry_refresh_device_config(self):
+        self.runtime.retry_refresh_device_config()
 
     def _send_periodic_telemetry(self):
-        """Timer callback to send telemetry heartbeat."""
-        success, message = self.send_telemetry()
-        if not success:
-            self.logger.warning("Telemetry failed, stopping telemetry loop: %s", message)
-            self.telemetry_timer.stop()
-            self.access_token = None
-            self.state_activation_required.emit(
-                True,
-                "Access token is not available. Press Activate Device, app will retry get-access-token every 5 minutes.",
-            )
-            if not self.access_token_retry_timer.isActive():
-                self.access_token_retry_timer.start()
-            return
-
-        self.logger.info("Telemetry sent successfully")
+        self.runtime.send_periodic_telemetry()
 
     def _check_app_version(self):
-        """Check backend version and refresh ESP32 firmware binary if needed."""
-        self.logger.info("Running app version check")
-
-        try:
-            success, result = self.device_client.get_app_version()
-            if not success:
-                self.logger.warning("App version check failed: %s", result)
-                return
-
-            if isinstance(result, dict):
-                local_version = result.get("local", {}).get("esp32_version")
-                backend_version = result.get("backend", {}).get("bin_version")
-                downloaded = bool(result.get("downloaded"))
-                firmware_file = result.get("firmware_file")
-
-                if downloaded:
-                    self.state_toast.emit(
-                        f"ESP32 firmware downloaded {backend_version}. Starting OTA upload...",
-                        True,
-                    )
-                    self.logger.info(
-                        "ESP32 firmware downloaded: local=%s backend=%s file=%s. Starting OTA upload...",
-                        local_version,
-                        backend_version,
-                        firmware_file,
-                    )
-                    
-                    # Upload firmware to ESP32
-                    ota_ok, ota_msg = self.actuator_client.upload_ota(firmware_file)
-                    if ota_ok:
-                        self.state_toast.emit(
-                            f"OTA upload completed successfully. ESP32 updated to {backend_version}",
-                            True,
-                        )
-                        self.logger.info(
-                            "OTA upload successful: %s. ESP32 now running version %s",
-                            ota_msg,
-                            backend_version,
-                        )
-                    else:
-                        self.state_toast.emit(
-                            f"OTA upload failed: {ota_msg}",
-                            False,
-                        )
-                        self.logger.warning(
-                            "OTA upload failed: %s",
-                            ota_msg,
-                        )
-                else:
-                    self.logger.info(
-                        "ESP32 firmware already up to date: local=%s backend=%s",
-                        local_version,
-                        backend_version,
-                    )
-            else:
-                self.logger.info("App version check completed: %s", result)
-        except Exception:
-            self.logger.exception("App version check failed")
+        self.runtime.check_app_version()
 
     def _poll_fill_levels(self):
-        """Timer callback to periodically request fill levels from ESP32."""
-        try:
-            success, fill_levels = self.actuator_client.request_fill_levels()
-            if success and fill_levels:
-                self.latest_fill_levels = fill_levels
-                self.logger.debug("Fill levels updated: %s", fill_levels)
-            elif not success:
-                self.logger.warning("Failed to request fill levels from ESP32")
-        except Exception:
-            self.logger.exception("Error polling fill levels")
+        self.runtime.poll_fill_levels()
 
     def shutdown(self):
         """Stop timers and worker when app closes."""
         self.telemetry_timer.stop()
-        self.access_token_retry_timer.stop()
+        self.config_refresh_timer.stop()
         self.app_version_timer.stop()
         self.upload_timer.stop()
         self.fill_levels_poll_timer.stop()
@@ -528,8 +277,8 @@ class MainViewModel(QObject):
         self.logger.info("MainViewModel shutdown completed")
 
     def on_back_from_device_link(self):
-        """Refresh token after returning from device-link flow."""
-        self._refresh_access_token(reason="back_from_device_link")
+        """Refresh config after returning from device-link flow."""
+        self.runtime.refresh_device_config(reason="back_from_device_link")
 
     def activate_device_manually(self):
         """Handle user-triggered activation and display toast feedback."""
@@ -537,7 +286,7 @@ class MainViewModel(QObject):
         success, result = self.activate_device()
         if success:
             self.state_toast.emit("Device activation successful", True)
-            self._refresh_access_token(reason="activate_success")
+            self.runtime.refresh_device_config(reason="activate_success")
             return
 
         self.logger.warning("Device activation failed: %s", result)
@@ -628,7 +377,7 @@ class MainViewModel(QObject):
         if self._is_device_not_found_error(result):
             return "Device is not registered. Press Activate Device to register and activate."
 
-        return "Access token is unavailable. Press Activate Device and app will retry get-access-token every 5 minutes."
+        return "Device config is unavailable. Press Activate Device and app will retry every 5 minutes."
 
     def _save_detection_metadata(self, trash_data: TrashData, feedback: str) -> Path:
         """Backward-compatible wrapper; delegated to DetectionMetadataStore."""

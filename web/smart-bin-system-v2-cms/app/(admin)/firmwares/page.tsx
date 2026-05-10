@@ -60,18 +60,24 @@ export default function FirmwaresPage() {
 
     try {
       setUploading(true);
+      console.log(`[FirmwareUpload] Starting upload: file=${file.name}, size=${file.size} bytes, version=${form.version}`);
+      
       await firmwaresAdminApi.uploadFirmware({
         file,
         version: form.version.trim(),
         type: form.type,
         description: form.description,
       });
+      
+      console.log(`[FirmwareUpload] Upload successful`);
       setForm({ version: "", type: "ESP32", description: "" });
       setFile(null);
       setMessage("Firmware uploaded");
       await load(page, size);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Upload failed");
+      const errorMsg = error instanceof Error ? error.message : "Upload failed";
+      console.error(`[FirmwareUpload] Upload failed:`, error);
+      setMessage(errorMsg);
     } finally {
       setUploading(false);
     }
@@ -94,12 +100,12 @@ export default function FirmwaresPage() {
           <table className="w-full min-w-200 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2 whitespace-nowrap">Version</th>
-                <th className="py-2 whitespace-nowrap">Type</th>
-                <th className="py-2 whitespace-nowrap">File Name</th>
-                <th className="py-2 whitespace-nowrap">Description</th>
-                <th className="py-2 whitespace-nowrap">Created Date</th>
-                <th className="py-2 whitespace-nowrap">Action</th>
+                <th className="py-2 px-3 whitespace-nowrap">Version</th>
+                <th className="py-2 px-3 whitespace-nowrap">Type</th>
+                <th className="py-2 px-3 whitespace-nowrap">File URL</th>
+                <th className="py-2 px-3 whitespace-nowrap">Description</th>
+                <th className="py-2 px-3 whitespace-nowrap">Created Date</th>
+                <th className="py-2 px-3 whitespace-nowrap">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -107,8 +113,18 @@ export default function FirmwaresPage() {
                 <tr key={item.id} className="border-b border-slate-200/70">
                   <td className="py-2 font-medium text-foreground whitespace-nowrap">{item.version}</td>
                   <td className="py-2 text-slate-600 whitespace-nowrap">{item.type}</td>
-                  <td className="py-2 text-slate-600 whitespace-nowrap">{item.fileName || "-"}</td>
-                  <td className="py-2 text-slate-600">{item.description || "-"}</td>
+                  <td className="py-2 text-slate-600 whitespace-nowrap">
+                    {item.objectPath ? (
+                      <a href={item.objectPath} target="_blank" rel="noreferrer" className="text-sky-700 underline">
+                        {item.objectPath}
+                      </a>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td className="py-2 text-slate-600">
+                    <div className="max-w-[28rem] max-h-20 overflow-auto whitespace-pre-wrap break-words">{item.description || "-"}</div>
+                  </td>
                   <td className="py-2 text-slate-600 whitespace-nowrap">{item.createdDate || "-"}</td>
                   <td className="py-2">
                     <button
@@ -196,11 +212,20 @@ export default function FirmwaresPage() {
                 onChange={(event) => {
                   const selected = event.target.files?.[0] || null;
                   setFile(selected);
+                  if (selected) {
+                    const sizeMB = (selected.size / (1024 * 1024)).toFixed(2);
+                    console.log(`[FileInput] Selected file: ${selected.name}, size: ${sizeMB}MB`);
+                  }
                 }}
                 required
                 className="w-full text-sm"
               />
               <p className="text-xs text-slate-500">Allowed file types: {acceptedFilesText}</p>
+              {file && (
+                <p className="text-xs text-slate-600">
+                  Selected: {file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)
+                </p>
+              )}
             </div>
 
             <button
