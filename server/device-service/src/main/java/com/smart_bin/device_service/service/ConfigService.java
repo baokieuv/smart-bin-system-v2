@@ -5,6 +5,7 @@ import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.FirmwareType;
 import com.smart_bin.device_service.dto.request.*;
+import com.smart_bin.device_service.dto.response.DeviceConfigResponse;
 import com.smart_bin.device_service.dto.response.OtaCheckResponse;
 import com.smart_bin.device_service.entity.*;
 import com.smart_bin.device_service.exception.DeviceErrorCode;
@@ -56,7 +57,7 @@ public class ConfigService {
         String fileHash = securityService.calculateSha256(file);
         String signature = securityService.signResponseWithServerKey(fileHash);
 
-        JsonNode uploadRes = mediaClient.uploadFileInternal(internalSecret, file, "firmwares_" + fwType.name() + "_" + version + "_", "firmwares");
+        JsonNode uploadRes = mediaClient.uploadFileInternal(internalSecret, file, "firmwares_" + fwType.name() + "_" + version, "firmwares");
         String objectPath = uploadRes.get("data").get("objectUrl").asText();
 
         Firmware firmware = new Firmware();
@@ -91,11 +92,13 @@ public class ConfigService {
                 .orElseGet(() -> createDefaultConfig(deviceId));
     }
 
-    public DeviceConfig getConfigForDevice(String payload, String signature) {
+    public DeviceConfigResponse getConfigForDevice(String payload, String signature) {
         Device device = authenticateDeviceFromPayload(payload, signature);
 
-        return configRepository.findByDeviceId(device.getId())
+        DeviceConfig config = configRepository.findByDeviceId(device.getId())
                 .orElseGet(() -> createDefaultConfig(device.getId()));
+
+        return DeviceConfigResponse.fromEntity(config, device);
     }
 
     @Transactional
@@ -134,47 +137,43 @@ public class ConfigService {
     public OtaCheckResponse checkOta(String payload, String signature) {
         Device device = authenticateDeviceFromPayload(payload, signature);
 
-        JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
-        if (!payloadObj.has("hardwareType")) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Thiếu trường hardwareType trong payload (ESP32 hoặc RASPBERRY_PI)");
-        }
-        FirmwareType hardwareType = FirmwareType.valueOf(payloadObj.get("hardwareType").getAsString().toUpperCase());
+        OtaCheckResponse.FirmwareUpdateInfo noUpdate =
+                new OtaCheckResponse.FirmwareUpdateInfo(false, null, null, null);
 
         DeviceConfig config = configRepository.findByDeviceId(device.getId()).orElse(null);
-        if (config == null) return new OtaCheckResponse(false, null, null, null);
-
-        Firmware targetFw = (hardwareType == FirmwareType.ESP32) ? config.getTargetBinFirmware() : config.getTargetDesktopFirmware();
-
-        if (targetFw == null || !targetFw.isActive()) {
-            return new OtaCheckResponse(false, null, null, null);
+        if (config == null) {
+            return new OtaCheckResponse(noUpdate, noUpdate);
         }
 
-        String currentVersion = (hardwareType == FirmwareType.ESP32) ? device.getBinVersion() : device.getDesktopVersion();
+        OtaCheckResponse.FirmwareUpdateInfo esp32Update =
+                checkFirmwareUpdate(config.getTargetBinFirmware(), device.getBinVersion());
 
-        if (targetFw.getVersion().equals(currentVersion)) {
-            return new OtaCheckResponse(false, null, null, null);
-        }
+        OtaCheckResponse.FirmwareUpdateInfo piUpdate =
+                checkFirmwareUpdate(config.getTargetDesktopFirmware(), device.getDesktopVersion());
 
-        return new OtaCheckResponse(true, targetFw.getVersion(), targetFw.getObjectPath(), targetFw.getSignature());
+        // TODO: Tách riêng luồng OTA cho desktop khi desktop app sẵn sàng xử lý.
+
+        return new OtaCheckResponse(esp32Update, piUpdate);
     }
 
     @Transactional
-    public void reportOtaStatus(String payload, String signature, OtaStatusRequest req) {
+    public void reportOtaStatus(String payload, String signature) {
         Device device = authenticateDeviceFromPayload(payload, signature);
 
         JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
-        FirmwareType hardwareType = FirmwareType.valueOf(payloadObj.get("hardwareType").getAsString().toUpperCase());
+        String status = payloadObj.get("status").getAsString();
+        String message = payloadObj.has("message") && !payloadObj.get("message").isJsonNull()
+                ? payloadObj.get("message").getAsString()
+                : "";
 
-        log.info("Device {} reported OTA status: {} - Error: {}", device.getMac(), req.status(), req.errorMessage());
+        log.info("Device {} reported OTA status: {} - {}", device.getMac(), status, message);
 
-        if ("SUCCESS".equalsIgnoreCase(req.status())) {
+        if ("SUCCESS".equalsIgnoreCase(status)) {
             DeviceConfig config = configRepository.findByDeviceId(device.getId()).orElse(null);
             if (config != null) {
-                // Update đúng version cho phần cứng tương ứng
-                if (hardwareType == FirmwareType.ESP32 && config.getTargetBinFirmware() != null) {
+                // Desktop hiện tại chưa xử lý OTA, chỉ cập nhật bin version cho ESP32.
+                if (config.getTargetBinFirmware() != null) {
                     device.setBinVersion(config.getTargetBinFirmware().getVersion());
-                } else if (hardwareType == FirmwareType.RASPBERRY_PI && config.getTargetDesktopFirmware() != null) {
-                    device.setDesktopVersion(config.getTargetDesktopFirmware().getVersion());
                 }
                 deviceRepository.save(device);
             }
@@ -182,13 +181,29 @@ public class ConfigService {
     }
 
     // --- Utils ---
+    private OtaCheckResponse.FirmwareUpdateInfo checkFirmwareUpdate(Firmware targetFw, String currentVersion) {
+        if (targetFw == null || !targetFw.isActive()) {
+            return new OtaCheckResponse.FirmwareUpdateInfo(false, null, null, null);
+        }
+
+        if (targetFw.getVersion().equals(currentVersion)) {
+            return new OtaCheckResponse.FirmwareUpdateInfo(false, null, null, null);
+        }
+
+        return new OtaCheckResponse.FirmwareUpdateInfo(
+                true,
+                targetFw.getVersion(),
+                targetFw.getObjectPath(),
+                targetFw.getSignature()
+        );
+    }
+
     private Device authenticateDeviceFromPayload(String payload, String signature) {
         JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
         String mac = payloadObj.get("mac").getAsString();
 
-        Device device = deviceRepository.findByMacAndActiveTrue(mac)
+        Device device = deviceRepository.findByMacWithGroup(mac)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
-
         securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
 
         return device;

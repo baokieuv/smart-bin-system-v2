@@ -123,10 +123,9 @@ public class ConfigController {
     @HardwareSecureResponse
     public ResponseEntity<ApiResponseFormat<Object>> reportOtaStatus(
             @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature,
-            @RequestBody OtaStatusRequest request
+            @RequestHeader("X-Signature") String signature
     ) {
-        configService.reportOtaStatus(payload, signature, request);
+        configService.reportOtaStatus(payload, signature);
         return responseFactory.response(SuccessCode.OK, "Đã ghi nhận trạng thái OTA");
     }
 }

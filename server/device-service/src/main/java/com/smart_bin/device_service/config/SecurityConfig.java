@@ -27,6 +27,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/v1/configs/public/**").permitAll()
                         .requestMatchers("/api/v1/devices/public/**").permitAll()
                         .requestMatchers("/api/v1/things-board/**").permitAll()
                         .requestMatchers("/api/v1/devices/**").authenticated()

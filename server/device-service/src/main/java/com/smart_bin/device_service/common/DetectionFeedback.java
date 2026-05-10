@@ -7,9 +7,9 @@ import java.util.stream.Stream;
 @Getter
 public enum DetectionFeedback {
 
-    NO_FEEDBACK(0),     // chưa phản hồi
+    NOT_RATED(0),     // chưa phản hồi
     CORRECT(1),         // detect đúng
-    INCORRECT(2);       // detect sai
+    WRONG(2);       // detect sai
 
     private final int value;
 

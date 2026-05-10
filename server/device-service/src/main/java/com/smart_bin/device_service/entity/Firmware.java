@@ -16,7 +16,7 @@ public class Firmware extends BaseEntity {
     @GeneratedValue(generator = "uuid-v7-generator")
     private UUID id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String version;
 
     private String description;

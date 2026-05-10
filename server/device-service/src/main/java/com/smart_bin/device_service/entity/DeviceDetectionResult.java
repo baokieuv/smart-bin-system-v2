@@ -28,6 +28,13 @@ public class DeviceDetectionResult extends BaseEntity {
     @Enumerated(EnumType.STRING)
     DetectionFeedback feedback;
 
+    @Column(name = "detected_at")
+    private Long detectedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "actual_type")
+    private WasteType actualType;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_id")
     @JsonIgnore

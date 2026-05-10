@@ -1,6 +1,7 @@
 package com.smart_bin.device_service.repository;
 
 import com.smart_bin.device_service.entity.Device;
+import io.lettuce.core.dynamic.annotation.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -34,6 +35,12 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> { // Đổ
             "LEFT JOIN FETCH dc.targetDesktopFirmware",
             countQuery = "SELECT count(d) FROM Device d")
     Page<Device> findAllForAdminWithConfig(Pageable pageable);
+
+    @Query("SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup WHERE d.mac = :mac AND d.active = true")
+    Optional<Device> findByMacAndActiveTrueWithGroup(@Param("mac") String mac);
+
+    @Query("SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup WHERE d.mac = :mac")
+    Optional<Device> findByMacWithGroup(@Param("mac") String mac);
 
     // BỎ: List<Device> findByUserAndActiveTrue(User user);
     // THÊM: Sử dụng khóa ngoại logic keycloakId (Lấy trực tiếp từ Token của Client)

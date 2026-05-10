@@ -6,8 +6,10 @@ import com.smart_bin.core.common.NotificationType;
 import com.smart_bin.core.dto.NotificationEventDto;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
+import com.smart_bin.device_service.common.DetectionFeedback;
 import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.common.DeviceStatus;
+import com.smart_bin.device_service.common.WasteType;
 import com.smart_bin.device_service.config.MediaServiceClient;
 import com.smart_bin.device_service.dto.request.CreateDeviceRequest;
 import com.smart_bin.device_service.dto.request.DeviceImportItem;
@@ -289,13 +291,15 @@ public class DeviceService {
     }
 
     @CacheEvict(value = "device_list", allEntries = true)
-    public DeviceDto activateDevice(String payload, String desktopVer, String binVer){
+    public DeviceDto activateDevice(String payload, String signature, String desktopVer, String binVer){
         JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
         String mac = payloadObj.get("mac").getAsString();
         String publicKey = payloadObj.get("publicKey").getAsString();
 
         Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
                 new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND, "Thiết bị chưa được người dùng thêm vào tài khoản."));
+
+        securityService.verifySignatureWithDeviceKey(payload, signature, publicKey);
 
         if (device.getState() == DeviceState.ACTIVE){
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED);
@@ -322,6 +326,24 @@ public class DeviceService {
         );
 
         kafkaService.publishNotification(payloadNoti);
+
+        return mapper.toDto(savedDevice);
+    }
+
+    public DeviceDto uploadPublicKey(String payload, String signature, String desktopVer, String binVer){
+        JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
+        String mac = payloadObj.get("mac").getAsString();
+        String publicKey = payloadObj.get("publicKey").getAsString();
+
+        Device device = repository.findByMac(mac).orElseThrow(() ->
+                new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND, "Thiết bị không tồn tại."));
+
+        securityService.verifySignatureWithDeviceKey(payload, signature, publicKey);
+
+        device.setPublicKey(publicKey);
+        updateVersionInfo(device, desktopVer, binVer);
+
+        Device savedDevice = repository.save(device);
 
         return mapper.toDto(savedDevice);
     }
@@ -383,7 +405,7 @@ public class DeviceService {
             JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
                     internalSecret,
                     mac,
-                    fileInfo.imageUrl(),
+                    fileInfo.filename(),
                     fileInfo.contentType()
             );
 
@@ -394,7 +416,7 @@ public class DeviceService {
             redisData.put("metadata", fileInfo);
             redisData.put("objectPath", objectPath);
 
-            String redisKey = Constants.PENDING_DETECTION_RESULT + mac + ":" + fileInfo.timestamp();
+            String redisKey = Constants.PENDING_DETECTION_RESULT + mac + ":" + fileInfo.detectionId();
 
             redisTemplate.opsForValue().set(
                     redisKey,
@@ -429,15 +451,37 @@ public class DeviceService {
 
             updateVersionInfo(device, desktopVer, binVer);
 
+            String redisKey = Constants.PENDING_DETECTION_RESULT + mac + ":" + fileInfo.detectionId();
+            String cachedData = redisTemplate.opsForValue().get(redisKey);
+
+            String finalImageUrl = null;
+            if (cachedData != null) {
+                JsonNode root = objectMapper.readTree(cachedData);
+                finalImageUrl = root.get("objectPath").asText();
+            }
+
             DeviceDetectionResult result = new DeviceDetectionResult();
-            result.setConfidence(fileInfo.confidence());
-            result.setFeedback(fileInfo.feedback());
             result.setDevice(device);
-            result.setType(fileInfo.type());
-            result.setImageUrl(fileInfo.imageUrl());
+            result.setConfidence(fileInfo.confidence());
+            result.setImageUrl(finalImageUrl);
+
+            if (fileInfo.category() != null) {
+                result.setType(WasteType.valueOf(fileInfo.category().toUpperCase()));
+            }
+            if (fileInfo.userFeedback() != null) {
+                result.setFeedback(DetectionFeedback.valueOf(fileInfo.userFeedback().toUpperCase()));
+            }
+
+            if (fileInfo.detectedAt() != null) {
+                long ts = java.time.OffsetDateTime.parse(fileInfo.detectedAt())
+                        .toInstant().toEpochMilli();
+                result.setDetectedAt(ts);
+            }
 
             detectionRepository.save(result);
             repository.save(device);
+
+            redisTemplate.delete(redisKey);
 
             return "Upload confirmed and saved.";
         } catch (JacksonException e) {

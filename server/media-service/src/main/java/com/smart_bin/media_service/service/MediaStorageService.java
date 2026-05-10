@@ -213,7 +213,7 @@ public class MediaStorageService {
         validateFile(file, true);
 
         // Sinh ra tên file hợp lý dựa trên logic
-        String finalObjectName = generateFinalObjectName(folder, file.getContentType(), extra);
+        String finalObjectName = generateFinalObjectName(folder, extra, file.getOriginalFilename());
 
         try {
             minioClient.putObject(
@@ -248,6 +248,7 @@ public class MediaStorageService {
                 if (isInternal) {
                     allowed.add("application/octet-stream");
                     allowed.add("application/macbinary");
+                    allowed.add("application/x-msdownload");
                 }
 
                 if (!allowed.contains(detectedMimeType)) {
@@ -294,18 +295,18 @@ public class MediaStorageService {
         return newObjectName;
     }
 
-    private String generateFinalObjectName(String folder, String extra, String contentType) {
+    private String generateFinalObjectName(String folder, String extra, String originalFilename) {
         String folderPath = "";
 
         if (StringUtils.hasText(folder)) {
             folderPath = normalizePrefix(folder);
-            // Thêm dấu "/" vào cuối folder để rẽ nhánh đúng vào thư mục, không bị dính liền tên
+            // Thêm dấu "/" vào cuối folder
             if (!folderPath.isEmpty() && !folderPath.endsWith("/")) {
                 folderPath += "/";
             }
         }
 
-        String newObjectName = folderPath + Constants.generateFileName(contentType, extra);
+        String newObjectName = folderPath + generateFileName(originalFilename, extra);
         log.info("Generating URL for NEW file: {}", newObjectName);
         return newObjectName;
     }
@@ -375,5 +376,21 @@ public class MediaStorageService {
             if (!normalized.isEmpty()) result.add(normalized);
         }
         return result;
+    }
+
+    private String generateFileName(String originalFilename, String prefix) {
+        String uniqueId = UUID.randomUUID().toString().substring(0, 8);
+
+        String extension = ".bin"; // Giá trị mặc định nếu file không có đuôi
+        if (originalFilename != null && originalFilename.contains(".")) {
+            extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+        }
+
+        String formattedPrefix = prefix;
+        if (formattedPrefix != null && !formattedPrefix.endsWith("_")) {
+            formattedPrefix += "_";
+        }
+
+        return formattedPrefix + uniqueId + extension;
     }
 }

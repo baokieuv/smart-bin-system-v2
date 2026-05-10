@@ -155,10 +155,22 @@ public class DeviceController {
     @PostMapping("/public/activate")
     public ResponseEntity<ApiResponseFormat<Object>> activateDevice(
             @RequestBody String payload,
+            @RequestHeader("X-Signature") String signature,
             @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
             @RequestHeader(value = "X-Bin-Version", required = false) String binVer
     ){
-        var response = deviceService.activateDevice(payload, desktopVer, binVer);
+        var response = deviceService.activateDevice(payload, signature, desktopVer, binVer);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping("/public/upload-key")
+    public ResponseEntity<ApiResponseFormat<Object>> uploadPublicKey(
+            @RequestBody String payload,
+            @RequestHeader("X-Signature") String signature,
+            @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
+            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
+    ){
+        var response = deviceService.uploadPublicKey(payload, signature, desktopVer, binVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
