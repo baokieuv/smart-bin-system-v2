@@ -130,14 +130,15 @@ public class ThingsBoardService {
                 new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
         // Lấy keycloakId để biết ai là chủ thùng rác
-        String ownerKeycloakId = device.getKeycloakId();
+        String ownerId = device.getUserId() != null ? device.getUserId() : device.getTenantId();
+
 
         if (request.active() && device.getStatus() == DeviceStatus.OFFLINE) {
             device.setStatus(DeviceStatus.ONLINE);
             repository.save(device);
 
             // GỬI KAFKA EVENT: Thiết bị Online
-            sendNotificationEvent(ownerKeycloakId, "Device Online",
+            sendNotificationEvent(ownerId, "Device Online",
                     "Smart bin " + device.getName() + " is now back online.", NotificationType.DEVICE_ONLINE);
 
         } else if (!request.active() && device.getStatus() == DeviceStatus.ONLINE) {
@@ -145,7 +146,7 @@ public class ThingsBoardService {
             repository.save(device);
 
             // GỬI KAFKA EVENT: Thiết bị Offline
-            sendNotificationEvent(ownerKeycloakId, "Device Offline",
+            sendNotificationEvent(ownerId, "Device Offline",
                     "Warning: Smart bin " + device.getName() + " has lost connection.", NotificationType.DEVICE_OFFLINE);
         }
 
@@ -179,14 +180,14 @@ public class ThingsBoardService {
             Device device = repository.findByIdAndActiveTrue(deviceId).orElseThrow(() ->
                     new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
-            String ownerKeycloakId = device.getKeycloakId();
+            String ownerId = device.getUserId() != null ? device.getUserId() : device.getTenantId();
 
             if (status.startsWith("ACTIVE")) {
                 String title = "Smart Bin Alarm: " + severity;
                 String message = "Alarm '" + alarmType + "' was triggered for your bin: " + device.getName();
 
                 // GỬI KAFKA EVENT: Báo động (Rác đầy, cháy nổ...)
-                sendNotificationEvent(ownerKeycloakId, title, message, NotificationType.SYSTEM_INFO);
+                sendNotificationEvent(ownerId, title, message, NotificationType.SYSTEM_INFO);
 
                 log.info("Processed active alarm for device {}: {}", deviceId, alarmType);
             } else if (status.startsWith("CLEARED")) {

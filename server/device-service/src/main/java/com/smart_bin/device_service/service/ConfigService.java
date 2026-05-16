@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.databind.JsonNode;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -86,48 +87,43 @@ public class ConfigService {
     // 2. NHÓM API CẤU HÌNH (ADMIN & OWNER & DEVICE)
     // ==========================================
 
-    public DeviceConfig getConfig(String deviceIdStr) {
+    public DeviceConfigResponse getConfig(String deviceIdStr) {
         UUID deviceId = UUID.fromString(deviceIdStr);
-        return configRepository.findByDeviceId(deviceId)
-                .orElseGet(() -> createDefaultConfig(deviceId));
+        Device device = deviceRepository.findByIdAndActiveTrue(deviceId)
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        DeviceConfig config = configRepository.findByDeviceId(deviceId)
+                .orElseGet(() -> createDefaultConfig(device));
+
+        return DeviceConfigResponse.fromEntity(config, device);
     }
 
     public DeviceConfigResponse getConfigForDevice(String payload, String signature) {
         Device device = authenticateDeviceFromPayload(payload, signature);
 
         DeviceConfig config = configRepository.findByDeviceId(device.getId())
-                .orElseGet(() -> createDefaultConfig(device.getId()));
+                .orElseGet(() -> createDefaultConfig(device));
 
         return DeviceConfigResponse.fromEntity(config, device);
     }
 
     @Transactional
-    public DeviceConfig updateOwnerConfig(String deviceIdStr, String keycloakId, UpdateOwnerConfigRequest req) {
+    public DeviceConfigResponse updateOwnerConfig(String deviceIdStr, String keycloakId, UpdateOwnerConfigRequest req) {
         Device device = getDeviceAndVerifyOwnership(deviceIdStr, keycloakId);
-        DeviceConfig config = getConfig(deviceIdStr);
 
-        if (req.pollingInterval() != null) config.setPollingInterval(req.pollingInterval());
-        if (req.fullThreshold() != null) config.setFullThreshold(req.fullThreshold());
+        DeviceConfig config = configRepository.findByDeviceId(device.getId())
+                .orElseGet(() -> createDefaultConfig(device));
 
-        return configRepository.save(config);
-    }
+        Map<String, Object> currentConfigs = config.getUserConfigs();
+        if (currentConfigs == null) currentConfigs = new java.util.HashMap<>();
 
-    @Transactional
-    public DeviceConfig updateAdminConfig(String deviceIdStr, UpdateAdminConfigRequest req) {
-        DeviceConfig config = getConfig(deviceIdStr);
+        if (req.pollingInterval() != null) currentConfigs.put("polling_interval", req.pollingInterval());
+        if (req.fullThreshold() != null) currentConfigs.put("full_threshold", req.fullThreshold());
 
-        if (req.targetBinFirmwareId() != null) {
-            Firmware binFw = firmwareRepository.findById(req.targetBinFirmwareId())
-                    .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Bin Firmware không tồn tại"));
-            config.setTargetBinFirmware(binFw);
-        }
+        config.setUserConfigs(currentConfigs);
+        configRepository.save(config);
 
-        if (req.targetDesktopFirmwareId() != null) {
-            Firmware desktopFw = firmwareRepository.findById(req.targetDesktopFirmwareId())
-                    .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Desktop Firmware không tồn tại"));
-            config.setTargetDesktopFirmware(desktopFw);
-        }
-        return configRepository.save(config);
+        return DeviceConfigResponse.fromEntity(config, device);
     }
 
     // ==========================================
@@ -137,21 +133,11 @@ public class ConfigService {
     public OtaCheckResponse checkOta(String payload, String signature) {
         Device device = authenticateDeviceFromPayload(payload, signature);
 
-        OtaCheckResponse.FirmwareUpdateInfo noUpdate =
-                new OtaCheckResponse.FirmwareUpdateInfo(false, null, null, null);
-
-        DeviceConfig config = configRepository.findByDeviceId(device.getId()).orElse(null);
-        if (config == null) {
-            return new OtaCheckResponse(noUpdate, noUpdate);
-        }
-
         OtaCheckResponse.FirmwareUpdateInfo esp32Update =
-                checkFirmwareUpdate(config.getTargetBinFirmware(), device.getBinVersion());
+                checkFirmwareUpdate(device.getTargetBinFirmware(), device.getBinVersion());
 
         OtaCheckResponse.FirmwareUpdateInfo piUpdate =
-                checkFirmwareUpdate(config.getTargetDesktopFirmware(), device.getDesktopVersion());
-
-        // TODO: Tách riêng luồng OTA cho desktop khi desktop app sẵn sàng xử lý.
+                checkFirmwareUpdate(device.getTargetDesktopFirmware(), device.getDesktopVersion());
 
         return new OtaCheckResponse(esp32Update, piUpdate);
     }
@@ -172,8 +158,11 @@ public class ConfigService {
             DeviceConfig config = configRepository.findByDeviceId(device.getId()).orElse(null);
             if (config != null) {
                 // Desktop hiện tại chưa xử lý OTA, chỉ cập nhật bin version cho ESP32.
-                if (config.getTargetBinFirmware() != null) {
-                    device.setBinVersion(config.getTargetBinFirmware().getVersion());
+                if (device.getTargetBinFirmware() != null) {
+                    device.setBinVersion(device.getTargetBinFirmware().getVersion());
+                }
+                if (device.getTargetDesktopFirmware() != null) {
+                    device.setDesktopVersion(device.getTargetDesktopFirmware().getVersion());
                 }
                 deviceRepository.save(device);
             }
@@ -220,16 +209,19 @@ public class ConfigService {
         Device device = deviceRepository.findByIdAndActiveTrue(deviceId)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
-        if (!device.getKeycloakId().equals(keycloakId)) {
+        if (!keycloakId.equals(device.getUserId()) && !keycloakId.equals(device.getTenantId())) {
             throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
         }
         return device;
     }
 
-    private DeviceConfig createDefaultConfig(UUID deviceId) {
-        Device device = deviceRepository.findById(deviceId).orElseThrow();
+    private DeviceConfig createDefaultConfig(Device device) {
         DeviceConfig config = new DeviceConfig();
         config.setDevice(device);
+        config.setUserConfigs(Map.of(
+                "polling_interval", 300,
+                "full_threshold", 80.0
+        ));
         return configRepository.save(config);
     }
 }

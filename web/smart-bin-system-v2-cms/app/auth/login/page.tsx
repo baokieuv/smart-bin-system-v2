@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { extractRolesFromAccessToken, hasCmsAdminAccess } from "@/lib/auth-session";
+import { extractRolesFromAccessToken, getCmsAccessRole, hasCmsAdminAccess } from "@/lib/auth-session";
 import { authApi } from "@/services/api/auth";
 import { getRecaptchaToken } from "@/lib/recaptcha";
 
@@ -28,11 +28,13 @@ export default function LoginPage() {
       }
 
       const roles = extractRolesFromAccessToken(response.data.access_token);
-      if (!hasCmsAdminAccess(roles)) {
+      const accessRole = getCmsAccessRole(roles);
+      if (!hasCmsAdminAccess(roles) || !accessRole) {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
         localStorage.removeItem("admin_email");
         localStorage.removeItem("admin_roles");
+        localStorage.removeItem("admin_role");
         setMessage("Tài khoản không có quyền truy cập CMS");
         return;
       }
@@ -42,8 +44,9 @@ export default function LoginPage() {
         localStorage.setItem("refresh_token", response.data.refresh_token);
       }
       localStorage.setItem("admin_roles", JSON.stringify(roles));
+      localStorage.setItem("admin_role", accessRole);
       localStorage.setItem("admin_email", email);
-      router.push("/dashboard");
+      router.push(accessRole === "super_admin" ? "/dashboard" : "/users");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Login failed");
     } finally {

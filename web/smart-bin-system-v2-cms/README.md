@@ -58,6 +58,12 @@ Then open http://localhost:3000.
 - /users
 - /devices
 - /notifications
+- /settings
+
+## Access Control
+
+- `super_admin` sees all admin tabs.
+- `admin` only sees Users, Devices, Notifications, and Settings.
 
 ## Note
 

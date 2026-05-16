@@ -4,6 +4,10 @@ import com.smart_bin.core.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -21,8 +25,10 @@ public class DeviceGroup extends BaseEntity {
     @Column(nullable = false)
     private String name; // Tên hiển thị (VD: Thùng rác thông minh 60 Lít V1)
 
-    @Column(nullable = false)
-    private Double binHeight; // Chiều cao cố định (cm)
-
     private String description; // Mô tả thêm
+
+    // --- Thông số chung linh hoạt (Admin setup) ---
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "shared_specs")
+    private Map<String, Object> sharedSpecs; // VD: {"capacity": 60, "sensor_type": "ultrasonic"}
 }

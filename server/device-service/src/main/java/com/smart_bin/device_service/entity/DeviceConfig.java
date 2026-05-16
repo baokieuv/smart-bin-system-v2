@@ -4,6 +4,10 @@ import com.smart_bin.core.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -20,18 +24,7 @@ public class DeviceConfig extends BaseEntity {
     private Device device;
 
     // --- Cấu hình do User (Chủ sở hữu) quyết định ---
-    @Column(name = "polling_interval")
-    private Integer pollingInterval = 300; // Mặc định 5 phút (300 giây)
-
-    @Column(name = "full_threshold")
-    private Double fullThreshold = 80.0; // Mức đầy báo động (%)
-
-    // --- Cấu hình do Admin quyết định ---
-    @ManyToOne
-    @JoinColumn(name = "target_bin_firmware_id")
-    private Firmware targetBinFirmware;
-
-    @ManyToOne
-    @JoinColumn(name = "target_desktop_firmware_id")
-    private Firmware targetDesktopFirmware;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "user_configs", nullable = false)
+    private Map<String, Object> userConfigs;
 }

@@ -12,17 +12,24 @@ export const deviceApi = {
         latitude: number;
         name: string;
     }) => {
-        return api.post<DeviceDto>('/devices/', formData);
+        return api.post<DeviceDto>('/devices', formData);
     },
 
     // Get device list requires auth and uses auto-refresh
     getList: async () => {
         const key = 'devices:list';
-        const cached = getCache<any>(key);
-        if (cached) return { success: true, data: cached } as any;
+        // const cached = getCache<any>(key);
+        // if (cached) return { success: true, data: cached } as any;
 
         const res = await api.get('/devices');
         if (res && res.success && res.data) {
+            // Normalize paginated responses that return { content: [...] }
+            const maybePage = res.data as any;
+            if (maybePage && Array.isArray(maybePage.content)) {
+                // replace data with the content array for backward compatibility
+                res.data = maybePage.content;
+            }
+
             setCache(key, res.data, 2 * 60 * 1000);
         }
         return res;

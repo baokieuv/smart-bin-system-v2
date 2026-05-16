@@ -31,9 +31,9 @@ type Toast = {
 type ActivityFilter = 'all' | 'unread' | 'critical';
 
 type DeviceTelemetrySummary = {
-    fillLevel: number | null;
-    thrownCount: number | null;
-    sampledAt: number | null;
+    fillLevel: number | null; // average of bins (bin1..bin4)
+    thrownCount: number | null; // total_waste_count
+    sampledAt: number | null; // timestamp of latest telemetry
 };
 
 const CRITICAL_NOTIFICATION_TYPES: NotificationType[] = [
@@ -154,20 +154,30 @@ const withAvatarCacheBuster = (avatarUrl?: string) => {
     return `${sanitizedUrl}${separator}v=${randomVersion}`;
 };
 
-const getLatestTelemetryPoint = (telemetries: DeviceTelemetries, keys: string[]) => {
-    const points = keys.flatMap((key) => telemetries[key] ?? []);
+const getLatestTelemetryPoint = (telemetries: DeviceTelemetries, key: string) => {
+    const points = telemetries[key] ?? [];
     if (points.length === 0) return null;
     return points.reduce((latest, point) => (point.ts > latest.ts ? point : latest));
 };
 
 const summarizeTelemetries = (telemetries: DeviceTelemetries): DeviceTelemetrySummary => {
-    const latestFillPoint = getLatestTelemetryPoint(telemetries, ['fillLevel', 'trashLevel', 'binFillLevel']);
-    const latestThrowPoint = getLatestTelemetryPoint(telemetries, ['throwCount', 'wasteCount', 'garbageThrowCount']);
+    const binKeys = ['bin1', 'bin2', 'bin3', 'bin4'];
+    const binPoints = binKeys
+        .map((k) => getLatestTelemetryPoint(telemetries, k))
+        .filter(Boolean) as { ts: number; value: string }[];
+
+    const avgFill = binPoints.length > 0
+        ? Math.round((binPoints.reduce((s, p) => s + (Number(p.value) || 0), 0) / binPoints.length) * 100) / 100
+        : null;
+
+    const latestTotalPoint = getLatestTelemetryPoint(telemetries, 'total_waste_count');
+
+    const latestTs = Math.max(...binPoints.map((p) => p.ts), latestTotalPoint?.ts ?? 0) || null;
 
     return {
-        fillLevel: toNumber(latestFillPoint?.value),
-        thrownCount: toNumber(latestThrowPoint?.value),
-        sampledAt: Math.max(latestFillPoint?.ts ?? 0, latestThrowPoint?.ts ?? 0) || null,
+        fillLevel: avgFill,
+        thrownCount: toNumber(latestTotalPoint?.value),
+        sampledAt: latestTs,
     };
 };
 
@@ -510,7 +520,7 @@ export default function DashboardPage() {
             try {
                 const now = Date.now();
                 const response = await deviceApi.getTelemetries(selectedDeviceId, {
-                    keys: 'fillLevel,trashLevel,binFillLevel,throwCount,wasteCount,garbageThrowCount',
+                    keys: 'bin1,bin2,bin3,bin4,total_waste_count',
                     startTs: now - 7 * 24 * 60 * 60 * 1000,
                     endTs: now,
                     limit: 50,

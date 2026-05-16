@@ -225,8 +225,7 @@ class MainViewModel(QObject):
 
         payload = {
             "timestamp": now_ms,
-            "disposal_count_total": int(self._disposal_count_total),
-            "disposal_count_interval": int(self._disposal_count_since_last_heartbeat),
+            "total_waste_count": int(self._disposal_count_total),
         }
 
         if self.latest_fill_levels and isinstance(self.latest_fill_levels, list):

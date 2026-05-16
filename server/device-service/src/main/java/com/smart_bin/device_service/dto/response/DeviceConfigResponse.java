@@ -2,28 +2,28 @@ package com.smart_bin.device_service.dto.response;
 
 import com.smart_bin.device_service.entity.Device;
 import com.smart_bin.device_service.entity.DeviceConfig;
-import lombok.Builder;
-import lombok.Data;
+import com.smart_bin.device_service.entity.DeviceGroup;
 
-@Data
-@Builder
-public class DeviceConfigResponse {
-    private String accessToken;
-    private Integer pollingInterval;
-    private Double fullThreshold;
-    private String targetBinFirmwareVersion;
-    private String targetDesktopVersion;
-    private Double deviceHeight;
+import java.util.Map;
 
+public record DeviceConfigResponse (
+    String accessToken,
+    Map<String, Object> userConfigs,
+    Map<String, Object> sharedSpecs,
+    String targetBinFirmwareVersion,
+    String targetDesktopFirmwareVersion
+
+){
     // Hàm tiện ích để map từ Entity sang DTO
     public static DeviceConfigResponse fromEntity(DeviceConfig config, Device device) {
-        return DeviceConfigResponse.builder()
-                .accessToken(device.getAccessToken())
-                .pollingInterval(config.getPollingInterval())
-                .fullThreshold(config.getFullThreshold())
-                .targetBinFirmwareVersion(config.getTargetBinFirmware() != null ? config.getTargetBinFirmware().getVersion() : null)
-                .targetDesktopVersion(config.getTargetDesktopFirmware() != null ? config.getTargetDesktopFirmware().getVersion() : null)
-                .deviceHeight(device.getDeviceGroup().getBinHeight())
-                .build();
+        DeviceGroup group = device.getDeviceGroup();
+
+        return new DeviceConfigResponse(
+                device.getAccessToken(),
+                config.getUserConfigs(),
+                group.getSharedSpecs(),
+                device.getTargetBinFirmware() != null ? device.getTargetBinFirmware().getVersion() : null,
+                device.getTargetDesktopFirmware() != null ? device.getTargetDesktopFirmware().getVersion() : null
+        );
     }
 }

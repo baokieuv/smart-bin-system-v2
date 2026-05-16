@@ -34,17 +34,13 @@ public class DeviceGroupController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> createDeviceGroup(@Valid @RequestBody CreateDeviceGroupRequest request) {
         return responseFactory.response(SuccessCode.CREATED, service.createDeviceGroup(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> updateDeviceGroup(
             @PathVariable String id,
             @Valid @RequestBody UpdateDeviceGroupRequest request
@@ -53,9 +49,7 @@ public class DeviceGroupController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> deleteDeviceGroup(@PathVariable String id) {
         return responseFactory.response(SuccessCode.OK, service.deleteDeviceGroup(id));
     }

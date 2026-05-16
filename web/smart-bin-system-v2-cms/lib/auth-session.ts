@@ -9,6 +9,8 @@ export type AccessTokenPayload = {
   family_name?: string;
 };
 
+export type CmsAccessRole = "super_admin" | "admin";
+
 export const CMS_ADMIN_ROLES = new Set(["admin", "super_admin"]);
 
 const base64UrlDecode = (input: string) => {
@@ -43,4 +45,16 @@ export const extractRolesFromAccessToken = (token: string) => {
   return Array.isArray(roles) ? roles.filter((role): role is string => typeof role === "string") : [];
 };
 
-export const hasCmsAdminAccess = (roles: string[]) => roles.some((role) => CMS_ADMIN_ROLES.has(role));
+export const getCmsAccessRole = (roles: string[]): CmsAccessRole | null => {
+  if (roles.includes("super_admin")) {
+    return "super_admin";
+  }
+
+  if (roles.includes("admin")) {
+    return "admin";
+  }
+
+  return null;
+};
+
+export const hasCmsAdminAccess = (roles: string[]) => getCmsAccessRole(roles) !== null;

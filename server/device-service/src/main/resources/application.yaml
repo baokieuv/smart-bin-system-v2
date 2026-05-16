@@ -65,3 +65,7 @@ app:
       send-noti: "device-notification-topic"
   webhook:
     allowed-ips: 127.0.0.1, 172.16.0.0/12, 192.168.0.0/16
+  iam-service:
+    url: ${IAM_SERVICE_URL:http://localhost:2106}
+  media-service:
+    url: ${MEDIA_SERVICE_URL:http://localhost:2109}

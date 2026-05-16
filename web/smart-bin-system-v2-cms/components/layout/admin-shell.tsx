@@ -4,26 +4,30 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { extractRolesFromAccessToken, hasCmsAdminAccess } from "@/lib/auth-session";
+import { extractRolesFromAccessToken, getCmsAccessRole, hasCmsAdminAccess } from "@/lib/auth-session";
 import { authApi } from "@/services/api/auth";
 import { ApiError } from "@/lib/api-client";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/categories", label: "Categories" },
-  { href: "/products", label: "Products" },
-  { href: "/orders", label: "Orders" },
-  { href: "/users", label: "Users" },
-  { href: "/device-groups", label: "Device Groups" },
-  { href: "/devices", label: "Devices" },
-  { href: "/firmwares", label: "Firmwares" },
-  { href: "/notifications", label: "Notifications" },
+  { href: "/dashboard", label: "Dashboard", roles: ["super_admin", "admin"] },
+  { href: "/tenants", label: "Tenants", roles: ["super_admin"] },
+  // { href: "/categories", label: "Categories", roles: ["super_admin"] },
+  // { href: "/products", label: "Products", roles: ["super_admin"] },
+  // { href: "/orders", label: "Orders", roles: ["super_admin"] },
+  { href: "/users", label: "Users", roles: ["super_admin", "admin"] },
+  { href: "/device-groups", label: "Device Groups", roles: ["super_admin"] },
+  { href: "/devices", label: "Devices", roles: ["super_admin", "admin"] },
+  { href: "/firmwares", label: "Firmwares", roles: ["super_admin"] },
+  { href: "/firmware-mappings", label: "Firmware Mappings", roles: ["super_admin"] },
+  { href: "/notifications", label: "Notifications", roles: ["super_admin", "admin"] },
+  { href: "/settings", label: "Settings", roles: ["super_admin", "admin"] },
 ];
 
 export default function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [email, setEmail] = useState<string>("");
+  const [role, setRole] = useState<"super_admin" | "admin" | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -39,7 +43,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       try {
         const parsedRoles = JSON.parse(cachedRoles) as unknown;
         if (Array.isArray(parsedRoles)) {
-          roles = parsedRoles.filter((role): role is string => typeof role === "string");
+          roles = parsedRoles.filter((candidate): candidate is string => typeof candidate === "string");
         }
       } catch {
         roles = [];
@@ -50,44 +54,58 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       roles = extractRolesFromAccessToken(token);
     }
 
-    if (!hasCmsAdminAccess(roles)) {
+    const accessRole = getCmsAccessRole(roles);
+
+    if (!hasCmsAdminAccess(roles) || !accessRole) {
       localStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
       localStorage.removeItem("admin_email");
       localStorage.removeItem("admin_roles");
+      localStorage.removeItem("admin_role");
       router.push("/auth/login");
       return;
     }
 
-    // Verify token by calling /users/me which will trigger refresh if needed.
+    setRole(accessRole);
+
+    const permittedItems = navItems.filter((item) => item.roles.includes(accessRole));
+    const isAllowedRoute = permittedItems.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+    if (!isAllowedRoute) {
+      router.replace(permittedItems[0]?.href || "/auth/login");
+      return;
+    }
+
     (async () => {
       try {
         const me = await authApi.me();
         if (!me.success) {
           throw new Error(me.message || "Unauthorized");
         }
+
         const cachedEmail = localStorage.getItem("admin_email") || me.data?.email || "admin@smartbin.local";
         setEmail(cachedEmail);
       } catch (err) {
         const error = err as unknown as Error;
         const isAuthFailure =
-          (err instanceof ApiError && (err as ApiError).status === 401) ||
-          (error && /No refresh token available|Refresh token failed|Invalid refresh token response|Unauthorized/i.test(error.message));
+          (err instanceof ApiError && err.status === 401) ||
+          /No refresh token available|Refresh token failed|Invalid refresh token response|Unauthorized/i.test(error.message);
 
         if (isAuthFailure) {
           localStorage.removeItem("access_token");
           localStorage.removeItem("refresh_token");
           localStorage.removeItem("admin_email");
           localStorage.removeItem("admin_roles");
+          localStorage.removeItem("admin_role");
           router.push("/auth/login");
-        } else {
-          // Non-auth errors: keep user on page and fallback to cached email if available
-          const cachedEmail = localStorage.getItem("admin_email") || "admin@smartbin.local";
-          setEmail(cachedEmail);
+          return;
         }
+
+        const cachedEmail = localStorage.getItem("admin_email") || "admin@smartbin.local";
+        setEmail(cachedEmail);
       }
     })();
-  }, [router]);
+  }, [pathname, router]);
 
   const title = useMemo(() => {
     const hit = navItems.find((item) => pathname.startsWith(item.href));
@@ -99,8 +117,14 @@ export default function AdminShell({ children }: { children: ReactNode }) {
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("admin_email");
     localStorage.removeItem("admin_roles");
+    localStorage.removeItem("admin_role");
     router.push("/auth/login");
   };
+
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => (role ? item.roles.includes(role) : true)),
+    [role],
+  );
 
   return (
     <div className="min-h-screen bg-sky-50 text-foreground">
@@ -111,8 +135,8 @@ export default function AdminShell({ children }: { children: ReactNode }) {
           <p className="mt-1 text-sm text-cyan-100/85">Control products, categories, and system operations.</p>
 
           <nav className="mt-6 space-y-1">
-            {navItems.map((item) => {
-              const active = pathname.startsWith(item.href);
+            {visibleNavItems.map((item) => {
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link
                   key={item.href}
@@ -128,6 +152,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
           <div className="mt-8 rounded-xl border border-white/20 bg-white/8 p-3 text-sm">
             <p className="text-cyan-100">Signed in as</p>
             <p className="font-semibold text-white">{email}</p>
+            <p className="mt-1 text-xs uppercase tracking-[0.16em] text-cyan-100/80">{role === "super_admin" ? "Super Admin" : "Admin"}</p>
             <button
               type="button"
               onClick={logout}

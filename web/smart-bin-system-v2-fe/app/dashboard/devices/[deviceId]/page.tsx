@@ -50,35 +50,36 @@ const parseCoordinatePair = (latitudeValue: string, longitudeValue: string): Loc
 };
 
 const buildTelemetryHistory = (telemetries: DeviceTelemetries): DeviceTelemetryHistoryItem[] => {
-  const fillPoints = [
-    ...(telemetries.fillLevel ?? []),
-    ...(telemetries.trashLevel ?? []),
-    ...(telemetries.binFillLevel ?? []),
-  ];
+  const binKeys = ['bin1', 'bin2', 'bin3', 'bin4'];
+  const binPoints = binKeys.flatMap((k) => telemetries[k] ?? []);
+  const totalPoints = telemetries.total_waste_count ?? [];
 
-  const throwPoints = [
-    ...(telemetries.throwCount ?? []),
-    ...(telemetries.wasteCount ?? []),
-    ...(telemetries.garbageThrowCount ?? []),
-  ];
+  type TempEntry = { timestamp: number; bins: number[]; throwCount: number | null };
+  const grouped = new Map<number, TempEntry>();
 
-  const grouped = new Map<number, DeviceTelemetryHistoryItem>();
-
-  fillPoints.forEach((point) => {
-    const existing = grouped.get(point.ts) ?? { timestamp: point.ts, fillLevel: null, throwCount: null };
-    existing.fillLevel = toNumber(point.value);
+  binPoints.forEach((point) => {
+    const existing = grouped.get(point.ts) ?? { timestamp: point.ts, bins: [], throwCount: null };
+    const val = toNumber(point.value);
+    if (val !== null) existing.bins.push(val);
     grouped.set(point.ts, existing);
   });
 
-  throwPoints.forEach((point) => {
-    const existing = grouped.get(point.ts) ?? { timestamp: point.ts, fillLevel: null, throwCount: null };
+  totalPoints.forEach((point) => {
+    const existing = grouped.get(point.ts) ?? { timestamp: point.ts, bins: [], throwCount: null };
     existing.throwCount = toNumber(point.value);
     grouped.set(point.ts, existing);
   });
 
-  return Array.from(grouped.values())
+  const results: DeviceTelemetryHistoryItem[] = Array.from(grouped.values())
+    .map((entry) => ({
+      timestamp: entry.timestamp,
+      fillLevel: entry.bins.length > 0 ? Math.round((entry.bins.reduce((s, v) => s + v, 0) / entry.bins.length) * 100) / 100 : null,
+      throwCount: entry.throwCount,
+    }))
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, 20);
+
+  return results;
 };
 
 export default function DeviceDetailPage() {
@@ -147,7 +148,7 @@ export default function DeviceDetailPage() {
         setIsTelemetryLoading(true);
         const now = Date.now();
         const response = await deviceApi.getTelemetries(params.deviceId, {
-          keys: 'fillLevel,trashLevel,binFillLevel,throwCount,wasteCount,garbageThrowCount',
+          keys: 'bin1,bin2,bin3,bin4,total_waste_count',
           startTs: now - 7 * 24 * 60 * 60 * 1000,
           endTs: now,
           limit: 100,

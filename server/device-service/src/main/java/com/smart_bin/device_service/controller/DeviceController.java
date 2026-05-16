@@ -1,18 +1,17 @@
 package com.smart_bin.device_service.controller;
 
+import com.smart_bin.core.common.UserRole;
 import com.smart_bin.core.dto.ApiResponseFormat;
 import com.smart_bin.core.utils.ResponseFactory;
 import com.smart_bin.device_service.common.SuccessCode;
-import com.smart_bin.device_service.dto.request.AppVersionInfo;
-import com.smart_bin.device_service.dto.request.CreateDeviceRequest;
-import com.smart_bin.device_service.dto.request.ImportDeviceRequest;
-import com.smart_bin.device_service.dto.request.UpdateDeviceRequest;
+import com.smart_bin.device_service.dto.request.*;
 import com.smart_bin.device_service.service.DeviceService;
 import com.smart_bin.device_service.utils.HardwareSecureResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -38,13 +37,14 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.CREATED, response);
     }
 
-    @PostMapping
-    public ResponseEntity<ApiResponseFormat<Object>> addDevice(
-            @Valid @RequestBody CreateDeviceRequest request,
+    @PostMapping("/claim")
+    public ResponseEntity<ApiResponseFormat<Object>> claimDevice(
+            @Valid @RequestBody ClaimDeviceRequest request,
             @AuthenticationPrincipal Jwt jwt
-    ){
-        String keycloakId = jwt.getSubject();
-        var response = deviceService.addDevice(request, keycloakId);
+    ) {
+        // ID nội bộ của User lấy từ token Keycloak
+        String userId = jwt.getSubject();
+        var response = deviceService.claimDevice(request, userId);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -65,9 +65,16 @@ public class DeviceController {
             "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> getAllDevicesForAdmin(
             @RequestParam(required = false, defaultValue = "1") int page,
-            @RequestParam(required = false, defaultValue = "10") int size
+            @RequestParam(required = false, defaultValue = "10") int size,
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication
     ){
-        var response = deviceService.getAllDevicesForAdmin(page, size);
+        String actorId = jwt.getSubject();
+
+        boolean isSuperAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().contains(UserRole.SUPER_ADMIN.getRoleName()));
+
+        var response = deviceService.getAllDevicesForAdmin(page, size, actorId, isSuperAdmin);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -115,17 +122,6 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
-    @GetMapping("/{deviceId}/attributes")
-    public ResponseEntity<ApiResponseFormat<Object>> getAttributes(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable String deviceId,
-            @RequestParam(required = false, defaultValue = "") String keys
-    ){
-        String keycloakId = jwt.getSubject();
-        var response = deviceService.getAttributes(deviceId, keycloakId, keys);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
-
     @PostMapping("/public/presigned-url")
     @HardwareSecureResponse
     public ResponseEntity<ApiResponseFormat<Object>> getPresignedUrl(
@@ -153,36 +149,10 @@ public class DeviceController {
     }
 
     @PostMapping("/public/activate")
-    public ResponseEntity<ApiResponseFormat<Object>> activateDevice(
-            @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature,
-            @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
-            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
-    ){
-        var response = deviceService.activateDevice(payload, signature, desktopVer, binVer);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
-
-    @PostMapping("/public/upload-key")
-    public ResponseEntity<ApiResponseFormat<Object>> uploadPublicKey(
-            @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature,
-            @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
-            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
-    ){
-        var response = deviceService.uploadPublicKey(payload, signature, desktopVer, binVer);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
-
-    @PostMapping("/public/get-access-token")
-    @HardwareSecureResponse
-    public ResponseEntity<ApiResponseFormat<Object>> getAccessToken(
-            @RequestBody String payload,
-            @RequestHeader("X-Signature") String signature,
-            @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
-            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
-    ){
-        var response = deviceService.getAccessToken(payload, signature, desktopVer, binVer);
+    public ResponseEntity<ApiResponseFormat<Object>> provisionDevice(
+            @Valid @RequestBody DeviceProvisionRequest request
+    ) {
+        var response = deviceService.provisionDevice(request);
         return responseFactory.response(SuccessCode.OK, response);
     }
 }

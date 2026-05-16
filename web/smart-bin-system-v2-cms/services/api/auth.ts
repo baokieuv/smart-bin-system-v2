@@ -1,5 +1,5 @@
 import { api } from "@/lib/api-client";
-import type { LoginRequest, TokenResponse } from "@/types/auth";
+import type { AdminSessionUser, ChangePasswordRequest, LoginRequest, TokenResponse, UpdateProfileRequest } from "@/types/auth";
 
 export const authApi = {
   loginPassword: async (request: LoginRequest) => {
@@ -11,6 +11,14 @@ export const authApi = {
   },
 
   me: async () => {
-    return api.get<{ id: string; email: string; firstName?: string; lastName?: string; role?: string }>("/users/me");
+    return api.get<AdminSessionUser>("/users/me");
+  },
+
+  updateMe: async (request: UpdateProfileRequest) => {
+    return api.put<AdminSessionUser>("/users/me", request);
+  },
+
+  changePassword: async (request: ChangePasswordRequest) => {
+    return api.post<{ success: boolean }>("/auth/change-password", request);
   },
 };

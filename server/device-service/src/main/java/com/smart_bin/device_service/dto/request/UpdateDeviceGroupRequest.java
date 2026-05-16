@@ -1,11 +1,10 @@
 package com.smart_bin.device_service.dto.request;
 
-import jakarta.validation.constraints.Positive;
+import java.util.Map;
 
 public record UpdateDeviceGroupRequest(
         String code,
         String name,
-        @Positive(message = "Chiều cao phải lớn hơn 0")
-        Double binHeight,
+        Map<String, Object> sharedSpecs,
         String description
 ) {}

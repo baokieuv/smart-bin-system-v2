@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.databind.JsonNode;
 
-@FeignClient(name = "media-service", url = "${media-service.url:http://localhost:2109}")
+@FeignClient(name = "media-service", url = "${app.media-service.url:http://localhost:2109}")
 public interface MediaServiceClient {
 
     @PostMapping("/api/v1/media/internal/presigned-upload")

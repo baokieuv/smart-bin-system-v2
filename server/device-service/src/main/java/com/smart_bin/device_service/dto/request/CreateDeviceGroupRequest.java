@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
+import java.util.Map;
+
 public record CreateDeviceGroupRequest(
         @NotBlank(message = "Mã nhóm không được để trống")
         String code,
@@ -11,9 +13,8 @@ public record CreateDeviceGroupRequest(
         @NotBlank(message = "Tên nhóm không được để trống")
         String name,
 
-        @NotNull(message = "Chiều cao không được để trống")
-        @Positive(message = "Chiều cao phải lớn hơn 0")
-        Double binHeight,
+        @NotNull(message = "Thuộc tính không được để trống")
+        Map<String, Object> sharedSpecs,
 
         String description
 ) {}

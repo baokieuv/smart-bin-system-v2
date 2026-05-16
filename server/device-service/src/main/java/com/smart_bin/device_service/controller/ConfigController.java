@@ -28,9 +28,7 @@ public class ConfigController {
     // ==========================================
 
     @PostMapping("/firmwares")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> uploadFirmware(
             @RequestParam("file") MultipartFile file,
             @RequestParam("version") String version,
@@ -42,9 +40,7 @@ public class ConfigController {
     }
 
     @GetMapping("/firmwares")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> getFirmwares(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size
@@ -54,9 +50,7 @@ public class ConfigController {
     }
 
     @DeleteMapping("/firmwares/{id}")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> deleteFirmware(@PathVariable java.util.UUID id) {
         configService.deleteFirmware(id);
         return responseFactory.response(SuccessCode.OK, "Đã xóa mềm firmware");
@@ -80,18 +74,6 @@ public class ConfigController {
     ) {
         String keycloakId = jwt.getSubject();
         var response = configService.updateOwnerConfig(deviceId, keycloakId, request);
-        return responseFactory.response(SuccessCode.OK, response);
-    }
-
-    @PutMapping("/devices/{deviceId}/admin")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
-    public ResponseEntity<ApiResponseFormat<Object>> updateAdminConfig(
-            @PathVariable String deviceId,
-            @RequestBody UpdateAdminConfigRequest request
-    ) {
-        var response = configService.updateAdminConfig(deviceId, request);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

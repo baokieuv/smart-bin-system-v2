@@ -6,7 +6,10 @@ import com.smart_bin.device_service.common.DeviceStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -18,17 +21,15 @@ public class Device extends BaseEntity {
     @GeneratedValue(generator = "uuid-v7-generator")
     private UUID id;
 
+    // --- Thingsboard / Định danh ---
     private String accessToken;
-
     private String deviceId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String mac;
 
     private String name;
-
     private Double longitude;
-
     private Double latitude;
 
     @Enumerated(EnumType.STRING)
@@ -37,25 +38,45 @@ public class Device extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private DeviceStatus status;
 
-    @Column(name = "keycloak_id", nullable = false, length = 36)
-    private String keycloakId;
-
     @Column(columnDefinition = "TEXT")
     private String publicKey;
+
+    // --- Sở hữu (Tenant & User) ---
+    @Column(name = "tenant_id", nullable = false, length = 36)
+    private String tenantId; // Bắt buộc có ngay khi kích hoạt (Provisioning)
+
+    @Column(name = "user_id", length = 36)
+    private String userId; // Nullable: Sẽ được gán khi User "claim" thiết bị qua App
 
     @Column(name = "claimed_at")
     private Long claimedAt;
 
+    // --- Firmware Tracking (Current) ---
     @Column(name = "desktop_version")
-    private String desktopVersion;
+    private String desktopVersion; // Version thiết bị đang báo lên
 
     @Column(name = "bin_version")
-    private String binVersion;
+    private String binVersion; // Version thiết bị đang báo lên
 
+    // --- Firmware Routing (Target do Hệ thống/Admin tự map) ---
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "target_bin_firmware_id")
+    private Firmware targetBinFirmware;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "target_desktop_firmware_id")
+    private Firmware targetDesktopFirmware;
+
+    // --- Metadata phần cứng (Dùng để quyết định Firmware trên) ---
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "hw_metadata", nullable = false)
+    private Map<String, Object> hwMetadata; // VD: {"board": "esp32", "ram": "4mb"}
+
+    // --- Quan hệ ---
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "group_id")
     private DeviceGroup deviceGroup;
 
-    @OneToOne(mappedBy = "device", fetch = FetchType.LAZY)
+    @OneToOne(mappedBy = "device", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private DeviceConfig deviceConfig;
 }
