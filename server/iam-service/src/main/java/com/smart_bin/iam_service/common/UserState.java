@@ -9,7 +9,8 @@ public enum UserState {
     PENDING(0),
     ACTIVE(1),
     SUSPENDED(2),
-    DELETED(3);
+    BLOCKED(3),
+    DELETED(4);
 
     private final int value;
 

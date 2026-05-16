@@ -1,12 +1,8 @@
 package com.smart_bin.iam_service.controller;
 
-import com.smart_bin.core.common.UserRole;
 import com.smart_bin.core.dto.ApiResponseFormat;
-import com.smart_bin.core.exception.ApiException;
-import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.core.utils.ResponseFactory;
 import com.smart_bin.iam_service.common.SuccessCode;
-import com.smart_bin.iam_service.dto.auth.request.UpdateUserAccessRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateUserStateRequest;
 import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
 import com.smart_bin.iam_service.dto.user.request.UpdateUserRequest;
@@ -19,8 +15,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -37,66 +31,31 @@ public class UserController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> getUsers(
             @RequestParam(required = false, defaultValue = "1") Long page,
-            @RequestParam(required = false, defaultValue = "10") Long size,
-            @AuthenticationPrincipal Jwt jwt
+            @RequestParam(required = false, defaultValue = "10") Long size
     ){
-        String actorId = jwt.getSubject();
-        var users = userService.getUsers(page, size, actorId);
+        var users = userService.getUsers(page, size);
         return responseFactory.response(SuccessCode.OK, users);
     }
 
-    @GetMapping("/{userId}")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
-    public ResponseEntity<ApiResponseFormat<Object>> getUserById(
-            @PathVariable String userId,
-            @AuthenticationPrincipal Jwt jwt
+    @PatchMapping("/{userId}/global-status")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    public ResponseEntity<ApiResponseFormat<Object>> updateGlobalStatusById(
+            @PathVariable("userId") String userId,
+            @Valid @RequestBody UpdateUserStateRequest request
     ){
-        String actorId = jwt.getSubject();
-        var user = userService.getUserByIdForAdmin(userId, actorId);
-        return responseFactory.response(SuccessCode.OK, user);
-    }
-
-    @PatchMapping("/{userId}/state")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
-    public ResponseEntity<ApiResponseFormat<Object>> updateUserStateById(
-            @PathVariable String userId,
-            @Valid @RequestBody UpdateUserStateRequest request,
-            @AuthenticationPrincipal Jwt jwt
-    ){
-        String actorId = jwt.getSubject();
-        var user = userService.updateUserStateById(userId, request, actorId);
-        return responseFactory.response(SuccessCode.OK, user);
-    }
-
-    @PutMapping
-    public ResponseEntity<ApiResponseFormat<Object>> updateUserById(
-            @Valid @RequestBody UpdateUserRequest request,
-            @AuthenticationPrincipal Jwt jwt
-    ){
-        String keycloakId = jwt.getSubject();
-        var user = userService.updateUser(keycloakId, request);
+        var user = userService.updateUserStateById(userId, request);
         return responseFactory.response(SuccessCode.OK, user);
     }
 
     @DeleteMapping("/{targetUserId}")
     @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> deleteUserById(
-            @PathVariable("targetUserId") String targetUserId, // Map đúng tên
-            @AuthenticationPrincipal Jwt jwt
+            @PathVariable("targetUserId") String targetUserId
     ){
-        String actorId = jwt.getSubject();
-
-        userService.deleteUserById(actorId, targetUserId);
-
+        userService.deleteUserById(targetUserId);
         return responseFactory.response(SuccessCode.OK, "User deleted successfully");
     }
 
@@ -107,24 +66,13 @@ public class UserController {
         return responseFactory.response(SuccessCode.OK, user);
     }
 
-    @PostMapping("/access")
-    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
-    public ResponseEntity<ApiResponseFormat<Object>> changeUserAccess(
-            @Valid @RequestBody UpdateUserAccessRequest request,
+    @PutMapping("/me")
+    public ResponseEntity<ApiResponseFormat<Object>> updateMyProfile(
+            @Valid @RequestBody UpdateUserRequest request,
             @AuthenticationPrincipal Jwt jwt
-    ) {
-
-        UserRole targetRole;
-        try {
-            targetRole = UserRole.fromString(request.roleName()); // Lấy từ record DTO
-        } catch (IllegalArgumentException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Role không hợp lệ. Chỉ chấp nhận USER, ADMIN hoặc SUPER_ADMIN");
-        }
-
-        String actorId = jwt.getSubject();
-
-        userService.updateUserRole(actorId, request.targetUserId(), targetRole);
-
-        return responseFactory.response(SuccessCode.OK, "Cập nhật quyền thành công");
+    ){
+        String keycloakId = jwt.getSubject();
+        var user = userService.updateUser(keycloakId, request);
+        return responseFactory.response(SuccessCode.OK, user);
     }
 }

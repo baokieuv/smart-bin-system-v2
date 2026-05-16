@@ -35,9 +35,11 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/v1/users").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/tenants/verify-secret").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
 
                         .requestMatchers("/api/v1/users/**").authenticated()
+                        .requestMatchers("/api/v1/tenants/**").authenticated()
 
                         .anyRequest().authenticated()
                 )

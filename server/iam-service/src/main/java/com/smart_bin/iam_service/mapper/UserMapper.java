@@ -19,14 +19,4 @@ public interface UserMapper {
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     void updateUserFromRequest(UpdateUserRequest request, @MappingTarget User user);
-
-    @AfterMapping
-    default void cleanUpStrings(@MappingTarget User user) {
-        if (user.getFirstName() != null) {
-            user.setFirstName(user.getFirstName().trim());
-        }
-        if (user.getLastName() != null) {
-            user.setLastName(user.getLastName().trim());
-        }
-    }
 }

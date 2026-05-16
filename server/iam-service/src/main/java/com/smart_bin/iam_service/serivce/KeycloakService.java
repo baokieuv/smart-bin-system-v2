@@ -3,6 +3,7 @@ package com.smart_bin.iam_service.serivce;
 import com.smart_bin.core.common.UserRole;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
+import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.LoginRequest;
 import com.smart_bin.iam_service.dto.auth.response.TokenResponse;
 import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
@@ -54,8 +55,10 @@ public class KeycloakService {
         user.setEnabled(false);
         user.setUsername(request.email());
         user.setEmail(request.email());
-        user.setFirstName(request.firstName());
-        user.setLastName(request.lastName());
+
+        String[] names = splitName(request.name());
+        user.setFirstName(names[0]);
+        user.setLastName(names[1]);
         user.setEmailVerified(false);
 
         CredentialRepresentation credential = new CredentialRepresentation();
@@ -88,6 +91,106 @@ public class KeycloakService {
         } catch (Exception e) {
             log.error("Error creating user in Keycloak", e);
             throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi hệ thống khi tạo tài khoản.");
+        }
+    }
+
+    public String createTenantAdminAccount(String email, String password, String name) {
+        UserRepresentation user = new UserRepresentation();
+        user.setEnabled(true);
+        user.setUsername(email);
+        user.setEmail(email);
+
+        String[] names = splitName(name);
+        user.setFirstName(names[0]);
+        user.setLastName(names[1]);
+        user.setEmailVerified(true);
+
+        CredentialRepresentation credential = new CredentialRepresentation();
+        credential.setType(CredentialRepresentation.PASSWORD);
+        credential.setValue(password);
+        credential.setTemporary(false);
+
+        user.setCredentials(Collections.singletonList(credential));
+
+        try (jakarta.ws.rs.core.Response response = keycloak.realm(realm).users().create(user)) {
+            if (response.getStatus() == 201) {
+                String locationHeader = response.getHeaderString("Location");
+                String userId = locationHeader.substring(locationHeader.lastIndexOf('/') + 1);
+                updateRealmRole(userId, UserRole.ADMIN); // Gán role Tenant Admin
+                return userId;
+            } else if (response.getStatus() == 409) {
+                throw new ApiException(CoreErrorCode.BAD_REQUEST, "Email Tenant đã tồn tại trên Identity Provider");
+            } else {
+                throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Failed to create Tenant in Keycloak");
+            }
+        }
+    }
+
+    // ... (Các code cũ của KeycloakService) ...
+
+    public String createSuperAdminAccount(String email, String password, String name) {
+        UserRepresentation user = new UserRepresentation();
+        user.setEnabled(true);
+        user.setUsername(email);
+        user.setEmail(email);
+
+        String[] names = splitName(name);
+        user.setFirstName(names[0]);
+        user.setLastName(names[1]);
+        user.setEmailVerified(true);
+
+        CredentialRepresentation credential = new CredentialRepresentation();
+        credential.setType(CredentialRepresentation.PASSWORD);
+        credential.setValue(password);
+        credential.setTemporary(false);
+
+        user.setCredentials(Collections.singletonList(credential));
+
+        try (jakarta.ws.rs.core.Response response = keycloak.realm(realm).users().create(user)) {
+            if (response.getStatus() == 201) {
+                String locationHeader = response.getHeaderString("Location");
+                String userId = locationHeader.substring(locationHeader.lastIndexOf('/') + 1);
+
+                // Gán Role SUPER_ADMIN trên Keycloak
+                updateRealmRole(userId, UserRole.SUPER_ADMIN);
+
+                // Update attribute để đồng bộ trạng thái
+                updateUserAttribute(userId, "user_state", UserState.ACTIVE.name());
+
+                return userId;
+            } else if (response.getStatus() == 409) {
+                // Xử lý trường hợp Keycloak đã có user này (có thể do xóa DB nhưng chưa xóa Keycloak)
+                log.warn("Tài khoản Super Admin đã tồn tại trên Keycloak Provider.");
+                List<UserRepresentation> existingUsers = keycloak.realm(realm).users().search(email, true);
+                return existingUsers.get(0).getId();
+            } else {
+                throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể tạo Super Admin trên Keycloak. Status: " + response.getStatus());
+            }
+        }
+    }
+
+    public void updateUserInfo(String userId, String name) {
+        try {
+            UserRepresentation user = keycloak.realm(realm).users().get(userId).toRepresentation();
+            String[] names = splitName(name);
+            user.setFirstName(names[0]);
+            user.setLastName(names[1]);
+            keycloak.realm(realm).users().get(userId).update(user);
+        } catch (Exception e) {
+            log.error("Error updating user info for {} in Keycloak", userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật thông tin người dùng.");
+        }
+    }
+
+    public void disableUser(String userId) {
+        try {
+            UserRepresentation user = keycloak.realm(realm).users().get(userId).toRepresentation();
+            user.setEnabled(false);
+            keycloak.realm(realm).users().get(userId).update(user);
+            logoutAllSessions(userId); // Kick ra ngay lập tức
+        } catch (Exception e) {
+            log.error("Error disabling user {} in Keycloak", userId, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi khi khóa tài khoản.");
         }
     }
 
@@ -240,25 +343,6 @@ public class KeycloakService {
         }
     }
 
-    public UserRepresentation getUserByEmail(String email) {
-        try {
-            List<UserRepresentation> users = keycloak.realm(realm).users().search(email, true);
-            return users.isEmpty() ? null : users.getFirst();
-        } catch (Exception e) {
-            log.error("Error fetching user by email from Keycloak", e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi truy xuất thông tin từ Identity Provider.");
-        }
-    }
-
-    public UserRepresentation getUserById(String userId) {
-        try {
-            return keycloak.realm(realm).users().get(userId).toRepresentation();
-        } catch (Exception e) {
-            log.error("Error fetching user {} from Keycloak", userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi truy xuất thông tin người dùng.");
-        }
-    }
-
     public void updateUserInfo(String userId, String firstName, String lastName) {
         try {
             UserRepresentation user = keycloak.realm(realm).users().get(userId).toRepresentation();
@@ -295,20 +379,6 @@ public class KeycloakService {
         }
     }
 
-    public void linkIdentityProvider(String userId, String providerAlias, String providerUserId, String providerUsername) {
-        try {
-            FederatedIdentityRepresentation identity = new FederatedIdentityRepresentation();
-            identity.setIdentityProvider(providerAlias);
-            identity.setUserId(providerUserId);
-            identity.setUserName(providerUsername);
-
-            keycloak.realm(realm).users().get(userId).addFederatedIdentity(providerAlias, identity);
-        } catch (Exception e) {
-            // Thay thế System.out.println bằng log.warn
-            log.warn("User {} is already linked to {} or error occurred: {}", userId, providerAlias, e.getMessage());
-        }
-    }
-
     private TokenResponse fetchToken(MultiValueMap<String, String> body) {
         Map response = restClient.post()
                 .uri(serverUrl + "/realms/" + realm + "/protocol/openid-connect/token")
@@ -328,5 +398,18 @@ public class KeycloakService {
                 (Integer) response.get("refresh_expires_in"),
                 (String) response.get("token_type")
         );
+    }
+
+    private String[] splitName(String name) {
+        String firstName = "";
+        String lastName = "";
+        if (name != null && !name.trim().isEmpty()) {
+            String[] parts = name.trim().split(" ", 2);
+            firstName = parts[0];
+            if (parts.length > 1) {
+                lastName = parts[1];
+            }
+        }
+        return new String[]{firstName, lastName};
     }
 }

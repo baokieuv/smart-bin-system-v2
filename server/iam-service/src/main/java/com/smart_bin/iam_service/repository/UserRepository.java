@@ -11,11 +11,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
+    Optional<User> findByKeycloakId(String id);
     Optional<User> findByKeycloakIdAndActiveTrue(String id);
+
     Optional<User> findByEmail(String email);
     Optional<User> findByEmailAndActiveTrue(String email);
+
     Optional<User> findByIdAndActiveTrue(UUID id);
     Optional<User> findByActionTokenAndActiveTrue(String token);
-    Page<User> findByRoleOrKeycloakId(UserRole role, String keycloakId, Pageable pageable);
+
     boolean existsByEmail(String email);
 }

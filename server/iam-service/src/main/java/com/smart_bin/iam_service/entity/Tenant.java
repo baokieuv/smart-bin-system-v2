@@ -10,12 +10,11 @@ import lombok.Setter;
 
 import java.util.UUID;
 
-
 @Entity
-@Table(name = "users")
+@Table(name = "tenants")
 @Getter
 @Setter
-public class User extends BaseEntity {
+public class Tenant extends BaseEntity {
     @Id
     @GeneratedValue(generator = "uuid-v7-generator")
     private UUID id;
@@ -28,22 +27,14 @@ public class User extends BaseEntity {
 
     private String name;
 
-    @Column(nullable = false)
-    private boolean emailVerified = false;
-
-    private String actionToken;
-
-    private Long actionTokenExpiry;
-
-    @Enumerated(EnumType.STRING)
-    private TokenType tokenType;
-
     @Enumerated(EnumType.STRING) // Store as a readable string (e.g., "ACTIVE")
     private UserState state;
 
     private String avatarUrl;
 
+    private String provisionSecret;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private UserRole role = UserRole.USER;
+    private UserRole role = UserRole.ADMIN;
 }

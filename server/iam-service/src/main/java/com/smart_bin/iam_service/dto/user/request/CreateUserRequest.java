@@ -16,11 +16,8 @@ public record CreateUserRequest (
         @ValidPassword
         String password,
 
-        @NotBlank(message = "First name is required")
-        String firstName,
-
-        @NotBlank(message = "Last name is required")
-        String lastName,
+        @NotBlank(message = "Name is required")
+        String name,
 
         @NotBlank(message = "Captcha is required")
         String captcha
