@@ -24,4 +24,14 @@ public enum UserState {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown UserState value: " + value));
     }
+
+    public static UserState fromString(String status) {
+        if (status == null || status.trim().isEmpty()) {
+            throw new IllegalArgumentException("Trạng thái (status) không được để trống.");
+        }
+        return Stream.of(values())
+                .filter(state -> state.name().equalsIgnoreCase(status.trim()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unknown UserState string: " + status));
+    }
 }

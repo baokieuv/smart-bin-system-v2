@@ -83,11 +83,15 @@ public class TenantService {
     }
 
     @Transactional
-    public TenantDto updateTenantStatus(String tenantId, UpdateTenantStatusRequest request) {
+    public TenantDto updateTenantStatus(String tenantId, String actorId, UpdateTenantStatusRequest request) {
         Tenant tenant = tenantRepository.findById(UUID.fromString(tenantId))
                 .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Không tìm thấy Tenant"));
 
-        UserState newState = UserState.valueOf(request.status());
+        if (tenant.getKeycloakId().equals(actorId)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không thể thay đổi trạng thái của chính mình");
+        }
+
+        UserState newState = UserState.fromString(request.status());
 
         if (newState == UserState.ACTIVE && !tenant.isActive()) {
             tenant.setActive(true);

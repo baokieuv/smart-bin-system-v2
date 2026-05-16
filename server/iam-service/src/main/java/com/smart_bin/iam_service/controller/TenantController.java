@@ -42,13 +42,16 @@ public class TenantController {
     @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> updateTenantStatus(
             @PathVariable("id") String id,
-            @RequestBody UpdateTenantStatusRequest request){
-        var response = service.updateTenantStatus(id, request);
+            @RequestBody UpdateTenantStatusRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String actorId = jwt.getSubject();
+        var response = service.updateTenantStatus(id, actorId, request);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
     @GetMapping("/users")
-    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).TENANT_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> getTenantUsers(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false, defaultValue = "1") Long page,
@@ -60,7 +63,7 @@ public class TenantController {
     }
 
     @PutMapping("/users/{userId}/tenant-status")
-    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).TENANT_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> updateTenantUserStatus(
             @PathVariable("userId") String targetUserId,
             @RequestBody UpdateTenantUserStatusRequest request,
