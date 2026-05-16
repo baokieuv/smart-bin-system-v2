@@ -4,7 +4,7 @@ export interface DeviceGroupDto {
   id: string;
   code: string;
   name: string;
-  binHeight: number;
+  sharedSpecs: Record<string, unknown>;
   description?: string;
 }
 

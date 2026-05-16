@@ -8,7 +8,8 @@ import type { DeviceGroupDto } from "@/types/device-group";
 
 export default function DeviceGroupsPage() {
   const [items, setItems] = useState<DeviceGroupDto[]>([]);
-  const [form, setForm] = useState({ code: "", name: "", binHeight: "", description: "" });
+  const [form, setForm] = useState({ code: "", name: "", sharedSpecsJson: "{}", description: "" });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
   const load = async () => {
@@ -22,28 +23,42 @@ export default function DeviceGroupsPage() {
     });
   }, []);
 
-  const createDeviceGroup = async (event: FormEvent) => {
+  const saveDeviceGroup = async (event: FormEvent) => {
     event.preventDefault();
     setMessage("");
 
-    const parsedBinHeight = Number(form.binHeight);
-    if (!Number.isFinite(parsedBinHeight) || parsedBinHeight <= 0) {
-      setMessage("Bin height must be greater than 0");
+    let parsedSpecs: Record<string, unknown>;
+    try {
+      parsedSpecs = JSON.parse(form.sharedSpecsJson || "{}");
+    } catch (e) {
+      setMessage("Invalid JSON for shared specs");
       return;
     }
 
     try {
-      await deviceGroupsAdminApi.createDeviceGroup({
-        code: form.code.trim(),
-        name: form.name.trim(),
-        binHeight: parsedBinHeight,
-        description: form.description.trim() || undefined,
-      });
-      setForm({ code: "", name: "", binHeight: "", description: "" });
-      setMessage("Device group created");
+      if (editingId) {
+        await deviceGroupsAdminApi.updateDeviceGroup(editingId, {
+          code: form.code.trim(),
+          name: form.name.trim(),
+          sharedSpecs: parsedSpecs,
+          description: form.description.trim() || undefined,
+        });
+        setMessage("Device group updated");
+      } else {
+        await deviceGroupsAdminApi.createDeviceGroup({
+          code: form.code.trim(),
+          name: form.name.trim(),
+          sharedSpecs: parsedSpecs,
+          description: form.description.trim() || undefined,
+        });
+        setMessage("Device group created");
+      }
+
+      setForm({ code: "", name: "", sharedSpecsJson: "{}", description: "" });
+      setEditingId(null);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Create failed");
+      setMessage(error instanceof Error ? error.message : "Save failed");
     }
   };
 
@@ -66,7 +81,7 @@ export default function DeviceGroupsPage() {
               <tr className="border-b border-slate-200 text-slate-600">
                 <th className="py-2 px-3">Code</th>
                 <th className="py-2 px-3">Name</th>
-                <th className="py-2 px-3">Bin Height (cm)</th>
+                  <th className="py-2 px-3">Shared Specs</th>
                 <th className="py-2 px-3">Description</th>
                 <th className="py-2 px-3">Action</th>
               </tr>
@@ -76,18 +91,32 @@ export default function DeviceGroupsPage() {
                 <tr key={item.id} className="border-b border-slate-200/70">
                   <td className="py-2 px-3 font-medium text-foreground">{item.code}</td>
                   <td className="py-2 px-3 text-slate-600">{item.name}</td>
-                  <td className="py-2 px-3 text-slate-600">{item.binHeight}</td>
                   <td className="py-2 px-3 text-slate-600">
-                    <div className="max-w-[28rem] max-h-20 overflow-auto whitespace-pre-wrap break-words">{item.description || "-"}</div>
+                    <div className="max-w-md max-h-20 overflow-auto whitespace-pre-wrap wrap-break-word">{JSON.stringify(item.sharedSpecs ?? {})}</div>
+                  </td>
+                  <td className="py-2 px-3 text-slate-600">
+                    <div className="max-w-md max-h-20 overflow-auto whitespace-pre-wrap wrap-break-word">{item.description || "-"}</div>
                   </td>
                   <td className="py-2">
-                    <button
-                      type="button"
-                      onClick={() => void remove(item.id)}
-                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingId(item.id);
+                          setForm({ code: item.code, name: item.name, sharedSpecsJson: JSON.stringify(item.sharedSpecs ?? {}, null, 2), description: item.description || "" });
+                        }}
+                        className="rounded-lg bg-slate-100 px-2 py-1 text-sm"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void remove(item.id)}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -98,7 +127,7 @@ export default function DeviceGroupsPage() {
 
       <div className="space-y-4">
         <Panel title="New Device Group">
-          <form onSubmit={createDeviceGroup} className="space-y-3">
+          <form onSubmit={saveDeviceGroup} className="space-y-3">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
               placeholder="Code (e.g. SMART_BIN_60L_V1)"
@@ -113,15 +142,13 @@ export default function DeviceGroupsPage() {
               onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
               required
             />
-            <input
-              className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Bin height (cm)"
-              value={form.binHeight}
-              onChange={(event) => setForm((prev) => ({ ...prev, binHeight: event.target.value }))}
+            <label className="block text-sm text-slate-600">Shared specs (JSON)</label>
+            <textarea
+              className="h-28 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm"
+              placeholder='{"width":20, "height":30, "color":"blue"}'
+              value={form.sharedSpecsJson}
+              onChange={(event) => setForm((prev) => ({ ...prev, sharedSpecsJson: event.target.value }))}
               required
-              type="number"
-              min="0.01"
-              step="0.01"
             />
             <textarea
               className="h-28 w-full rounded-xl border border-slate-200 px-3 py-2"
@@ -129,9 +156,24 @@ export default function DeviceGroupsPage() {
               value={form.description}
               onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
             />
-            <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
-              Create device group
-            </button>
+            <div className="flex gap-2">
+              <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
+                {editingId ? "Update device group" : "Create device group"}
+              </button>
+              {editingId ? (
+                <button
+                  type="button"
+                  className="rounded-xl bg-slate-100 px-4 py-2 text-sm"
+                  onClick={() => {
+                    setEditingId(null);
+                    setForm({ code: "", name: "", sharedSpecsJson: "{}", description: "" });
+                    setMessage("");
+                  }}
+                >
+                  Cancel
+                </button>
+              ) : null}
+            </div>
             {message ? <p className="text-sm text-slate-600">{message}</p> : null}
           </form>
         </Panel>
