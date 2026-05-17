@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -67,12 +67,60 @@ class DetectionConfig:
 	# Detection pipeline thresholds/timing parameters.
 	hand_img_size: int = _env_int("SMART_BIN_HAND_IMG_SIZE", 320)
 	hand_confidence: float = _env_float("SMART_BIN_HAND_CONF", 0.5)
+	waste_group_confidence_threshold: float = _env_float("SMART_BIN_WASTE_GROUP_CONFIDENCE_THRESHOLD", 0.5)
 	motion_threshold: int = _env_int("SMART_BIN_MOTION_THRESHOLD", 1600)
 	stable_seconds: float = _env_float("SMART_BIN_STABLE_SECONDS", 0.8)
 	min_result_interval_seconds: float = _env_float("SMART_BIN_MIN_RESULT_INTERVAL", 1.0)
 	min_classification_confidence: float = _env_float("SMART_BIN_MIN_CLASS_CONF", 0.35)
 	pause_sleep_seconds: float = _env_float("SMART_BIN_PAUSE_SLEEP", 0.1)
 	exception_sleep_seconds: float = _env_float("SMART_BIN_EXCEPTION_SLEEP", 0.05)
+
+
+@dataclass(frozen=True)
+class WasteGroupConfig:
+	# Runtime mapping from trash category -> waste routing group.
+	category_to_group: dict[str, str] = field(
+		default_factory=lambda: {
+			"cardboard": "recyclable",
+			"paper": "recyclable",
+			"plastic": "recyclable",
+			"metal": "recyclable",
+			"glass": "recyclable",
+			"biological": "compostable",
+			"clothes": "compostable",
+			"shoes": "compostable",
+			"battery": "non_recyclable",
+			"trash": "non_recyclable",
+		}
+	)
+
+	# Group metadata for UI and actuator routing.
+	angle_by_group: dict[str, int] = field(
+		default_factory=lambda: {
+			"recyclable": 45,
+			"compostable": -45,
+			"non_recyclable": 135,
+			"unknown": -135,
+		}
+	)
+
+	badge_by_group: dict[str, str] = field(
+		default_factory=lambda: {
+			"recyclable": "🟢",
+			"compostable": "🟡",
+			"non_recyclable": "🔴",
+			"unknown": "⚪",
+		}
+	)
+
+	description_by_group: dict[str, str] = field(
+		default_factory=lambda: {
+			"recyclable": "Có thể tái chế",
+			"compostable": "Phân hủy sinh học",
+			"non_recyclable": "Không tái chế được",
+			"unknown": "Không xác định",
+		}
+	)
 
 
 @dataclass(frozen=True)
@@ -114,6 +162,7 @@ class Esp32OtaConfig:
 	cmd_ctrl_stepper: int = 0x11
 	cmd_ctrl_device_config: int = 0x50
 	cmd_report_fill_level: int = 0x40
+	cmd_get_system_info: int = 0x70
 	cmd_get_version: int = 0x60
 	cmd_ota_start: int = 0x20
 	cmd_ota_data: int = 0x21
@@ -126,6 +175,14 @@ class Esp32OtaConfig:
 	header_2: int = 0x55
 	tail: int = 0xEF
 
+
+@dataclass(frozen=True)
+class BackendConfig:
+	"""Backend config -> provision secret."""
+	tenant_secret: str = _env_str("SMART_BIN_TENANT_SECRET", "08290f771ce747c487dff9f1707212037cfcc90721f84a29")
+	group_code: str = _env_str("SMART_BIN_GROUP_CODE", "SMART_BIN_60L")
+	activate_retry_max_delay_seconds: int = _env_int("SMART_BIN_ACTIVATE_RETRY_MAX_DELAY_SECONDS", 60)
+ 
 
 @dataclass(frozen=True)
 class PathConfig:
@@ -202,10 +259,12 @@ class AppConfig:
 	window: WindowConfig = WindowConfig()
 	camera: CameraConfig = CameraConfig()
 	detection: DetectionConfig = DetectionConfig()
+	waste_group: WasteGroupConfig = WasteGroupConfig()
 	viewmodel: ViewModelConfig = ViewModelConfig()
 	api: ApiConfig = ApiConfig()
 	esp32_ota: Esp32OtaConfig = Esp32OtaConfig()
 	desktop_version: str = _env_str("SMART_BIN_DESKTOP_VERSION", "1.0.0")
+	backend: BackendConfig = BackendConfig()
 	paths: PathConfig = PathConfig()
 
 

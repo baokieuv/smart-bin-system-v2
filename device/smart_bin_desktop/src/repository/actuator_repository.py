@@ -14,6 +14,7 @@ import serial
 from threading import Event, Lock, Thread
 from typing import Callable, Any
 
+from src.models.system_info_dto import SystemInfoDto
 from src.utils.config import APP_CONFIG
 
 
@@ -247,6 +248,32 @@ class ActuatorRepository:
             self.logger.exception("Failed to query bin version")
             return False, str(exc)
 
+    def _get_system_info_task(self, timeout: float = 3.0) -> tuple[bool, SystemInfoDto | None]:
+        """Send system-info request and wait for ESP32 response frame."""
+        try:
+            ser = self._get_or_open_serial()
+            with self._serial_lock:
+                ser.write(self._create_frame(self.config.cmd_get_system_info))
+                start = time.time()
+                buffer = bytearray()
+                while time.time() - start < timeout:
+                    if ser.in_waiting > 0:
+                        buffer.extend(ser.read(ser.in_waiting))
+                        cmd, payload, consumed = self._extract_valid_frame(buffer)
+                        if consumed > 0:
+                            if cmd == self.config.cmd_get_system_info:
+                                try:
+                                    return True, SystemInfoDto.from_payload(payload)
+                                except Exception:
+                                    self.logger.exception("Invalid system info payload received")
+                                    return False, None
+                            buffer = buffer[consumed:]
+                    time.sleep(0.01)
+            return False, None
+        except Exception:
+            self.logger.exception("Failed to query system info")
+            return False, None
+
     def _upload_ota_task(self, firmware_path: Path) -> tuple[bool, str]:
         if not firmware_path.exists():
             return False, f"Firmware file not found: {firmware_path}"
@@ -335,10 +362,6 @@ class ActuatorRepository:
         wait_timeout = None if timeout is None else timeout + 1.0
         return self._wait_for_task(task, timeout=wait_timeout)
 
-    def get_firmware_version(self, timeout: float | None = None) -> tuple[bool, str | None]:
-        """Backward-compatible alias for get_bin_version()."""
-        return self.get_bin_version(timeout=timeout)
-
     def request_fill_levels(self, timeout: float | None = None) -> tuple[bool, list[int] | None]:
         """Send request command to get fill levels from ESP32.
         
@@ -354,6 +377,12 @@ class ActuatorRepository:
         firmware_path = Path(firmware_file) if firmware_file else self.firmware_file
         task = self._queue_command(lambda: self._upload_ota_task(firmware_path), f"upload_ota({firmware_path.name})")
         return self._wait_for_task(task, timeout=None)
+
+    def get_system_info(self, timeout: float | None = None) -> tuple[bool, SystemInfoDto | None]:
+        """Request chip, flash, and RAM information from the ESP32."""
+        task = self._queue_command(lambda: self._get_system_info_task(timeout or 3.0), "get_system_info")
+        wait_timeout = None if timeout is None else timeout + 1.0
+        return self._wait_for_task(task, timeout=wait_timeout)
 
     def close_serial(self) -> None:
         """Close the serial connection."""

@@ -8,6 +8,10 @@
 #include "mbedtls/md.h"
 #include "nvs_storage.h"
 #include "ultrasonic_sensor.h"
+
+#include "esp_flash.h"
+#include "esp_system.h"
+#include "esp_chip_info.h"
 #include <string.h>
 
 static const char *TAG = "UART_HANDLER";
@@ -184,6 +188,40 @@ static void handle_cmd_report(void) {
     uart_send_frame_hmac(CMD_REPORT_FILL_LEVEL, fill_level, 4);
 }
 
+static void handle_cmd_system_info(void) {
+    ESP_LOGI(TAG, "Start Get system info");
+    esp_chip_info_t chip_info;
+    esp_chip_info(&chip_info);
+
+    uint32_t flash_size = 0;
+    if (esp_flash_get_size(NULL, &flash_size) == ESP_OK){
+        ESP_LOGE(TAG, "Cannot read Flash!");
+        flash_size = 0;
+    }
+
+    uint32_t total_ram = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
+
+    uint8_t response_payload[10];
+
+    // Chip info
+    response_payload[0] = (uint8_t)chip_info.model;
+    response_payload[1] = (uint8_t)chip_info.cores;
+
+    // Flash size 
+    response_payload[2] = (flash_size >> 24) & 0xFF;
+    response_payload[3] = (flash_size >> 16) & 0xFF;
+    response_payload[4] = (flash_size >> 8)  & 0xFF;
+    response_payload[5] = flash_size         & 0xFF;
+
+    // RAM
+    response_payload[6] = (total_ram >> 24) & 0xFF;
+    response_payload[7] = (total_ram >> 16) & 0xFF;
+    response_payload[8] = (total_ram >> 8)  & 0xFF;
+    response_payload[9] = total_ram         & 0xFF;
+
+    uart_send_frame_hmac(CMD_GET_SYSTEM_INFO, response_payload, sizeof(response_payload));
+}
+
 static void process_uart_command(uint8_t cmd, uint16_t len, uint8_t *payload) {
     ESP_LOGI(TAG, "HMAC OK! Lenh: 0x%02X", cmd);
     
@@ -196,6 +234,7 @@ static void process_uart_command(uint8_t cmd, uint16_t len, uint8_t *payload) {
         case CMD_OTA_DATA:     handle_cmd_ota_data(len, payload); break;
         case CMD_OTA_END:      handle_cmd_ota_end(); break;
         case CMD_REPORT_FILL_LEVEL: handle_cmd_report(); break;
+        case CMD_GET_SYSTEM_INFO:   handle_cmd_system_info(); break;
         default:
             ESP_LOGW(TAG, "Lenh khong hop le: 0x%02X", cmd);
             send_response(CMD_NACK);

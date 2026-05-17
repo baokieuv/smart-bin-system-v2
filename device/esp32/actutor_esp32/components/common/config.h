@@ -48,6 +48,7 @@
 #define CMD_REPORT_FILL_LEVEL  0x40
 #define CMD_SET_CONFIG         0x50
 #define CMD_GET_VERSION        0x60
+#define CMD_GET_SYSTEM_INFO    0x70
 
 // Ultrasonic constants
 #define SOUND_SPEED             343.0
