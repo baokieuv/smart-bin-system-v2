@@ -331,7 +331,7 @@ public class DeviceService {
             device = existingDeviceOpt.get();
 
             if (device.getPublicKey() != null && device.getState() == DeviceState.ACTIVE) {
-                throw new ApiException(CoreErrorCode.BAD_REQUEST, "Thiết bị này đã được kích hoạt trước đó.");
+                throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED, "Thiết bị này đã được kích hoạt trước đó.");
             }
             device.setPublicKey(request.publicKey());
             device.setHwMetadata(request.hwMetadata());

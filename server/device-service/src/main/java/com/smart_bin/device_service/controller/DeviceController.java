@@ -72,7 +72,8 @@ public class DeviceController {
         String actorId = jwt.getSubject();
 
         boolean isSuperAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().contains(UserRole.SUPER_ADMIN.getRoleName()));
+                .anyMatch(auth -> auth.getAuthority().equalsIgnoreCase(UserRole.SUPER_ADMIN.getRoleName()) ||
+                        auth.getAuthority().equalsIgnoreCase("ROLE_" + UserRole.SUPER_ADMIN.getRoleName()));
 
         var response = deviceService.getAllDevicesForAdmin(page, size, actorId, isSuperAdmin);
         return responseFactory.response(SuccessCode.OK, response);
