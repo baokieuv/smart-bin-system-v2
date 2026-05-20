@@ -2,46 +2,55 @@ from dataclasses import dataclass
 from typing import Optional
 from enum import Enum
 
+from src.utils.config import APP_CONFIG
+
 
 class WasteGroup(Enum):
     """Classification of waste into 4 categories for actuator routing."""
-    RECYCLABLE = ("recyclable", 45, "🟢", "Có thể tái chế")
-    COMPOSTABLE = ("compostable", -45, "🟡", "Phân hủy sinh học")
-    NON_RECYCLABLE = ("non_recyclable", 135, "🔴", "Không tái chế được")
-    UNKNOWN = ("unknown", -135, "⚪", "Không xác định")
+    RECYCLABLE = "recyclable"
+    COMPOSTABLE = "compostable"
+    NON_RECYCLABLE = "non_recyclable"
+    UNKNOWN = "unknown"
 
     @property
     def angle(self) -> int:
         """Return the stepper motor angle for this waste group."""
-        return self.value[1]
+        return APP_CONFIG.waste_group.angle_by_group.get(self.value, APP_CONFIG.waste_group.angle_by_group["unknown"])
 
     @property
     def badge_color(self) -> str:
         """Return the badge color emoji."""
-        return self.value[2]
+        return APP_CONFIG.waste_group.badge_by_group.get(self.value, APP_CONFIG.waste_group.badge_by_group["unknown"])
 
     @property
     def description(self) -> str:
         """Return the Vietnamese description."""
-        return self.value[3]
+        return APP_CONFIG.waste_group.description_by_group.get(
+            self.value,
+            APP_CONFIG.waste_group.description_by_group["unknown"],
+        )
 
 
-# Mapping from trash category to waste group.
-CATEGORY_TO_GROUP = {
-    "cardboard": WasteGroup.RECYCLABLE,
-    "paper": WasteGroup.RECYCLABLE,
-    "plastic": WasteGroup.RECYCLABLE,
-    "metal": WasteGroup.RECYCLABLE,
-    "glass": WasteGroup.RECYCLABLE,
-    "biological": WasteGroup.COMPOSTABLE,
-    "clothes": WasteGroup.COMPOSTABLE,
-    "shoes": WasteGroup.COMPOSTABLE,
-    "battery": WasteGroup.NON_RECYCLABLE,
-    "trash": WasteGroup.NON_RECYCLABLE,
+_GROUP_NAME_TO_ENUM = {
+    WasteGroup.RECYCLABLE.value: WasteGroup.RECYCLABLE,
+    WasteGroup.COMPOSTABLE.value: WasteGroup.COMPOSTABLE,
+    WasteGroup.NON_RECYCLABLE.value: WasteGroup.NON_RECYCLABLE,
+    WasteGroup.UNKNOWN.value: WasteGroup.UNKNOWN,
 }
 
 
-def get_waste_group(category: str, confidence: float = 1.0, confidence_threshold: float = 0.5) -> WasteGroup:
+def _build_category_mapping() -> dict[str, WasteGroup]:
+    mapping: dict[str, WasteGroup] = {}
+    for category, group_name in APP_CONFIG.waste_group.category_to_group.items():
+        mapping[str(category).lower()] = _GROUP_NAME_TO_ENUM.get(str(group_name).lower(), WasteGroup.UNKNOWN)
+    return mapping
+
+
+# Mapping from trash category to waste group.
+CATEGORY_TO_GROUP = _build_category_mapping()
+
+
+def get_waste_group(category: str, confidence: float = 1.0, confidence_threshold: float | None = None) -> WasteGroup:
     """
     Determine waste group from category and confidence.
     
@@ -53,7 +62,8 @@ def get_waste_group(category: str, confidence: float = 1.0, confidence_threshold
     Returns:
         The appropriate WasteGroup with angle for stepper motor control.
     """
-    if confidence < confidence_threshold:
+    threshold = APP_CONFIG.detection.waste_group_confidence_threshold if confidence_threshold is None else confidence_threshold
+    if confidence < threshold:
         return WasteGroup.UNKNOWN
     return CATEGORY_TO_GROUP.get(category.lower(), WasteGroup.UNKNOWN)
 

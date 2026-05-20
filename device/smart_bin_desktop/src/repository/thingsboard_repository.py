@@ -14,10 +14,10 @@ class ThingsboardClient:
         self.timeout = APP_CONFIG.api.request_timeout_seconds
         self.http_client = http_client or RequestsHttpClient()
 
-    def send_telemetry(self, access_token: str, payload: dict | None = None) -> tuple[bool, str]:
+    def send_telemetry(self, access_token: str, payload: dict | None = None) -> tuple[bool, str, int | None]:
         """Send telemetry payload for one device token; default payload is heartbeat."""
         if not access_token:
-            return False, "Missing access token for telemetry"
+            return False, "Missing access token for telemetry", None
 
         # Device telemetry endpoint format: /api/v1/{access_token}/telemetry
         url = f"{self.base_url}/{access_token}/telemetry"
@@ -29,10 +29,10 @@ class ThingsboardClient:
             self.logger.info("telemetry status_code=%s", response.status_code)
 
             if response.status_code in (401, 403, 404):
-                return False, f"Telemetry rejected ({response.status_code}): {response.text}"
+                return False, f"Telemetry rejected ({response.status_code}): {response.text}", response.status_code
 
             response.raise_for_status()
-            return True, "OK"
+            return True, "OK", response.status_code
         except Exception as e:
             self.logger.warning("Telemetry request failed: %s", e)
-            return False, f"Failed to send telemetry: {str(e)}"
+            return False, f"Failed to send telemetry: {str(e)}", None

@@ -194,12 +194,14 @@ static void handle_cmd_system_info(void) {
     esp_chip_info(&chip_info);
 
     uint32_t flash_size = 0;
-    if (esp_flash_get_size(NULL, &flash_size) == ESP_OK){
+    if (esp_flash_get_size(NULL, &flash_size) != ESP_OK){
         ESP_LOGE(TAG, "Cannot read Flash!");
         flash_size = 0;
     }
 
-    uint32_t total_ram = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
+    uint32_t internal_ram = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
+    uint32_t psram_size = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    uint32_t total_ram = internal_ram + psram_size;
 
     uint8_t response_payload[10];
 

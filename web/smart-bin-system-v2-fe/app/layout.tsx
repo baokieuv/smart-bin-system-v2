@@ -3,6 +3,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { Geist } from "next/font/google";
+import 'mapbox-gl/dist/mapbox-gl.css';
 import "./globals.css";
 import { Providers } from "./providers";
 

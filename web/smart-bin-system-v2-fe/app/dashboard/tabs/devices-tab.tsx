@@ -17,6 +17,7 @@ type DevicesTabProps = {
   devices: DeviceDto[];
   selectedDeviceId: string | null;
   selectedDevice: DeviceDto | null;
+  selectedDeviceLocationLabel: string;
   selectedDeviceTelemetry: DeviceTelemetrySummary;
   formatTime: (value: string) => string;
   onSelectDevice: (id: string | null) => void;
@@ -31,6 +32,7 @@ export default function DevicesTab({
   devices,
   selectedDeviceId,
   selectedDevice,
+  selectedDeviceLocationLabel,
   selectedDeviceTelemetry,
   formatTime,
   onSelectDevice,
@@ -146,9 +148,7 @@ export default function DevicesTab({
           <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
             <p><span className="font-semibold text-slate-700">Name:</span> {selectedDevice.name}</p>
             <p><span className="font-semibold text-slate-700">MAC Address:</span> {selectedDevice.mac}</p>
-            <p>
-              <span className="font-semibold text-slate-700">Location:</span> {selectedDevice.longitude.toFixed(6)}, {selectedDevice.latitude.toFixed(6)}
-            </p>
+            <p><span className="font-semibold text-slate-700">Location:</span> {selectedDeviceLocationLabel || 'Resolving location from Mapbox...'}</p>
             <p>
               <span className="font-semibold text-slate-700">Status:</span>{' '}
               <span

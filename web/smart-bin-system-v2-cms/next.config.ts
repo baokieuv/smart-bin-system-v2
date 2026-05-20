@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
         hostname: "s3.kvbhust.id.vn",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "lh3.googleusercontent.com",
+        pathname: "/**",
+      },
     ],
   },
 };

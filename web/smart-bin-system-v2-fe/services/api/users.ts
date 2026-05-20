@@ -3,26 +3,15 @@
 import { api } from "@/lib/api-client";
 import { CreateUserRequest, UserDto } from "@/types/user";
 
-type PresignedUrlResponse = {
+type UploadFileResponse = {
     objectName: string;
-    url: string;
-    expiresInSeconds: number;
+    objectUrl: string;
+    contentType: string;
+    size: number;
 };
 
 const sanitizeAvatarUrl = (avatarUrl: string) => {
     const trimmed = avatarUrl.trim();
-    if (!trimmed) return '';
-
-    try {
-        const parsed = new URL(trimmed);
-        return `${parsed.origin}${parsed.pathname}`;
-    } catch {
-        return trimmed.replace(/[?#].*$/, '');
-    }
-};
-
-const toPublicObjectUrlFromPresignedUrl = (presignedUrl: string) => {
-    const trimmed = presignedUrl.trim();
     if (!trimmed) return '';
 
     try {
@@ -61,43 +50,30 @@ export const usersApi = {
 
     // Update user info requires auth and uses auto-refresh
     update: async (formData: {
-        firstName?: string;
-        lastName?: string;
+        name?: string;
         avatarUrl?: string;
     }) => {
-        return api.put<UserDto>('/users', formData);
+        return api.put<UserDto>('/users/me', formData);
     },
 
-    createAvatarPresignedUploadUrl: async (
-        contentType: string,
+    uploadAvatar: async (
+        file: File,
         options?: { folder?: string; oldObjectName?: string },
     ) => {
-        const params = new URLSearchParams({ contentType });
+        const formData = new FormData();
+        formData.append('file', file);
+
         if (options?.folder) {
-            params.append('folder', options.folder);
+            formData.append('folder', options.folder);
         }
+
         if (options?.oldObjectName) {
-            params.append('oldObjectName', options.oldObjectName);
+            formData.append('oldObjectName', options.oldObjectName);
         }
 
-        return api.post<PresignedUrlResponse>(`/media/presigned-upload?${params.toString()}`);
-    },
-
-    uploadToPresignedUrl: async (url: string, file: File, contentType: string) => {
-        const response = await fetch(url, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': contentType,
-            },
-            body: file,
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to upload avatar to object storage.');
-        }
+        return api.post<UploadFileResponse>('/media/upload', formData);
     },
 
     sanitizeAvatarUrl,
-    toPublicObjectUrlFromPresignedUrl,
     toObjectNameFromAvatarUrl,
-}
+};

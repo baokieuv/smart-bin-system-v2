@@ -345,11 +345,11 @@ class ActuatorRepository:
     def update_device_config(self, full_threshold: float, device_height: float) -> tuple[bool, str]:
         """Send threshold and height config to ESP32."""
         try:
-            payload = struct.pack(">Bf", int(full_threshold), float(device_height))
+            payload = struct.pack("<fB", float(device_height), int(full_threshold))
             frame = self._create_frame(self.config.cmd_ctrl_device_config, payload)
             self._queue_command(
                 lambda: self._send_frame_and_wait_ack(frame, timeout=2.0),
-                f"device_config(threshold={full_threshold}, height={device_height})",
+                f"device_config(height={device_height}, threshold={int(full_threshold)})",
             )
             return True, "Device config command queued"
         except Exception as exc:

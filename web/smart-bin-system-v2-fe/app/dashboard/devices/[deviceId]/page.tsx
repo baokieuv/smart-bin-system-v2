@@ -10,6 +10,7 @@ import { deviceApi } from '@/services/api/device';
 import { DeviceDto, DeviceTelemetries } from '@/types/device';
 import { Input } from '@/components/ui/input';
 import { LocationPickerMap, type LocationValue } from '@/components/layout/location-picker-map';
+import { resolveMapboxLocationLabel } from '@/lib/mapbox-location';
 
 type Toast = {
   id: number;
@@ -86,9 +87,11 @@ export default function DeviceDetailPage() {
   const params = useParams<{ deviceId: string }>();
   const [device, setDevice] = useState<DeviceDto | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // const [locationLabel, setLocationLabel] = useState<string>('');
   const [telemetryHistory, setTelemetryHistory] = useState<DeviceTelemetryHistoryItem[]>([]);
   const [isTelemetryLoading, setIsTelemetryLoading] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [locationLabel, setLocationLabel] = useState('');
   const [isDeletePopupOpen, setIsDeletePopupOpen] = useState(false);
   const [isEditPopupOpen, setIsEditPopupOpen] = useState(false);
   const [editName, setEditName] = useState('');
@@ -110,6 +113,36 @@ export default function DeviceDetailPage() {
     () => parseCoordinatePair(editLatitude, editLongitude),
     [editLatitude, editLongitude],
   );
+
+  useEffect(() => {
+    if (!device) {
+      setLocationLabel('');
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolveLocation = async () => {
+      setLocationLabel('Resolving location from Mapbox...');
+
+      try {
+        const label = await resolveMapboxLocationLabel(device.longitude, device.latitude);
+        if (cancelled) return;
+
+        setLocationLabel(label);
+      } catch {
+        if (cancelled) return;
+
+        setLocationLabel('Unknown location');
+      }
+    };
+
+    void resolveLocation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [device]);
 
   useEffect(() => {
     const fetchDeviceData = async () => {
@@ -281,9 +314,7 @@ export default function DeviceDetailPage() {
           <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
             <p><span className="font-semibold text-slate-700">Name:</span> {device.name}</p>
             <p><span className="font-semibold text-slate-700">MAC Address:</span> {device.mac}</p>
-            <p>
-              <span className="font-semibold text-slate-700">Location:</span> {device.longitude.toFixed(6)}, {device.latitude.toFixed(6)}
-            </p>
+            <p><span className="font-semibold text-slate-700">Location:</span> {locationLabel || 'Resolving location from Mapbox...'}</p>
             <p>
               <span className="font-semibold text-slate-700">Status:</span>{' '}
               <span

@@ -3,16 +3,15 @@ import json
 import logging
 import shutil
 import time
-import uuid
 import mimetypes
 from pathlib import Path
 from typing import Any
-import re
 
 from src.models.api_response import ApiResponseFormat
 from src.models.device_dto import DeviceDto
 from src.models.device_config_dto import DeviceConfigDto
 from src.models.ota_check_response_dto import OtaCheckResponseDto
+from src.repository.actuator_repository import ActuatorRepository
 from src.repository.http_client import HttpClient, HttpResponse, RequestsHttpClient
 from src.services.device_key_manager import DeviceKeyManager
 from src.utils.config import APP_CONFIG
@@ -25,14 +24,13 @@ class DeviceClient:
     Internal helpers centralize signature and HTTP flow to reduce duplication.
     """
 
-    def __init__(self, http_client: HttpClient | None = None):
+    def __init__(self, http_client: HttpClient | None = None, actuator_client: ActuatorRepository | None = None):
         self.logger = logging.getLogger("smart_bin.device_repository")
         self.base_url = APP_CONFIG.api.device_base_url
         self.config_base_url = APP_CONFIG.api.config_base_url
         self.timeout = APP_CONFIG.api.request_timeout_seconds
         self.key_manager = DeviceKeyManager(APP_CONFIG.paths.devices_key_dir, self.logger)
-        self._device_key_pair = self.key_manager.ensure_key_pair()
-        self._public_key_uploaded = False
+        self.actuator_client = actuator_client
         self.http_client = http_client or RequestsHttpClient()
 
     @staticmethod
@@ -43,15 +41,19 @@ class DeviceClient:
         
         return "F0:E7:63:51:1C:8D"
         
-    def _generate_payload_and_signature(self, extra_fields: dict[str, Any] | None = None) -> tuple[bool, str, str]:
+    def _generate_payload_and_signature(
+        self,
+        extra_fields: dict[str, Any] | None = None,
+        include_timestamp: bool = True,
+    ) -> tuple[bool, str, str]:
         """Create compact JSON payload and corresponding RSA signature."""
         mac = self.get_mac_address()
-        timestamp = int(time.time() * 1000)
         
         payload_dict = {
             "mac": mac,
-            "timestamp": timestamp
         }
+        if include_timestamp:
+            payload_dict["timestamp"] = int(time.time() * 1000)
         if extra_fields:
             payload_dict.update(extra_fields)
         
@@ -85,10 +87,14 @@ class DeviceClient:
         metadata_header: str | None = None,
         base_url: str | None = None,
         extra_fields: dict[str, Any] | None = None,
+        include_timestamp: bool = True,
         allow_key_refresh: bool = True,
     ) -> tuple[bool, HttpResponse | str]:
         """Send signed POST request where body must match signed payload exactly."""
-        ok, payload_str, signature_or_error = self._generate_payload_and_signature(extra_fields)
+        ok, payload_str, signature_or_error = self._generate_payload_and_signature(
+            extra_fields,
+            include_timestamp=include_timestamp,
+        )
         if not ok:
             return False, signature_or_error
 
@@ -110,9 +116,9 @@ class DeviceClient:
             self.logger.info("%s status_code=%s", path, response.status_code)
 
             if allow_key_refresh and self._is_avt0012_response(response):
-                upload_ok, upload_result = self.upload_public_key(force=True)
-                if not upload_ok:
-                    return False, upload_result
+                activation_ok, activation_result = self.activate_device()
+                if not activation_ok:
+                    return False, activation_result
 
                 return self._post_signed_request(
                     path,
@@ -240,28 +246,40 @@ class DeviceClient:
         shutil.move(str(temp_path), str(destination_path))
         return True, str(destination_path)
 
-    def _device_public_key(self) -> str:
-        return self.key_manager.ensure_key_pair().public_key_pem
+    def _get_hardware_metadata(self, timeout: float | None = None) -> tuple[bool, dict[str, Any] | str]:
+        if self.actuator_client is None:
+            return False, "Actuator client is not configured"
 
-    def ensure_device_key_uploaded_on_boot(self) -> tuple[bool, str]:
+        ok, system_info = self.actuator_client.get_system_info(timeout=timeout)
+        if not ok or system_info is None:
+            return False, "Failed to read hardware metadata from ESP32"
+
+        return True, {
+            "chipModel": system_info.chip_model,
+            "chipName": system_info.chip_name,
+            "cores": system_info.cores,
+            "flashSizeBytes": system_info.flash_size_bytes,
+            "totalRamBytes": system_info.total_ram_bytes,
+        }
+
+    def activate_device(self) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
+        """Activate current device using MAC, tenant/group identifiers, public key, and ESP32 metadata."""
+        self.logger.info("Call activate_device")
+
         key_pair = self.key_manager.ensure_key_pair()
-        if self._public_key_uploaded or not key_pair.created_new:
-            return True, "Device keypair already exists"
-
-        upload_ok, upload_result = self.upload_public_key(force=True)
-        if upload_ok:
-            self._public_key_uploaded = True
-        return upload_ok, upload_result
-
-    def upload_public_key(self, force: bool = False) -> tuple[bool, str]:
-        key_pair = self.key_manager.ensure_key_pair()
-        if not force and self._public_key_uploaded and not key_pair.created_new:
-            return True, "Device public key already uploaded"
+        hw_ok, hw_metadata_or_error = self._get_hardware_metadata(timeout=5.0)
+        if not hw_ok:
+            return False, hw_metadata_or_error
 
         ok, response_or_error = self._post_signed_request(
-            "upload-key",
-            base_url=self.base_url,
-            extra_fields={"publicKey": key_pair.public_key_pem},
+            "activate",
+            extra_fields={
+                "tenantSecret": APP_CONFIG.backend.tenant_secret,
+                "groupCode": APP_CONFIG.backend.group_code,
+                "publicKey": key_pair.public_key_pem,
+                "hwMetadata": hw_metadata_or_error,
+            },
+            include_timestamp=False,
             allow_key_refresh=False,
         )
         if not ok:
@@ -270,29 +288,10 @@ class DeviceClient:
         response = response_or_error
         try:
             if not response.ok:
-                return False, self._parse_error_response(response)
-
-            self._public_key_uploaded = True
-            return True, "Device public key uploaded"
-        except ValueError:
-            return False, "Failed to parse upload-key response"
-    
-    
-    def activate_device(self) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
-        """Activate current device by signed MAC/timestamp payload."""
-        self.logger.info("Call activate_device")
-
-        ok, response_or_error = self._post_signed_request(
-            "activate",
-            extra_fields={"publicKey": self._device_public_key()},
-        )
-        if not ok:
-            return False, response_or_error
-
-        response = response_or_error
-        try:
-            if not response.ok:
-                return False, self._parse_error_response(response)
+                error_payload = self._parse_error_response(response)
+                if isinstance(error_payload, dict) and str(error_payload.get("code") or "").upper() == "AVT3009":
+                    return True, "Device already activated"
+                return False, error_payload
 
             return self._parse_device_api_response(response.json())
         except ValueError:
@@ -511,10 +510,6 @@ class DeviceClient:
         except ValueError:
             self.logger.warning("check_ota parse response error")
             return False, "Failed to parse server response"
-
-    def get_app_version(self) -> tuple[bool, ApiResponseFormat[OtaCheckResponseDto] | str]:
-        """Backward-compatible alias for check_ota()."""
-        return self.check_ota()
 
     def report_ota_status(self, status: str, message: str) -> tuple[bool, str]:
         """Report OTA result back to backend."""

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from threading import Thread
 
 from src.models.device_config_dto import DeviceConfigDto
 from src.services.runtime_versions import RUNTIME_VERSIONS
+from src.utils.config import APP_CONFIG
 
 
 class MainViewModelRuntime:
@@ -55,6 +57,40 @@ class MainViewModelRuntime:
             target_desktop_version=override.target_desktop_version or fallback.target_desktop_version,
             device_height=override.device_height if override.device_height is not None else fallback.device_height,
         )
+
+    def _load_cached_access_token(self) -> tuple[DeviceConfigDto | None, str | None]:
+        cached_config = self.vm.device_config_store.load()
+        if not cached_config or not cached_config.access_token:
+            return cached_config, None
+
+        return cached_config, cached_config.access_token
+
+    def _activate_device_with_retry(self) -> tuple[bool, str]:
+        vm = self.vm
+        delay_seconds = 1.0
+        max_delay_seconds = float(APP_CONFIG.backend.activate_retry_max_delay_seconds)
+
+        while True:
+            success, result = vm.device_client.activate_device()
+            if success:
+                device_data = getattr(result, "data", None)
+                access_token = getattr(device_data, "access_token", None) if device_data else None
+                if access_token:
+                    vm._persist_access_token(access_token)
+                return True, "Device activated"
+
+            message = result.get("message") if isinstance(result, dict) else str(result)
+            vm.logger.warning("/activate failed: %s. Retrying in %.0fs", message, delay_seconds)
+            time.sleep(delay_seconds)
+            delay_seconds = min(delay_seconds * 2, max_delay_seconds)
+
+    def _reactivate_after_telemetry_unauthorized(self) -> tuple[bool, str]:
+        vm = self.vm
+        vm.logger.warning("Telemetry returned 401; re-activating device")
+        vm.access_token = None
+        vm.telemetry_timer.stop()
+        vm.state_activation_required.emit(True, "Session expired. Re-activating device...")
+        return self.refresh_device_config(reason="telemetry_401", force_activation=True)
 
     def _apply_device_config(self, config: DeviceConfigDto, reason: str, source: str):
         vm = self.vm
@@ -106,15 +142,25 @@ class MainViewModelRuntime:
             vm.logger.warning("Unable to resolve bin version from cache, ESP32, or firmware binary")
         return resolved
 
-    def refresh_device_config(self, reason: str):
+    def refresh_device_config(self, reason: str, force_activation: bool = False):
         """Refresh device config and synchronize cache, telemetry, and ESP32 params."""
         vm = self.vm
         vm.logger.info("Attempting device config refresh, reason=%s", reason)
-        key_ok, key_message = vm.device_client.ensure_device_key_uploaded_on_boot()
-        if not key_ok:
-            vm.logger.warning("Device key upload failed during startup: %s", key_message)
+        cached_config, cached_access_token = self._load_cached_access_token()
+
+        if cached_access_token and not force_activation:
+            vm.access_token = cached_access_token
+            vm.logger.info("Cached access key found; skipping /activate")
+        else:
+            activation_ok, activation_message = self._activate_device_with_retry()
+            if not activation_ok:
+                vm.logger.warning("Device activation failed during startup: %s", activation_message)
+
         self.resolve_bin_version()
-        cached_config = vm.device_config_store.load()
+
+        ok, ota_result = vm.device_client.check_ota()
+        if not ok:
+            vm.logger.warning("Unable to check OTA status: %s", ota_result)
 
         success, result = vm.device_client.get_device_config()
         if success and result and result.data:
@@ -158,8 +204,16 @@ class MainViewModelRuntime:
 
     def send_periodic_telemetry(self):
         vm = self.vm
-        success, message = vm.send_telemetry()
+        success, message, status_code = vm.send_telemetry()
         if not success:
+            if status_code == 401:
+                self._start_background_task(
+                    "_telemetry_reauth_running",
+                    "smart-bin-telemetry-reauth",
+                    self._reactivate_after_telemetry_unauthorized,
+                )
+                return
+
             vm.logger.warning("Telemetry failed, stopping telemetry loop: %s", message)
             vm.telemetry_timer.stop()
             vm.access_token = None

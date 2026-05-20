@@ -32,6 +32,7 @@ CMD_NACK         = 0x31
 CMD_REPORT_FILL_LEVEL = 0x40 
 CMD_SET_CONFIG   = 0x50      
 CMD_GET_VERSION  = 0x60
+CMD_GET_SYSTEM_INFO = 0x70
 
 HEADER_1 = 0xAA
 HEADER_2 = 0x55
@@ -158,6 +159,20 @@ def get_esp32_version(ser: serial.Serial) -> str:
 
 # ================= CÁC CHỨC NĂNG CHÍNH =================
 
+def send_servo_cmd(ser: serial.Serial, angle: int):
+    """Gửi lệnh điều khiển động cơ Servo xoay góc mong muốn (0-180)."""
+    if not (0 <= angle <= 180):
+        logger.warning("Góc quay Servo phải nằm trong khoảng từ 0 đến 180 độ!")
+        return
+    logger.info(f"[SERVO] Gửi lệnh xoay Servo sang góc {angle} độ...")
+    payload = struct.pack('B', angle) # 1 byte unsigned char
+    ser.write(create_frame(CMD_CTRL_SERVO, payload))
+    
+    if wait_for_ack(ser, timeout=2):
+        logger.info(f"[SERVO] ESP32 thực hiện xoay Servo thành công.")
+    else:
+        logger.error("[SERVO] Lệnh Servo thất bại.")
+
 def send_stepper_cmd(ser: serial.Serial, degree: int):
     """Gửi lệnh điều khiển động cơ bước xoay theo góc chỉ định."""
     logger.info(f"[STEPPER] Gửi lệnh xoay {degree} độ...")
@@ -179,6 +194,67 @@ def send_set_config_cmd(ser: serial.Serial, depth: float, threshold: int):
         logger.info("[CONFIG] Thành công! ESP32 đã lưu cấu hình mới xuống Flash NVS.")
     else:
         logger.error("[CONFIG] Cập nhật cấu hình thất bại.")
+
+def get_system_info(ser: serial.Serial):
+    """Yêu cầu và giải mã thông tin cấu hình phần cứng từ ESP32."""
+    logger.info("[SYS_INFO] Đang gửi yêu cầu kiểm tra cấu hình phần cứng hệ thống...")
+    ser.write(create_frame(CMD_GET_SYSTEM_INFO))
+    
+    start_time = time.time()
+    buffer = bytearray()
+    
+    while time.time() - start_time < 3:
+        if ser.in_waiting > 0:
+            buffer.extend(ser.read(ser.in_waiting))
+            cmd, payload, consumed = extract_valid_frame(buffer)
+            if consumed > 0:
+                if cmd == CMD_GET_SYSTEM_INFO:
+                    if len(payload) == 10:
+                        # Parse cấu trúc: 1B model, 1B cores, 4B flash (BigEndian), 4B ram (BigEndian)
+                        model, cores, flash_size, total_ram = struct.unpack('>BBII', payload)
+                        print("\n" + "="*20 + " THÔNG TIN PHẦN CỨNG ESP32 " + "="*20)
+                        print(f" - Chip Model ID  : {model}")
+                        print(f" - CPU Cores      : {cores} Core(s)")
+                        print(f" - Kích thước Flash: {flash_size / (1024 * 1024):.1f} MB ({flash_size} Bytes)")
+                        print(f" - Dung lượng RAM : {total_ram / 1024:.2f} KB ({total_ram} Bytes)")
+                        print("="*67)
+                    else:
+                        logger.error(f"[SYS_INFO] Sai độ dài payload hệ thống nhận được: {len(payload)} bytes")
+                    return
+                buffer = buffer[consumed:]
+        time.sleep(0.01)
+    logger.error("[SYS_INFO] Không nhận được phản hồi System Info từ mạch.")
+
+def request_fill_level(ser: serial.Serial):
+    """Gửi yêu cầu đo và trả về mức độ đầy rác (1 lần)."""
+    logger.info("[SENSOR] Đang gửi lệnh yêu cầu đọc cảm biến siêu âm...")
+    ser.write(create_frame(CMD_REPORT_FILL_LEVEL))
+    
+    start_time = time.time()
+    buffer = bytearray()
+    
+    # Đợi phản hồi trong tối đa 3 giây (vì siêu âm có thể mất chút thời gian delay đo)
+    while time.time() - start_time < 3:
+        if ser.in_waiting > 0:
+            buffer.extend(ser.read(ser.in_waiting))
+            
+        cmd, payload, consumed = extract_valid_frame(buffer)
+        if consumed > 0:
+            if cmd == CMD_REPORT_FILL_LEVEL and len(payload) == 4:
+                print("\n" + "="*35)
+                print("    BÁO CÁO MỨC RÁC HIỆN TẠI")
+                print("="*35)
+                print(f" Ngăn 1 : {payload[0]:3d} %")
+                print(f" Ngăn 2 : {payload[1]:3d} %")
+                print(f" Ngăn 3 : {payload[2]:3d} %")
+                print(f" Ngăn 4 : {payload[3]:3d} %")
+                print("="*35 + "\n")
+                return
+            buffer = buffer[consumed:]
+        else:
+            time.sleep(0.01)
+            
+    logger.error("[SENSOR] Timeout! Không nhận được dữ liệu phản hồi từ ESP32.")
 
 def run_ota(ser: serial.Serial):
     """Thực hiện tiến trình nạp Firmware qua giao thức UART (Serial OTA)."""
@@ -222,7 +298,6 @@ def run_ota(ser: serial.Serial):
                 
             bytes_sent += len(chunk)
             progress = (bytes_sent / file_size) * 100
-            # Dùng print cho thanh tiến trình để ghi đè (carriage return \r)
             print(f"\rTiến độ: [{int(progress):3d}%] {bytes_sent}/{file_size} bytes", end="")
             
     print() # Xuống dòng sau khi in progress bar
@@ -234,25 +309,6 @@ def run_ota(ser: serial.Serial):
     else:
          logger.error("[OTA] Lệnh kết thúc OTA thất bại.")
 
-def listen_telemetry(ser: serial.Serial):
-    """Liên tục đọc luồng dữ liệu từ ESP32 để bóc tách thông tin cảm biến."""
-    logger.info("Đang trực báo cáo từ 4 cảm biến siêu âm... (Nhấn Ctrl+C để thoát)")
-    buffer = bytearray()
-    try:
-        while True:
-            if ser.in_waiting > 0:
-                buffer.extend(ser.read(ser.in_waiting))
-                
-            cmd, payload, consumed = extract_valid_frame(buffer)
-            if consumed > 0:
-                if cmd == CMD_REPORT_FILL_LEVEL and len(payload) == 4:
-                    logger.info(f"Mức rác: Ngăn 1: {payload[0]}% | Ngăn 2: {payload[1]}% | Ngăn 3: {payload[2]}% | Ngăn 4: {payload[3]}%")
-                buffer = buffer[consumed:] # Cắt bỏ khung đã xử lý
-            else:
-                time.sleep(0.01)
-                
-    except KeyboardInterrupt:
-        logger.info("Đã thoát chế độ Monitor.")
 
 # ================= VÒNG LẶP ĐIỀU KHIỂN CHÍNH =================
 
@@ -268,13 +324,15 @@ def main():
         
         while True:
             print("\n" + "="*45)
-            print("  MENU TEST SMART BIN V2 (HMAC & NVS)")
+            print("   MENU TEST SMART BIN V2 (HMAC & NVS)")
             print("="*45)
             print("1. Xoay Stepper +45 độ")
             print("2. Xoay Stepper -45 độ")
-            print("3. Thực hiện Upload OTA (Firmware)")
-            print("4. Mở Monitor xem mức rác (Siêu âm)")
-            print("5. Thiết lập Cấu hình (Độ sâu & Ngưỡng báo đầy)")
+            print("3. Điều khiển động cơ Servo (Nhập góc)")
+            print("4. Thực hiện Upload OTA (Firmware)")
+            print("5. Yêu cầu đọc dữ liệu mức rác (1 lần)")
+            print("6. Thiết lập Cấu hình (Độ sâu & Ngưỡng báo đầy)")
+            print("7. Xem thông tin phần cứng hệ thống (System Info)")
             print("0. Thoát")
             print("="*45)
             
@@ -285,10 +343,16 @@ def main():
             elif choice == '2':
                 send_stepper_cmd(ser, -45)
             elif choice == '3':
-                run_ota(ser)
+                try:
+                    angle = int(input("Nhập góc muốn quay Servo (0 - 180): "))
+                    send_servo_cmd(ser, angle)
+                except ValueError:
+                    logger.warning("Vui lòng nhập một số nguyên hợp lệ!")
             elif choice == '4':
-                listen_telemetry(ser)
+                run_ota(ser)
             elif choice == '5':
+                request_fill_level(ser)
+            elif choice == '6':
                 try:
                     depth = float(input("Nhập độ sâu thùng rác (cm) [VD: 60.5]: "))
                     threshold = int(input("Nhập ngưỡng báo rác đầy (%) [VD: 90]: "))
@@ -298,6 +362,8 @@ def main():
                         logger.warning("Ngưỡng phần trăm phải nằm trong khoảng 0 - 100!")
                 except ValueError:
                     logger.warning("Dữ liệu nhập vào không hợp lệ! Vui lòng nhập số.")
+            elif choice == '7':
+                get_system_info(ser)
             elif choice == '0':
                 logger.info("Đang đóng cổng Serial và thoát...")
                 break

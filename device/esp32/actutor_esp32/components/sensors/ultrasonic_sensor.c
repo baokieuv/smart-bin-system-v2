@@ -9,6 +9,8 @@
 
 static const char *TAG = "ULTRASONIC";
 
+extern SmartBinConfig_t system_config;
+
 esp_err_t ultrasonic_sensor_init() {
     ESP_LOGI(TAG, "Khoi tao 4 cam bien sieu am (Chung Trigger)...");
 
@@ -44,38 +46,47 @@ esp_err_t ultrasonic_sensor_init() {
     return ESP_OK;
 }
 
-static float ultrasonic_sensor_read_raw(uint8_t echo_pin) {
-    // Bắn xung 10us ra chân Trigger chung
+static float ultrasonic_sensor_read_raw(uint8_t echo_pin)
+{
+    // Trigger 10us
     gpio_set_level(ULTRASONIC_TRIG_PIN, 0);
     esp_rom_delay_us(2);
+
     gpio_set_level(ULTRASONIC_TRIG_PIN, 1);
     esp_rom_delay_us(10);
-    gpio_set_level(ULTRASONIC_TRIG_PIN, 0); // Trả về LOW ngay lập tức
 
+    gpio_set_level(ULTRASONIC_TRIG_PIN, 0);
+
+    int64_t timeout_start = esp_timer_get_time();
+
+    // Chờ Echo HIGH
+    while (gpio_get_level(echo_pin) == 0)
+    {
+        if ((esp_timer_get_time() - timeout_start) > ECHO_TIMEOUT)
+        {
+            return -1.0f;
+        }
+    }
+
+    // Bắt đầu đo
     int64_t start_time = esp_timer_get_time();
-    int64_t prev_time = start_time;
-    
-    // Chờ chân Echo lên mức HIGH
-    while (gpio_get_level(echo_pin) == 0) {
-        start_time = esp_timer_get_time();
-        if(start_time - prev_time > ECHO_TIMEOUT){
-            return -1.0f; // Lỗi Timeout 1
+
+    // Chờ Echo LOW
+    while (gpio_get_level(echo_pin) == 1)
+    {
+        if ((esp_timer_get_time() - start_time) > ECHO_TIMEOUT)
+        {
+            return -1.0f;
         }
     }
 
-    int64_t end_time = start_time;
-    
-    // Đo thời gian chân Echo giữ mức HIGH
-    while (gpio_get_level(echo_pin) == 1) {
-        end_time = esp_timer_get_time();
-        if(end_time - start_time > ECHO_TIMEOUT){
-            return -1.0f; // Lỗi Timeout 2 (Ngoài tầm đo)
-        }
-    }
+    // Kết thúc đo
+    int64_t end_time = esp_timer_get_time();
 
     int64_t duration = end_time - start_time;
-    // Công thức tính khoảng cách (cm)
-    float distance = (duration / 2.0) * (SOUND_SPEED / 10000.0);
+
+    // cm
+    float distance = (duration * SOUND_SPEED) / 20000.0f;
 
     return distance;
 }
@@ -98,7 +109,7 @@ static float ultrasonic_read_median(uint8_t echo_pin) {
     }
 
     if (valid_count == 0) {
-        return -1.0f; // Không có dữ liệu hợp lệ
+        return system_config.bin_depth_cm; // Không có dữ liệu hợp lệ
     }
 
     // Sắp xếp mảng (Bubble Sort)
@@ -123,8 +134,10 @@ TrashBinDistances_t ultrasonic_read_all_bins() {
     // Đọc tuần tự từng ngăn để tránh xung đột xung nhịp
     bins.bin1_cm = ultrasonic_read_median(ULTRASONIC_ECHO1_PIN);
     bins.bin2_cm = ultrasonic_read_median(ULTRASONIC_ECHO2_PIN);
-    bins.bin3_cm = ultrasonic_read_median(ULTRASONIC_ECHO3_PIN);
-    bins.bin4_cm = ultrasonic_read_median(ULTRASONIC_ECHO4_PIN);
+    // bins.bin3_cm = ultrasonic_read_median(ULTRASONIC_ECHO3_PIN);
+    // bins.bin4_cm = ultrasonic_read_median(ULTRASONIC_ECHO4_PIN);
+    bins.bin3_cm = system_config.bin_depth_cm;
+    bins.bin4_cm = system_config.bin_depth_cm;
 
     ESP_LOGI(TAG, "K/C: Ngan1=%.1fcm, Ngan2=%.1fcm, Ngan3=%.1fcm, Ngan4=%.1fcm", 
              bins.bin1_cm, bins.bin2_cm, bins.bin3_cm, bins.bin4_cm);

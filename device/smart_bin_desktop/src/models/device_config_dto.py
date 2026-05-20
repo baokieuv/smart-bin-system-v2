@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 from typing import Optional
 
 
@@ -11,16 +12,50 @@ class DeviceConfigDto:
     target_desktop_version: Optional[str] = None
     device_height: Optional[float] = None
 
+    @staticmethod
+    def _as_int(value) -> Optional[int]:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _as_float(value) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+
+        if isinstance(value, str):
+            match = re.search(r"-?\d+(?:\.\d+)?", value)
+            if match:
+                try:
+                    return float(match.group(0))
+                except ValueError:
+                    return None
+        return None
+
     @classmethod
     def from_dict(cls, data: dict):
         if not data:
             return None
 
+        user_configs = data.get("userConfigs") if isinstance(data.get("userConfigs"), dict) else {}
+        shared_specs = data.get("sharedSpecs") if isinstance(data.get("sharedSpecs"), dict) else {}
+
         return cls(
             access_token=data.get("accessToken"),
-            polling_interval=data.get("pollingInterval"),
-            full_threshold=data.get("fullThreshold"),
+            polling_interval=cls._as_int(
+                user_configs.get("polling_interval", data.get("pollingInterval"))
+            ),
+            full_threshold=cls._as_float(
+                user_configs.get("full_threshold", data.get("fullThreshold"))
+            ),
             target_bin_firmware_version=data.get("targetBinFirmwareVersion"),
             target_desktop_version=data.get("targetDesktopVersion"),
-            device_height=data.get("deviceHeight"),
+            device_height=cls._as_float(
+                shared_specs.get("height", data.get("deviceHeight"))
+            ),
         )

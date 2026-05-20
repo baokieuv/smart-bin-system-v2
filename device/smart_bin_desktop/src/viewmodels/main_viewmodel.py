@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 from src.models.trash_model import TrashData
+from src.models.device_config_dto import DeviceConfigDto
 from src.repository.device_repository import DeviceClient
 from src.repository.actuator_repository import ActuatorRepository
 from src.repository.thingsboard_repository import ThingsboardClient
@@ -30,18 +31,14 @@ class MainViewModel(QObject):
     state_thanks = pyqtSignal()
     state_activation_required = pyqtSignal(bool, str)
     state_toast = pyqtSignal(str, bool)
-    
-    # state_thanks = pyqtSignal()
-    # state_activation_required = pyqtSignal(bool, str)
-    # state_toast = pyqtSignal(str, bool)
 
     def __init__(self, worker):
         super().__init__()
         self.logger = logging.getLogger("smart_bin.main_viewmodel")
         self.worker = worker
-        self.device_client = DeviceClient()
-        self.thingsboard_client = ThingsboardClient()
         self.actuator_client = ActuatorRepository()
+        self.device_client = DeviceClient(actuator_client=self.actuator_client)
+        self.thingsboard_client = ThingsboardClient()
         self.device_config_store = DeviceConfigStore(APP_CONFIG.paths.device_config_cache_path, self.logger)
         self.runtime = MainViewModelRuntime(self)
         # Disposal counters used for telemetry payloads
@@ -214,12 +211,27 @@ class MainViewModel(QObject):
 
     def activate_device(self):
         """Proxy DeviceClient activation API for manual user action."""
-        return self.device_client.activate_device()
+        success, result = self.device_client.activate_device()
+
+        if success:
+            device_data = getattr(result, "data", None)
+            access_token = getattr(device_data, "access_token", None) if device_data else None
+            if access_token:
+                self._persist_access_token(access_token)
+
+        return success, result
+
+    def _persist_access_token(self, access_token: str) -> None:
+        """Store the latest access token in memory and on disk."""
+        self.access_token = access_token
+        cached_config = self.device_config_store.load() or DeviceConfigDto()
+        cached_config.access_token = access_token
+        self.device_config_store.save(cached_config)
     
     def send_telemetry(self):
         """Send heartbeat telemetry if current access token exists."""
         if not self.access_token:
-            return False, "Access token is missing"
+            return False, "Access token is missing", None
         # Build payload with timestamp, disposal counts and latest fill-levels
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
@@ -236,11 +248,11 @@ class MainViewModel(QObject):
                 except Exception:
                     payload[f"bin{i+1}"] = None
 
-        ok, msg = self.thingsboard_client.send_telemetry(self.access_token, payload)
+        ok, msg, status_code = self.thingsboard_client.send_telemetry(self.access_token, payload)
         if ok:
             # Reset interval counter only when telemetry successfully sent
             self._disposal_count_since_last_heartbeat = 0
-        return ok, msg
+        return ok, msg, status_code
 
     def get_device_mac_address(self) -> str:
         """Expose MAC for device-link QR screen."""

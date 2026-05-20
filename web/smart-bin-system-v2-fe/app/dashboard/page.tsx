@@ -21,6 +21,7 @@ import ActivityTab from '@/app/dashboard/tabs/activity-tab';
 import DashboardHeader from '@/app/dashboard/sections/dashboard-header';
 import DashboardTabNav, { DashboardTab } from '@/app/dashboard/sections/dashboard-tab-nav';
 import DashboardOverlays from '@/app/dashboard/sections/dashboard-overlays';
+import { resolveMapboxLocationLabel } from '@/lib/mapbox-location';
 
 type Toast = {
     id: number;
@@ -154,6 +155,28 @@ const withAvatarCacheBuster = (avatarUrl?: string) => {
     return `${sanitizedUrl}${separator}v=${randomVersion}`;
 };
 
+const extractAvatarUrlFromUploadResponse = (data: unknown) => {
+    if (typeof data === 'string') {
+        return data.trim();
+    }
+
+    if (!data || typeof data !== 'object') {
+        return '';
+    }
+
+    const responseData = data as Record<string, unknown>;
+    const candidateKeys = ['objectUrl', 'avatarUrl', 'url', 'publicUrl', 'fileUrl', 'downloadUrl', 'location', 'path'];
+
+    for (const key of candidateKeys) {
+        const value = responseData[key];
+        if (typeof value === 'string' && value.trim()) {
+            return value.trim();
+        }
+    }
+
+    return '';
+};
+
 const getLatestTelemetryPoint = (telemetries: DeviceTelemetries, key: string) => {
     const points = telemetries[key] ?? [];
     if (points.length === 0) return null;
@@ -205,6 +228,7 @@ export default function DashboardPage() {
     const [zoom, setZoom] = useState(1);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
     const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+    const [selectedDeviceLocationLabel, setSelectedDeviceLocationLabel] = useState('');
     const [isDeletePopupOpen, setIsDeletePopupOpen] = useState(false);
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [activeTab, setActiveTab] = useState<DashboardTab>('devices');
@@ -287,6 +311,36 @@ export default function DashboardPage() {
         () => devices.find((device) => device.id === selectedDeviceId) ?? null,
         [selectedDeviceId, devices],
     );
+
+    useEffect(() => {
+        if (!selectedDevice) {
+            setSelectedDeviceLocationLabel('');
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadLocationLabel = async () => {
+            setSelectedDeviceLocationLabel('Resolving location from Mapbox...');
+
+            try {
+                const label = await resolveMapboxLocationLabel(selectedDevice.longitude, selectedDevice.latitude);
+                if (cancelled) return;
+
+                setSelectedDeviceLocationLabel(label);
+            } catch {
+                if (cancelled) return;
+
+                setSelectedDeviceLocationLabel('Unknown location');
+            }
+        };
+
+        void loadLocationLabel();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedDevice]);
 
     const unreadActivityCount = useMemo(() => {
         if (activityUnreadCount >= 0) return activityUnreadCount;
@@ -401,53 +455,42 @@ export default function DashboardPage() {
 
             const croppedFile = new File([croppedBlob], 'avatar.jpg', { type: 'image/jpeg' });
             const hasAvatar = Boolean(userInfo?.avatarUrl?.trim());
-            let newAvatarUrl = '';
 
-            if (!hasAvatar) {
-                const presignedResponse = await usersApi.createAvatarPresignedUploadUrl(croppedFile.type, {
-                    folder: 'avatar',
-                });
-                if (!presignedResponse.success) {
-                    pushToast(presignedResponse.message || 'Failed to update avatar.', 'error');
-                    return;
-                }
-
-                await usersApi.uploadToPresignedUrl(presignedResponse.data.url, croppedFile, croppedFile.type);
-
-                const persistedAvatarUrl = usersApi.toPublicObjectUrlFromPresignedUrl(presignedResponse.data.url);
-                const updateResponse = await usersApi.update({
-                    firstName: userInfo?.firstName,
-                    lastName: userInfo?.lastName,
-                    avatarUrl: persistedAvatarUrl,
-                });
-
-                if (!updateResponse.success) {
-                    pushToast(updateResponse.message || 'Avatar uploaded but user profile update failed.', 'error');
-                    return;
-                }
-
-                newAvatarUrl = persistedAvatarUrl;
-            } else {
-                const currentAvatarUrl = usersApi.sanitizeAvatarUrl(userInfo?.avatarUrl || '');
-                const objectName = usersApi.toObjectNameFromAvatarUrl(userInfo?.avatarUrl || '');
-
-                if (!objectName) {
-                    pushToast('Invalid avatar path. Please refresh and try again.', 'error');
-                    return;
-                }
-
-                const response = await usersApi.createAvatarPresignedUploadUrl(croppedFile.type, {
-                    folder: 'avatar',
-                    oldObjectName: objectName,
-                });
-                if (!response.success) {
-                    pushToast(response.message || 'Failed to update avatar.', 'error');
-                    return;
-                }
-
-                await usersApi.uploadToPresignedUrl(response.data.url, croppedFile, croppedFile.type);
-                newAvatarUrl = currentAvatarUrl || objectName;
+            const objectName = hasAvatar ? usersApi.toObjectNameFromAvatarUrl(userInfo?.avatarUrl || '') : '';
+            if (hasAvatar && !objectName) {
+                pushToast('Invalid avatar path. Please refresh and try again.', 'error');
+                return;
             }
+
+            const uploadResponse = await usersApi.uploadAvatar(croppedFile, {
+                folder: 'avatar',
+                oldObjectName: objectName || undefined,
+            });
+
+            if (!uploadResponse.success) {
+                pushToast(uploadResponse.message || 'Failed to update avatar.', 'error');
+                return;
+            }
+
+            const uploadedAvatarUrl = extractAvatarUrlFromUploadResponse(uploadResponse.data);
+            if (!uploadedAvatarUrl) {
+                pushToast('Avatar uploaded but the server did not return a usable URL.', 'error');
+                return;
+            }
+
+            const currentName = `${userInfo?.firstName ?? ''} ${userInfo?.lastName ?? ''}`.trim();
+
+            const updateResponse = await usersApi.update({
+                name: currentName,
+                avatarUrl: uploadedAvatarUrl,
+            });
+
+            if (!updateResponse.success) {
+                pushToast(updateResponse.message || 'Avatar uploaded but user profile update failed.', 'error');
+                return;
+            }
+
+            const newAvatarUrl = uploadedAvatarUrl;
 
             if (newAvatarUrl) {
                 const finalAvatarUrl = withAvatarCacheBuster(newAvatarUrl);
@@ -792,13 +835,15 @@ export default function DashboardPage() {
             return;
         }
 
-        const [firstName, ...rest] = nextName.split(/\s+/);
-        const lastName = rest.join(' ');
-
         try {
-            const response = await usersApi.update({firstName, lastName});
+            const response = await usersApi.update({
+                name: nextName,
+                avatarUrl: userInfo?.avatarUrl ? usersApi.sanitizeAvatarUrl(userInfo.avatarUrl) : '',
+            });
 
             if (response.success){
+                const [firstName, ...rest] = nextName.split(/\s+/);
+                const lastName = rest.join(' ');
                 setUserInfo((prev) => {
                     if (!prev) return prev;
                     return {
@@ -874,6 +919,7 @@ export default function DashboardPage() {
                             devices={devices}
                             selectedDeviceId={selectedDeviceId}
                             selectedDevice={selectedDevice}
+                            selectedDeviceLocationLabel={selectedDeviceLocationLabel}
                             selectedDeviceTelemetry={selectedDeviceTelemetry}
                             formatTime={formatTime}
                             onSelectDevice={setSelectedDeviceId}

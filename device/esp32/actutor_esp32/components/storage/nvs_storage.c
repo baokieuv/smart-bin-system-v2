@@ -50,6 +50,10 @@ esp_err_t nvs_load_bin_config(SmartBinConfig_t *config) {
         ESP_LOGW(TAG, "Khong tim thay cau hinh trong Flash, se dung mac dinh.");
     }
 
+    if (config->bin_depth_cm <= 1.0f || config->full_threshold_pct <= 0){
+        err = ESP_ERR_INVALID_STATE;
+    }
+
     nvs_close(nvs);
     return err;
 }

@@ -12,7 +12,7 @@ export const deviceApi = {
         latitude: number;
         name: string;
     }) => {
-        return api.post<DeviceDto>('/devices', formData);
+        return api.post<DeviceDto>('/devices/claim', formData);
     },
 
     // Get device list requires auth and uses auto-refresh

@@ -64,18 +64,18 @@ export default function UsersPage() {
                       <div className="relative h-10 w-10 overflow-hidden rounded-lg border border-slate-200">
                         <Image
                           src={user.avatarUrl}
-                          alt={`${user.firstName} ${user.lastName}`}
+                          alt={`${user.name}`}
                           fill
                           className="object-cover"
                         />
                       </div>
                     ) : (
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-sky-100 text-xs font-semibold text-sky-700">
-                        {getInitials(user.firstName, user.lastName)}
+                        {getInitials(user.name, user.email)}
                       </div>
                     )}
                   </td>
-                  <td className="py-2 font-medium text-foreground">{`${user.firstName} ${user.lastName}`.trim()}</td>
+                  <td className="py-2 font-medium text-foreground">{user.name.trim()}</td>
                   <td className="py-2 text-slate-600">{user.email}</td>
                   <td className="py-2 text-slate-600">{user.state}</td>
                   <td className="py-2">
