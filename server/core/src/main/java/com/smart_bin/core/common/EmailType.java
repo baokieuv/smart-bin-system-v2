@@ -8,7 +8,8 @@ import java.util.stream.Stream;
 public enum EmailType {
     VERIFICATION(0),
     WELCOME(1),
-    RESET_PASSWORD(2);
+    RESET_PASSWORD(2),
+    WELCOME_TENANT(3);
 
     private final int value;
 

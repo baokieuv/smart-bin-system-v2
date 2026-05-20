@@ -1,15 +1,19 @@
 package com.smart_bin.iam_service.controller;
 
+import com.smart_bin.core.common.UserRole;
 import com.smart_bin.core.dto.ApiResponseFormat;
 import com.smart_bin.core.utils.ResponseFactory;
 import com.smart_bin.iam_service.common.SuccessCode;
 import com.smart_bin.iam_service.dto.auth.request.CreateTenantRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateTenantStatusRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateTenantUserStatusRequest;
+import com.smart_bin.iam_service.dto.user.request.TenantUserMapRequest;
 import com.smart_bin.iam_service.serivce.TenantService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -23,7 +27,9 @@ public class TenantController {
 
     @PostMapping
     @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
-    public ResponseEntity<ApiResponseFormat<Object>> createTenant(@RequestBody CreateTenantRequest request){
+    public ResponseEntity<ApiResponseFormat<Object>> createTenant(
+            @Valid @RequestBody CreateTenantRequest request
+    ){
         var response = service.createTenant(request);
         return responseFactory.response(SuccessCode.CREATED, response);
     }
@@ -42,7 +48,7 @@ public class TenantController {
     @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> updateTenantStatus(
             @PathVariable("id") String id,
-            @RequestBody UpdateTenantStatusRequest request,
+            @Valid @RequestBody UpdateTenantStatusRequest request,
             @AuthenticationPrincipal Jwt jwt
     ){
         String actorId = jwt.getSubject();
@@ -51,14 +57,22 @@ public class TenantController {
     }
 
     @GetMapping("/users")
-    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN)")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> getTenantUsers(
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false, defaultValue = "1") Long page,
-            @RequestParam(required = false, defaultValue = "10") Long size
+            @RequestParam(required = false, defaultValue = "10") Long size,
+            Authentication authentication
     ){
         String tenantKeycloakId = jwt.getSubject();
-        var response = service.getTenantUsers(tenantKeycloakId, page, size);
+
+        boolean isSuperAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equalsIgnoreCase(UserRole.SUPER_ADMIN.getRoleName()) ||
+                        auth.getAuthority().equalsIgnoreCase("ROLE_" + UserRole.SUPER_ADMIN.getRoleName()));
+
+        var response = service.getTenantUsers(tenantKeycloakId, isSuperAdmin, page, size);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -66,7 +80,7 @@ public class TenantController {
     @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> updateTenantUserStatus(
             @PathVariable("userId") String targetUserId,
-            @RequestBody UpdateTenantUserStatusRequest request,
+            @Valid @RequestBody UpdateTenantUserStatusRequest request,
             @AuthenticationPrincipal Jwt jwt
     ){
         String tenantKeycloakId = jwt.getSubject();
@@ -80,6 +94,15 @@ public class TenantController {
             @RequestParam("secret") String secret
     ) {
         var response = service.verifyTenantSecret(internalSecret, secret);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping("/map-user")
+    public ResponseEntity<ApiResponseFormat<Object>> mapTenantToUser(
+            @Valid @RequestBody TenantUserMapRequest request,
+            @RequestHeader("x-internal-secret") String internalSecret
+    ) {
+        var response = service.mappingTenantAndUser(request, internalSecret);
         return responseFactory.response(SuccessCode.OK, response);
     }
 }

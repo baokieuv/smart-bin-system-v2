@@ -178,6 +178,8 @@ public class DeviceService {
             }
 
             repository.save(device);
+
+            iamServiceClient.mapTenantToUser(internalSecret, device.getTenantId(), userId);
             return "Đã liên kết thiết bị thành công!";
         } else {
             // TH2: Thiết bị CHƯA ĐƯỢC CẤP PHÉP (Quét mã trước khi bóc hộp cắm điện)
@@ -365,6 +367,8 @@ public class DeviceService {
             device.setClaimedAt(System.currentTimeMillis());
             redisTemplate.delete(cacheKey); // Xóa khỏi cache
             log.info("Auto-mapped User {} và tọa độ cho thiết bị MAC {}", device.getUserId(), request.mac());
+
+            iamServiceClient.mapTenantToUser(internalSecret, device.getTenantId(), device.getUserId());
         }
 
         // Tạo trên ThingsBoard nếu là máy mới

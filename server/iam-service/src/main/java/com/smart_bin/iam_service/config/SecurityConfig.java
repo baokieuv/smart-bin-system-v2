@@ -36,6 +36,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/v1/users").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/tenants/verify-secret").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/tenants/map-user").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
 
                         .requestMatchers("/api/v1/users/**").authenticated()

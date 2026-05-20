@@ -14,6 +14,8 @@ import java.util.UUID;
 public interface TenantUserControlRepository extends JpaRepository<TenantUserControl, UUID> {
     Optional<TenantUserControl> findByTenantIdAndUserId(UUID tenantId, UUID userId);
 
-    @Query("SELECT u FROM User u JOIN TenantUserControl tuc ON u.getId() = tuc.getUserId() WHERE tuc.getTenantId() = :tenantId")
+    @Query("SELECT u FROM User u JOIN TenantUserControl tuc ON u.id = tuc.userId WHERE tuc.tenantId = :tenantId")
     Page<User> findUsersByTenantId(@Param("tenantId") UUID tenantId, Pageable pageable);
+
+    boolean existsByTenantIdAndUserId(UUID tenantId, UUID userId);
 }

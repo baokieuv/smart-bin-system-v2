@@ -15,4 +15,11 @@ public interface IamServiceClient {
             @RequestHeader("x-internal-secret") String internalSecret,
             @RequestParam("secret") String secret
     );
+
+    @PostMapping("/api/v1/tenants/map-user")
+    void mapTenantToUser(
+            @RequestHeader("x-internal-secret") String internalSecret,
+            @RequestParam("tenantId") String tenantId,
+            @RequestParam("userId") String userId
+    );
 }

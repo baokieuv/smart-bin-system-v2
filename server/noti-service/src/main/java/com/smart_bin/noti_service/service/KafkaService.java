@@ -33,6 +33,7 @@ public class KafkaService {
 
             String toEmail = data.get("email").toString();
             String firstName = data.containsKey("fullName") ? data.get("fullName").toString() : "User";
+            String password = data.containsKey("password") ? data.get("password").toString() : null;
 
             switch (type) {
                 case VERIFICATION:
@@ -43,6 +44,9 @@ public class KafkaService {
                     break;
                 case RESET_PASSWORD:
                     emailService.sendPasswordResetEmail(toEmail, firstName, data.get("activationCode").toString());
+                    break;
+                case WELCOME_TENANT:
+                    emailService.sendWelcomeTenantEmail(toEmail, firstName, password);
                     break;
                 default:
                     log.warn("Không hỗ trợ loại email này: {}", type);

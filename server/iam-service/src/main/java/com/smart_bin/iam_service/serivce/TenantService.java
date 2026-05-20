@@ -10,13 +10,17 @@ import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.CreateTenantRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateTenantStatusRequest;
 import com.smart_bin.iam_service.dto.auth.response.TenantDto;
+import com.smart_bin.iam_service.dto.user.request.TenantUserMapRequest;
 import com.smart_bin.iam_service.dto.user.response.UserDto;
 import com.smart_bin.iam_service.entity.Tenant;
 import com.smart_bin.iam_service.entity.TenantUserControl;
+import com.smart_bin.iam_service.entity.User;
 import com.smart_bin.iam_service.mapper.TenantMapper;
 import com.smart_bin.iam_service.mapper.UserMapper;
 import com.smart_bin.iam_service.repository.TenantRepository;
 import com.smart_bin.iam_service.repository.TenantUserControlRepository;
+import com.smart_bin.iam_service.repository.UserRepository;
+import jakarta.validation.constraints.Email;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +39,7 @@ import java.util.UUID;
 public class TenantService {
 
     private final TenantRepository tenantRepository;
+    private final UserRepository userRepository;
     private final TenantUserControlRepository tenantUserControlRepository;
     private final KeycloakService keycloakService;
     private final TenantMapper tenantMapper;
@@ -69,7 +74,7 @@ public class TenantService {
 
         Tenant savedTenant = tenantRepository.save(tenant);
 
-        sendEmailToTenant(savedTenant, password);
+        sendEmailToTenant(savedTenant, password, EmailType.WELCOME_TENANT);
 
         return tenantMapper.toDto(savedTenant);
     }
@@ -109,7 +114,7 @@ public class TenantService {
         return tenantMapper.toDto(tenantRepository.save(tenant));
     }
 
-    public Page<UserDto> getTenantUsers(String tenantKeycloakId, Long page, Long size) {
+    public Page<UserDto> getTenantUsers(String tenantKeycloakId, boolean isSuperAdmin, Long page, Long size) {
         Tenant tenant = tenantRepository.findByKeycloakId(tenantKeycloakId)
                 .orElseThrow(() -> new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Tài khoản không phải Tenant hợp lệ"));
 
@@ -117,8 +122,16 @@ public class TenantService {
         int pageSize = (size != null && size > 0) ? size.intValue() : 10;
         Pageable pageable = PageRequest.of(pageIndex, pageSize);
 
-        return tenantUserControlRepository.findUsersByTenantId(tenant.getId(), pageable)
-                .map(userMapper::toDto);
+        Page<UserDto> userPage;
+
+        if (isSuperAdmin){
+            userPage = userRepository.findAll(pageable).map(userMapper::toDto);
+        } else {
+            userPage = tenantUserControlRepository.findUsersByTenantId(tenant.getId(), pageable)
+                    .map(userMapper::toDto);
+        }
+
+        return userPage;
     }
 
     @Transactional
@@ -147,13 +160,37 @@ public class TenantService {
         return tenant.getKeycloakId();
     }
 
-    private void sendEmailToTenant(Tenant tenant, String initialPassword) {
+    public String mappingTenantAndUser(TenantUserMapRequest request, String internalSecret) {
+        if (!appInternalSecret.equals(internalSecret)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Internal secret không hợp lệ");
+        }
+
+        Tenant tenant = tenantRepository.findByKeycloakId(request.tenantId())
+                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Tenant không tồn tại"));
+
+        User user = userRepository.findById(UUID.fromString(request.userId()))
+                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "User không tồn tại"));
+
+        if (tenantUserControlRepository.existsByTenantIdAndUserId(tenant.getId(), user.getId())) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "User đã được gán cho Tenant này");
+        }
+
+        TenantUserControl controlRecord = new TenantUserControl();
+        controlRecord.setTenantId(tenant.getId());
+        controlRecord.setUserId(user.getId());
+        controlRecord.setState(UserState.ACTIVE);
+        tenantUserControlRepository.save(controlRecord);
+
+        return "Mapping User vào Tenant thành công";
+    }
+
+    private void sendEmailToTenant(Tenant tenant, String initialPassword, EmailType emailType) {
         ObjectNode emailData = objectMapper.createObjectNode();
         emailData.put("email", tenant.getEmail());
         emailData.put("fullName", tenant.getName());
         emailData.put("password", initialPassword);
 
-        kafkaService.sendEmailToUser(emailData, EmailType.WELCOME);
+        kafkaService.sendEmailToUser(emailData, emailType);
     }
 
     private String generateRandomPassword() {
