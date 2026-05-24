@@ -11,7 +11,6 @@ import com.smart_bin.device_service.common.DetectionFeedback;
 import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.common.DeviceStatus;
 import com.smart_bin.device_service.common.WasteType;
-import com.smart_bin.device_service.config.IamServiceClient;
 import com.smart_bin.device_service.config.MediaServiceClient;
 import com.smart_bin.device_service.dto.request.*;
 import com.smart_bin.device_service.dto.response.DetectionResultDto;
@@ -24,6 +23,7 @@ import com.smart_bin.device_service.repository.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
@@ -41,7 +41,6 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -56,147 +55,30 @@ public class DeviceService {
     private final MediaServiceClient mediaServiceClient;
     private final KafkaService kafkaService;
     private final DeviceSecurityService securityService;
+    private final DeviceProfileRepository profileRepository;
     private final DeviceGroupRepository groupRepository;
-    private final DeviceConfigRepository configRepository;
     private final FirmwareMappingRepository mappingRepository;
-    private final IamServiceClient iamServiceClient;
+
     private static final String CLAIM_CACHE_PREFIX = "claim:mac:";
 
-    @Value("${media-service.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
+    @Value("${app.media-service.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
     private String internalSecret;
 
-    @Transactional
-    @CacheEvict(value = "device_list", allEntries = true)
-    public List<DeviceDto> importDevices(ImportDeviceRequest request, String actorId) {
-        List<Device> devicesToSave = new ArrayList<>();
-
-        Set<String> macsToImport = request.devices().stream()
-                .map(DeviceImportItem::mac)
-                .collect(Collectors.toSet());
-
-        Set<String> existingMacs = repository.findByMacIn(macsToImport).stream()
-                .map(Device::getMac)
-                .collect(Collectors.toSet());
-
-        Set<String> groupCodes = request.devices().stream()
-                .map(DeviceImportItem::groupCode)
-                .filter(code -> code != null && !code.isBlank())
-                .collect(Collectors.toSet());
-
-        Map<String, DeviceGroup> groupMap = new HashMap<>();
-        if (!groupCodes.isEmpty()) {
-            List<DeviceGroup> fetchedGroups = groupRepository.findByCodeIn(groupCodes);
-            for (DeviceGroup group : fetchedGroups) {
-                groupMap.put(group.getCode(), group);
-            }
-
-            // Kiểm tra xem có groupCode nào truyền lên mà không tồn tại trong DB không
-            for (String code : groupCodes) {
-                if (!groupMap.containsKey(code)) {
-                    throw new ApiException(CoreErrorCode.BAD_REQUEST, "Không tìm thấy Device Group với code: " + code);
-                }
-            }
-        }
-
-        for (DeviceImportItem item : request.devices()) {
-            // Tra cứu MAC với O(1)
-            if (existingMacs.contains(item.mac())) {
-                log.warn("Bỏ qua thiết bị có MAC {} vì đã tồn tại trong hệ thống.", item.mac());
-                continue;
-            }
-
-            // Tra cứu Group với O(1)
-            DeviceGroup group = null;
-            if (item.groupCode() != null && !item.groupCode().isBlank()) {
-                group = groupMap.get(item.groupCode());
-            }
-
-            // Giao tiếp với ThingsBoard (Vẫn phải gọi HTTP Call từng cái do API ThingsBoard)
-            String tbDeviceName = "SmartBin-" + item.mac().replace(":", "").replace("-", "");
-            JsonNode tbResponse = thingsBoardService.addDevice(tbDeviceName, "SmartBin");
-            String tbDeviceId = tbResponse.get("id").get("id").asText();
-
-            String displayName = (item.name() != null && !item.name().isBlank()) ? item.name() : tbDeviceName;
-
-            Map<String, Object> attributes = new HashMap<>();
-            attributes.put("macAddress", item.mac());
-            attributes.put("name", displayName);
-            thingsBoardService.updateAttributes(tbDeviceId, Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
-
-            JsonNode credentialResponse = thingsBoardService.getDeviceCredentials(tbDeviceId);
-            String accessToken = credentialResponse.get("credentialsId").asText();
-
-            Device device = new Device();
-            device.setTenantId(actorId);
-            device.setMac(item.mac());
-            device.setName(displayName);
-            device.setDeviceId(tbDeviceId);
-            device.setAccessToken(accessToken);
-            device.setActive(false);
-            device.setState(DeviceState.PENDING);
-            device.setStatus(DeviceStatus.OFFLINE);
-            device.setClaimedAt(null);
-            device.setDeviceGroup(group);
-
-            devicesToSave.add(device);
-        }
-
-        if (!devicesToSave.isEmpty()) {
-            devicesToSave = repository.saveAll(devicesToSave);
-        }
-
-        return devicesToSave.stream().map(mapper::toDto).collect(Collectors.toList());
-    }
+    @Value("${app.secret-key:DEFAULT_CLAIM_SECRET_KEY}")
+    private String claimSecret;
 
     @Transactional
     public String claimDevice(ClaimDeviceRequest request, String userId) {
+        String expectedCode = DigestUtils.sha256Hex(request.mac() + claimSecret).substring(0, 6).toUpperCase();
+
+        if (request.claimCode() == null || !request.claimCode().toUpperCase().equals(expectedCode)) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Claim code không hợp lệ.");
+        }
+
         Optional<Device> deviceOpt = repository.findByMac(request.mac());
 
-        if (deviceOpt.isPresent()) {
-            // TH1: Thiết bị ĐÃ ĐƯỢC KÍCH HOẠT (Đã bật nguồn trước khi quét mã)
-            Device device = deviceOpt.get();
-            if (device.getUserId() != null) {
-                throw new ApiException(CoreErrorCode.BAD_REQUEST, "Thiết bị này đã được liên kết với một tài khoản khác.");
-            }
-
-            device.setUserId(userId);
-            if (request.latitude() != null) device.setLatitude(request.latitude());
-            if (request.longitude() != null) device.setLongitude(request.longitude());
-            if (request.name() != null && !request.name().isBlank()) device.setName(request.name());
-            device.setClaimedAt(System.currentTimeMillis());
-
-            // Đồng bộ thông tin (tên, tọa độ) lên ThingsBoard nếu thiết bị đã có ID trên TB
-            if (device.getDeviceId() != null) {
-                Map<String, Object> attributes = new HashMap<>();
-                if (request.name() != null && !request.name().isBlank()) attributes.put("name", request.name());
-                if (request.latitude() != null) attributes.put("latitude", request.latitude());
-                if (request.longitude() != null) attributes.put("longitude", request.longitude());
-
-                if (!attributes.isEmpty()) {
-                    thingsBoardService.updateAttributes(device.getDeviceId(), Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
-                }
-            }
-
-            repository.save(device);
-
-            iamServiceClient.mapTenantToUser(internalSecret, device.getTenantId(), userId);
-            return "Đã liên kết thiết bị thành công!";
-        } else {
-            // TH2: Thiết bị CHƯA ĐƯỢC CẤP PHÉP (Quét mã trước khi bóc hộp cắm điện)
-            String cacheKey = CLAIM_CACHE_PREFIX + request.mac();
-            try {
-                Map<String, Object> cacheData = new HashMap<>();
-                cacheData.put("userId", userId);
-                if (request.name() != null && !request.name().isBlank()) cacheData.put("name", request.name());
-                if (request.latitude() != null) cacheData.put("latitude", request.latitude());
-                if (request.longitude() != null) cacheData.put("longitude", request.longitude());
-
-                redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(cacheData), 7, TimeUnit.DAYS);
-            } catch (Exception e) {
-                throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi khi lưu thông tin thiết bị vào bộ nhớ đệm.");
-            }
-            return "Đã ghi nhận yêu cầu. Thiết bị sẽ tự động lấy cấu hình, tọa độ và liên kết với bạn ngay khi được cắm điện.";
-        }
+        return deviceOpt.map(device -> claimExistingDevice(device, request, userId))
+                .orElseGet(() -> cacheClaimRequestForFutureProvision(request, userId));
     }
 
 //    @Cacheable(value = "device_list", key = "#keycloakId + ':' + #page + ':' + #size")
@@ -232,7 +114,7 @@ public class DeviceService {
 
 //    @Cacheable(value = "device_detail", key = "#keycloakId + ':' + #deviceId")
     public DeviceDto getDeviceDetail(String keycloakId, String deviceId){
-        Device device = getDeviceAndVerifyOwnership(deviceId, keycloakId);
+        Device device = getDeviceAndVerifyUserOwnership(deviceId, keycloakId);
         return mapper.toDto(device);
     }
 
@@ -241,8 +123,8 @@ public class DeviceService {
             put = { @CachePut(value = "device_detail", key = "#keycloakId + ':' + #id") },
             evict = { @CacheEvict(value = "device_list", allEntries = true) }
     )
-    public DeviceDto updateDevice(String id, UpdateDeviceRequest request, String keycloakId) {
-        Device device = getDeviceAndVerifyOwnership(id, keycloakId);
+    public DeviceDto updateDeviceByUser(String id, UpdateDeviceUserRequest request, String keycloakId) {
+        Device device = getDeviceAndVerifyUserOwnership(id, keycloakId);
         Map<String, Object> tbAttributes = new HashMap<>();
         boolean isDbUpdated = false;
 
@@ -264,23 +146,56 @@ public class DeviceService {
             isDbUpdated = true;
         }
 
-        if (request.additionalAttributes() != null && !request.additionalAttributes().isEmpty()) {
-            tbAttributes.putAll(request.additionalAttributes());
+        if (request.pollingInterval() != null || request.fullThreshold() != null) {
+            Map<String, Object> currentConfigs = device.getUserConfigs();
+            if (currentConfigs == null) {
+                currentConfigs = new HashMap<>();
+            }
+
+            if (request.pollingInterval() != null) {
+                currentConfigs.put("polling_interval", request.pollingInterval());
+            }
+            if (request.fullThreshold() != null) {
+                currentConfigs.put("full_threshold", request.fullThreshold());
+            }
+
+            device.setUserConfigs(currentConfigs);
+            isDbUpdated = true;
         }
 
         if (!tbAttributes.isEmpty()) {
-            String targetScope = Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name();
-            if (request.scope() != null && !request.scope().isBlank()) {
-                try {
-                    targetScope = Constants.THINGSBOARD_SCOPE.valueOf(request.scope().toUpperCase()).name();
-                } catch (IllegalArgumentException e) {
-                    throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid ThingsBoard scope provided: " + request.scope());
-                }
-            }
-            thingsBoardService.updateAttributes(device.getDeviceId(), targetScope, tbAttributes);
+            thingsBoardService.updateAttributes(device.getDeviceId(), Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), tbAttributes);
         }
 
         if (isDbUpdated) {
+            device = repository.save(device);
+        }
+
+        return mapper.toDto(device);
+    }
+
+    @Transactional
+    @Caching(
+            put = { @CachePut(value = "device_detail", key = "#tenantId + ':' + #id") },
+            evict = { @CacheEvict(value = "device_list", allEntries = true) }
+    )
+    public DeviceDto updateDeviceByTenant(String id, UpdateDeviceTenantRequest request, String tenantId) {
+        Device device = getDeviceAndVerifyTenantOwnership(id, tenantId);
+
+        if (request.groupId() != null) {
+            if (request.groupId().trim().isEmpty()) {
+                device.setDeviceGroup(null);
+            } else {
+                try {
+                    UUID groupId = UUID.fromString(request.groupId());
+                    DeviceGroup group = groupRepository.findByIdAndTenantIdAndActiveTrue(groupId, tenantId)
+                            .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Nhóm thiết bị không tồn tại hoặc bạn không có quyền truy cập."));
+
+                    device.setDeviceGroup(group);
+                } catch (IllegalArgumentException e) {
+                    throw new ApiException(CoreErrorCode.BAD_REQUEST, "Định dạng Group ID không hợp lệ");
+                }
+            }
             device = repository.save(device);
         }
 
@@ -293,7 +208,7 @@ public class DeviceService {
             @CacheEvict(value = "device_list", allEntries = true)
     })
     public void deleteDevice(String id, String keycloakId){
-        Device device = getDeviceAndVerifyOwnership(id, keycloakId);
+        Device device = getDeviceAndVerifyUserOwnership(id, keycloakId);
 
         // Chuyển thiết bị về trạng thái lưu kho, KHÔNG xóa trên ThingsBoard
         device.setActive(false);
@@ -317,94 +232,19 @@ public class DeviceService {
 
     @Transactional
     public Object provisionDevice(DeviceProvisionRequest request) {
-        // 1. Xác thực Tenant Secret với IAM Service
-        JsonNode uploadRes = iamServiceClient.verifyTenantSecret(internalSecret, request.tenantSecret());
-        String tenantId = uploadRes.get("data").asText();
+        DeviceProfile profile = profileRepository.findByCodeAndActiveTrue(request.profileCode())
+                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Mã mẫu thiết bị (Profile Code) không hợp lệ hoặc không tồn tại."));
 
-        Device device;
         Optional<Device> existingDeviceOpt = repository.findByMac(request.mac());
+        boolean isNewDevice = existingDeviceOpt.isEmpty();
 
-        DeviceGroup group = groupRepository.findByCodeAndActiveTrue(request.groupCode())
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Dòng thiết bị không hợp lệ"));
+        Device device = isNewDevice
+                ? initializeNewDevice(request, profile)
+                : resetExistingDeviceForProvision(existingDeviceOpt.get(), request, profile);
 
-        boolean isNewDevice = false;
+        processCachedClaimData(device, request.mac());
 
-        if (existingDeviceOpt.isPresent()) {
-            device = existingDeviceOpt.get();
-
-            if (device.getPublicKey() != null && device.getState() == DeviceState.ACTIVE) {
-                throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED, "Thiết bị này đã được kích hoạt trước đó.");
-            }
-            device.setPublicKey(request.publicKey());
-            device.setHwMetadata(request.hwMetadata());
-            device.setState(DeviceState.ACTIVE);
-            device.setStatus(DeviceStatus.OFFLINE);
-            device.setTenantId(tenantId);
-            device.setDeviceGroup(group);
-        } else {
-            device = new Device();
-            device.setMac(request.mac());
-            device.setTenantId(tenantId);
-            device.setPublicKey(request.publicKey());
-            device.setHwMetadata(request.hwMetadata());
-            device.setState(DeviceState.ACTIVE);
-            device.setStatus(DeviceStatus.OFFLINE);
-            device.setDeviceGroup(group);
-            isNewDevice = true;
-        }
-
-        // 3. Kiểm tra xem User đã quét QR (Claim) trước đó không? (Đọc JSON từ Cache)
-        String cacheKey = CLAIM_CACHE_PREFIX + request.mac();
-        String cachedDataStr = redisTemplate.opsForValue().get(cacheKey);
-
-        if (cachedDataStr != null && device.getUserId() == null) {
-            JsonNode cachedData = objectMapper.readTree(cachedDataStr);
-            if (cachedData.has("userId")) device.setUserId(cachedData.get("userId").asText());
-            if (cachedData.has("name")) device.setName(cachedData.get("name").asText());
-            if (cachedData.has("latitude")) device.setLatitude(cachedData.get("latitude").asDouble());
-            if (cachedData.has("longitude")) device.setLongitude(cachedData.get("longitude").asDouble());
-
-            device.setClaimedAt(System.currentTimeMillis());
-            redisTemplate.delete(cacheKey); // Xóa khỏi cache
-            log.info("Auto-mapped User {} và tọa độ cho thiết bị MAC {}", device.getUserId(), request.mac());
-
-            iamServiceClient.mapTenantToUser(internalSecret, device.getTenantId(), device.getUserId());
-        }
-
-        // Tạo trên ThingsBoard nếu là máy mới
-        if (isNewDevice) {
-            String defaultName = "SmartBin-" + request.mac().replace(":", "").replace("-", "");
-            if (device.getName() == null || device.getName().isBlank()) {
-                device.setName(defaultName);
-            }
-
-            tools.jackson.databind.JsonNode tbResponse = thingsBoardService.addDevice(defaultName, "SmartBin");
-            String tbDeviceId = tbResponse.get("id").get("id").asText();
-
-            Map<String, Object> attributes = new HashMap<>();
-            attributes.put("macAddress", request.mac());
-            attributes.put("name", device.getName());
-            if (device.getLatitude() != null) attributes.put("latitude", device.getLatitude());
-            if (device.getLongitude() != null) attributes.put("longitude", device.getLongitude());
-
-            thingsBoardService.updateAttributes(tbDeviceId, Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
-
-            tools.jackson.databind.JsonNode credentialResponse = thingsBoardService.getDeviceCredentials(tbDeviceId);
-            String accessToken = credentialResponse.get("credentialsId").asText();
-
-            device.setDeviceId(tbDeviceId);
-            device.setAccessToken(accessToken);
-        } else {
-            // Đồng bộ cấu hình lên TB nếu là thiết bị PENDING
-            Map<String, Object> attributes = new HashMap<>();
-            if (device.getName() != null) attributes.put("name", device.getName());
-            if (device.getLatitude() != null) attributes.put("latitude", device.getLatitude());
-            if (device.getLongitude() != null) attributes.put("longitude", device.getLongitude());
-
-            if (!attributes.isEmpty() && device.getDeviceId() != null) {
-                thingsBoardService.updateAttributes(device.getDeviceId(), Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
-            }
-        }
+        syncWithThingsBoard(device, isNewDevice, request.mac());
 
         // 4. Tự động tìm và gán Firmware dựa trên hw_metadata
         autoAssignFirmware(device);
@@ -412,8 +252,11 @@ public class DeviceService {
         Device savedDevice = repository.save(device);
 
         // 5. Nếu là máy mới (chưa có Config) thì tạo Default Config
-        if (configRepository.findByDeviceId(savedDevice.getId()).isEmpty()) {
-            createDefaultConfig(savedDevice);
+        if (device.getUserConfigs() == null) {
+            device.setUserConfigs(Map.of(
+                    "polling_interval", 300,
+                    "full_threshold", 80.0
+            ));
         }
 
         // 6. Trả về Token và ID cho phần cứng
@@ -426,7 +269,7 @@ public class DeviceService {
     }
 
     public JsonNode getTelemetries(String id, String keycloakId, String keys, Long startTs, Long endTs) {
-        Device device = getDeviceAndVerifyOwnership(id, keycloakId);
+        Device device = getDeviceAndVerifyUserOwnership(id, keycloakId);
 
         // Bảo mật: Nếu startTs cũ hơn lúc nhận máy, ép về mốc claimedAt
         if (device.getClaimedAt() != null) {
@@ -440,104 +283,106 @@ public class DeviceService {
 
     @Transactional
     public String getPresignedUrl(String payload, String signature, String metadata, String desktopVer, String binVer) {
-        try {
-            DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
+        DetectionResultDto fileInfo = parseMetadata(metadata);
+        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer);
 
-            JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
-            String mac = payloadObj.get("mac").getAsString();
+        JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
+                internalSecret, device.getMac(), fileInfo.filename(), fileInfo.contentType()
+        );
 
-            Device device = repository.findByMacAndActiveTrue(mac).orElseThrow(() ->
-                    new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+        String objectPath = mediaResponse.get("data").get("objectName").asString();
+        cachePendingDetectionUpload(device.getMac(), fileInfo, objectPath);
 
-            securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
-
-            updateVersionInfo(device, desktopVer, binVer);
-            repository.save(device);
-
-            JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
-                    internalSecret,
-                    mac,
-                    fileInfo.filename(),
-                    fileInfo.contentType()
-            );
-
-            String presignedUrl = mediaResponse.get("data").get("url").asText();
-            String objectPath = mediaResponse.get("data").get("objectName").asText();
-
-            Map<String, Object> redisData = new HashMap<>();
-            redisData.put("metadata", fileInfo);
-            redisData.put("objectPath", objectPath);
-
-            String redisKey = Constants.PENDING_DETECTION_RESULT + mac + ":" + fileInfo.detectionId();
-
-            redisTemplate.opsForValue().set(
-                    redisKey,
-                    objectMapper.writeValueAsString(redisData),
-                    Constants.TIMESTAMP_EXPIRY_20M,
-                    TimeUnit.MILLISECONDS
-            );
-
-            return presignedUrl;
-
-        } catch (JacksonException e) {
-            log.error("Lỗi parse metadata: {}", metadata, e);
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata format");
-        } catch (Exception e) {
-            log.error("Lỗi khi gọi Media Service qua Feign: ", e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Cannot generate upload URL");
-        }
+        return mediaResponse.get("data").get("url").asString();
     }
 
     @Transactional
-    public String confirmUpload(String payload, String signature, String metadata, String desktopVer, String binVer){
-        try {
-            DetectionResultDto fileInfo = objectMapper.readValue(metadata, DetectionResultDto.class);
+    public String confirmUpload(String payload, String signature, String metadata, String desktopVer, String binVer) {
+        DetectionResultDto fileInfo = parseMetadata(metadata);
+        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer);
 
-            JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
-            String mac = payloadObj.get("mac").getAsString();
+        String finalImageUrl = extractCachedImageUrlAndClear(device.getMac(), fileInfo.detectionId());
+        saveDetectionResult(device, fileInfo, finalImageUrl);
 
-            Device device = repository.findByMacAndActiveTrue(mac)
-                    .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+        return "Upload confirmed and saved.";
+    }
 
-            securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
+    private Device initializeNewDevice(DeviceProvisionRequest request, DeviceProfile profile) {
+        Device device = new Device();
+        device.setMac(request.mac());
+        device.setPublicKey(request.publicKey());
+        device.setHwMetadata(request.hwMetadata());
+        device.setState(DeviceState.ACTIVE);
+        device.setStatus(DeviceStatus.OFFLINE);
+        device.setDeviceProfile(profile);
+        return device;
+    }
 
-            updateVersionInfo(device, desktopVer, binVer);
+    private Device resetExistingDeviceForProvision(Device device, DeviceProvisionRequest request, DeviceProfile profile) {
+        if (device.getPublicKey() != null && device.getState() == DeviceState.ACTIVE) {
+            throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED, "Thiết bị này đã được kích hoạt trước đó.");
+        }
+        device.setPublicKey(request.publicKey());
+        device.setHwMetadata(request.hwMetadata());
+        device.setState(DeviceState.ACTIVE);
+        device.setStatus(DeviceStatus.OFFLINE);
+        device.setDeviceProfile(profile);
+        return device;
+    }
 
-            String redisKey = Constants.PENDING_DETECTION_RESULT + mac + ":" + fileInfo.detectionId();
-            String cachedData = redisTemplate.opsForValue().get(redisKey);
+    private void processCachedClaimData(Device device, String mac) {
+        String cacheKey = CLAIM_CACHE_PREFIX + mac;
+        String cachedDataStr = redisTemplate.opsForValue().get(cacheKey);
 
-            String finalImageUrl = null;
-            if (cachedData != null) {
-                JsonNode root = objectMapper.readTree(cachedData);
-                finalImageUrl = root.get("objectPath").asText();
+        if (cachedDataStr != null && device.getUserId() == null) {
+            try {
+                JsonNode cachedData = objectMapper.readTree(cachedDataStr);
+                if (cachedData.has("userId")) device.setUserId(cachedData.get("userId").asString());
+                if (cachedData.has("name")) device.setName(cachedData.get("name").asString());
+                if (cachedData.has("latitude")) device.setLatitude(cachedData.get("latitude").asDouble());
+                if (cachedData.has("longitude")) device.setLongitude(cachedData.get("longitude").asDouble());
+
+                device.setClaimedAt(System.currentTimeMillis());
+                redisTemplate.delete(cacheKey);
+                log.info("Auto-mapped User {} và tọa độ cho thiết bị MAC {}", device.getUserId(), mac);
+            } catch (Exception e) {
+                log.error("Lỗi khi đọc cache claim data: ", e);
+            }
+        }
+    }
+
+    private void syncWithThingsBoard(Device device, boolean isNewDevice, String mac) {
+        Map<String, Object> attributes = new HashMap<>();
+
+        if (isNewDevice) {
+            String defaultName = "SmartBin-" + mac.replace(":", "").replace("-", "");
+            if (device.getName() == null || device.getName().isBlank()) {
+                device.setName(defaultName);
             }
 
-            DeviceDetectionResult result = new DeviceDetectionResult();
-            result.setDevice(device);
-            result.setConfidence(fileInfo.confidence());
-            result.setImageUrl(finalImageUrl);
+            JsonNode tbResponse = thingsBoardService.addDevice(device.getName(), "SmartBin");
+            String tbDeviceId = tbResponse.get("id").get("id").asString();
 
-            if (fileInfo.category() != null) {
-                result.setType(WasteType.valueOf(fileInfo.category().toUpperCase()));
+            attributes.put("macAddress", mac);
+            attributes.put("name", device.getName());
+            if (device.getLatitude() != null) attributes.put("latitude", device.getLatitude());
+            if (device.getLongitude() != null) attributes.put("longitude", device.getLongitude());
+
+            thingsBoardService.updateAttributes(tbDeviceId, Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
+
+            JsonNode credentialResponse = thingsBoardService.getDeviceCredentials(tbDeviceId);
+            String accessToken = credentialResponse.get("credentialsId").asString();
+
+            device.setDeviceId(tbDeviceId);
+            device.setAccessToken(accessToken);
+        } else {
+            if (device.getName() != null) attributes.put("name", device.getName());
+            if (device.getLatitude() != null) attributes.put("latitude", device.getLatitude());
+            if (device.getLongitude() != null) attributes.put("longitude", device.getLongitude());
+
+            if (!attributes.isEmpty() && device.getDeviceId() != null) {
+                thingsBoardService.updateAttributes(device.getDeviceId(), Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), attributes);
             }
-            if (fileInfo.userFeedback() != null) {
-                result.setFeedback(DetectionFeedback.valueOf(fileInfo.userFeedback().toUpperCase()));
-            }
-
-            if (fileInfo.detectedAt() != null) {
-                long ts = java.time.OffsetDateTime.parse(fileInfo.detectedAt())
-                        .toInstant().toEpochMilli();
-                result.setDetectedAt(ts);
-            }
-
-            detectionRepository.save(result);
-            repository.save(device);
-
-            redisTemplate.delete(redisKey);
-
-            return "Upload confirmed and saved.";
-        } catch (JacksonException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata structure");
         }
     }
 
@@ -550,22 +395,38 @@ public class DeviceService {
         }
     }
 
-    private Device getDeviceAndVerifyOwnership(String deviceIdStr, String keycloakId) {
-        UUID deviceId;
-        try {
-            deviceId = UUID.fromString(deviceIdStr);
-        } catch (IllegalArgumentException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST);
-        }
-
+    private Device getDeviceAndVerifyUserOwnership(String deviceIdStr, String userId) {
+        UUID deviceId = parseUUID(deviceIdStr);
         Device device = repository.findByIdAndActiveTrue(deviceId)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
-        if (!device.getUserId().equals(keycloakId)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
+        // Kiểm tra quyền của Normal User
+        if (device.getUserId() == null || !device.getUserId().equals(userId)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không phải chủ sở hữu thiết bị này");
         }
         return device;
     }
+
+    private Device getDeviceAndVerifyTenantOwnership(String deviceIdStr, String tenantId) {
+        UUID deviceId = parseUUID(deviceIdStr);
+        Device device = repository.findByIdAndActiveTrue(deviceId)
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        // Kiểm tra quyền của Tenant
+        if (device.getTenantId() == null || !device.getTenantId().equals(tenantId)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Thiết bị này không thuộc quyền quản lý của tổ chức bạn");
+        }
+        return device;
+    }
+
+    private UUID parseUUID(String id) {
+        try {
+            return UUID.fromString(id);
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid ID format");
+        }
+    }
+
     private void autoAssignFirmware(Device device) {
         // Lấy tất cả các rule đang active, sắp xếp theo Priority giảm dần
         List<FirmwareMapping> rules = mappingRepository.findAllByActiveTrueOrderByPriorityDesc();
@@ -592,14 +453,106 @@ public class DeviceService {
         return true;
     }
 
-    private void createDefaultConfig(Device device) {
-        DeviceConfig config = new DeviceConfig();
-        config.setDevice(device);
-        config.setUserConfigs(Map.of(
-                "polling_interval", 300,
-                "full_threshold", 80.0
-        ));
-        configRepository.save(config);
+    private String claimExistingDevice(Device device, ClaimDeviceRequest request, String userId) {
+        if (device.getUserId() != null) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Thiết bị này đã được liên kết với một tài khoản khác.");
+        }
+        device.setUserId(userId);
+        device.setClaimedAt(System.currentTimeMillis());
+
+        Map<String, Object> tbAttributes = new HashMap<>();
+        if (StringUtils.hasText(request.name())) {
+            device.setName(request.name());
+            tbAttributes.put("name", request.name());
+        }
+        if (request.latitude() != null) {
+            device.setLatitude(request.latitude());
+            tbAttributes.put("latitude", request.latitude());
+        }
+        if (request.longitude() != null) {
+            device.setLongitude(request.longitude());
+            tbAttributes.put("longitude", request.longitude());
+        }
+
+        if (!tbAttributes.isEmpty() && device.getDeviceId() != null) {
+            thingsBoardService.updateAttributes(device.getDeviceId(), Constants.THINGSBOARD_SCOPE.SERVER_SCOPE.name(), tbAttributes);
+        }
+
+        repository.save(device);
+        return "Đã liên kết thiết bị thành công!";
+    }
+
+    private String cacheClaimRequestForFutureProvision(ClaimDeviceRequest request, String userId) {
+        String cacheKey = CLAIM_CACHE_PREFIX + request.mac();
+        try {
+            Map<String, Object> cacheData = new HashMap<>();
+            cacheData.put("userId", userId);
+            if (StringUtils.hasText(request.name())) cacheData.put("name", request.name());
+            if (request.latitude() != null) cacheData.put("latitude", request.latitude());
+            if (request.longitude() != null) cacheData.put("longitude", request.longitude());
+
+            redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(cacheData), 7, TimeUnit.DAYS);
+            return "Đã ghi nhận yêu cầu. Thiết bị sẽ liên kết khi cắm điện.";
+        } catch (Exception e) {
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi khi lưu thông tin thiết bị.");
+        }
+    }
+
+    private DetectionResultDto parseMetadata(String metadata) {
+        try {
+            return objectMapper.readValue(metadata, DetectionResultDto.class);
+        } catch (JacksonException e) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata format");
+        }
+    }
+
+    private Device verifyDeviceSignatureAndMetadata(String payload, String signature, String desktopVer, String binVer) {
+        JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
+        String mac = payloadObj.get("mac").getAsString();
+
+        Device device = repository.findByMacAndActiveTrue(mac)
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
+        updateVersionInfo(device, desktopVer, binVer);
+        return repository.save(device);
+    }
+
+    private void cachePendingDetectionUpload(String mac, DetectionResultDto fileInfo, String objectPath) {
+        try {
+            Map<String, Object> redisData = Map.of("metadata", fileInfo, "objectPath", objectPath);
+            String redisKey = Constants.PENDING_DETECTION_RESULT + mac + ":" + fileInfo.detectionId();
+            redisTemplate.opsForValue().set(redisKey, objectMapper.writeValueAsString(redisData), Constants.TIMESTAMP_EXPIRY_20M, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            log.error("Lỗi khi serialize redis data", e);
+        }
+    }
+
+    private String extractCachedImageUrlAndClear(String mac, String detectionId) {
+        String redisKey = Constants.PENDING_DETECTION_RESULT + mac + ":" + detectionId;
+        String cachedData = redisTemplate.opsForValue().get(redisKey);
+        redisTemplate.delete(redisKey);
+
+        if (cachedData != null) {
+            try {
+                return objectMapper.readTree(cachedData).get("objectPath").asString();
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    private void saveDetectionResult(Device device, DetectionResultDto fileInfo, String finalImageUrl) {
+        DeviceDetectionResult result = new DeviceDetectionResult();
+        result.setDevice(device);
+        result.setConfidence(fileInfo.confidence());
+        result.setImageUrl(finalImageUrl);
+
+        if (StringUtils.hasText(fileInfo.category())) result.setType(WasteType.valueOf(fileInfo.category().toUpperCase()));
+        if (StringUtils.hasText(fileInfo.userFeedback())) result.setFeedback(DetectionFeedback.valueOf(fileInfo.userFeedback().toUpperCase()));
+        if (fileInfo.detectedAt() != null) {
+            result.setDetectedAt(java.time.OffsetDateTime.parse(fileInfo.detectedAt()).toInstant().toEpochMilli());
+        }
+        detectionRepository.save(result);
     }
 
     @Async

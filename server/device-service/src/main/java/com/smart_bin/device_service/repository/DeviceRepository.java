@@ -37,4 +37,6 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
 
     @Query("SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup WHERE d.mac = :mac")
     Optional<Device> findByMacWithGroup(@Param("mac") String mac);
+
+    boolean existsByDeviceProfile_IdAndActiveTrue(UUID profileId);
 }

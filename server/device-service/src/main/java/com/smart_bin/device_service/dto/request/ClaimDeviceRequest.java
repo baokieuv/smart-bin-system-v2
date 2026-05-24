@@ -18,5 +18,8 @@ public record ClaimDeviceRequest(
         @Max(value = 90, message = "Latitude must be less than or equal to 90")
         Double latitude,
 
-        String name
+        String name,
+
+        @NotNull(message = "Claim code is required")
+        String claimCode
 ) {}

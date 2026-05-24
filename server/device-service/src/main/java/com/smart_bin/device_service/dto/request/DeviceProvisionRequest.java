@@ -8,11 +8,8 @@ public record DeviceProvisionRequest(
         @NotBlank(message = "MAC Address không được để trống")
         String mac,
 
-        @NotBlank(message = "Tenant Secret không được để trống")
-        String tenantSecret,
-
-        @NotBlank(message = "Group code should not be empty")
-        String groupCode,
+        @NotBlank(message = "Profile Code không được để trống")
+        String profileCode,
 
         @NotBlank(message = "Public Key của thiết bị không được để trống")
         String publicKey,

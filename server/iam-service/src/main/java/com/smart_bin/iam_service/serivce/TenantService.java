@@ -160,15 +160,15 @@ public class TenantService {
         return tenant.getKeycloakId();
     }
 
-    public String mappingTenantAndUser(TenantUserMapRequest request, String internalSecret) {
+    public String mappingTenantAndUser(String tenantId, String userId, String internalSecret) {
         if (!appInternalSecret.equals(internalSecret)) {
             throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Internal secret không hợp lệ");
         }
 
-        Tenant tenant = tenantRepository.findByKeycloakId(request.tenantId())
+        Tenant tenant = tenantRepository.findByKeycloakId(tenantId)
                 .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Tenant không tồn tại"));
 
-        User user = userRepository.findById(UUID.fromString(request.userId()))
+        User user = userRepository.findById(UUID.fromString(userId))
                 .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "User không tồn tại"));
 
         if (tenantUserControlRepository.existsByTenantIdAndUserId(tenant.getId(), user.getId())) {

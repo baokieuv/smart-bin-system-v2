@@ -42,11 +42,11 @@ public class Device extends BaseEntity {
     private String publicKey;
 
     // --- Sở hữu (Tenant & User) ---
-    @Column(name = "tenant_id", nullable = false, length = 36)
-    private String tenantId; // Bắt buộc có ngay khi kích hoạt (Provisioning)
+    @Column(name = "tenant_id", length = 36)
+    private String tenantId;
 
     @Column(name = "user_id", length = 36)
-    private String userId; // Nullable: Sẽ được gán khi User "claim" thiết bị qua App
+    private String userId;
 
     @Column(name = "claimed_at")
     private Long claimedAt;
@@ -70,13 +70,18 @@ public class Device extends BaseEntity {
     // --- Metadata phần cứng (Dùng để quyết định Firmware trên) ---
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "hw_metadata", nullable = false)
-    private Map<String, Object> hwMetadata; // VD: {"board": "esp32", "ram": "4mb"}
+    private Map<String, Object> hwMetadata;
 
     // --- Quan hệ ---
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "group_id")
     private DeviceGroup deviceGroup;
 
-    @OneToOne(mappedBy = "device", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-    private DeviceConfig deviceConfig;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "profile_id", nullable = false)
+    private DeviceProfile deviceProfile;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "user_configs")
+    private Map<String, Object> userConfigs;
 }

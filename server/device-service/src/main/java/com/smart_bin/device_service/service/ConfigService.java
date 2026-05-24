@@ -4,7 +4,6 @@ import com.nimbusds.jose.shaded.gson.JsonObject;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.FirmwareType;
-import com.smart_bin.device_service.dto.request.*;
 import com.smart_bin.device_service.dto.response.DeviceConfigResponse;
 import com.smart_bin.device_service.dto.response.OtaCheckResponse;
 import com.smart_bin.device_service.entity.*;
@@ -21,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.databind.JsonNode;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,7 +30,6 @@ import java.util.UUID;
 public class ConfigService {
 
     private final FirmwareRepository firmwareRepository;
-    private final DeviceConfigRepository configRepository;
     private final DeviceRepository deviceRepository;
     private final MediaServiceClient mediaClient;
     private final DeviceSecurityService securityService;
@@ -92,38 +91,13 @@ public class ConfigService {
         Device device = deviceRepository.findByIdAndActiveTrue(deviceId)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
-        DeviceConfig config = configRepository.findByDeviceId(deviceId)
-                .orElseGet(() -> createDefaultConfig(device));
-
-        return DeviceConfigResponse.fromEntity(config, device);
+        return DeviceConfigResponse.fromData(getMergedConfigs(device), device);
     }
 
     public DeviceConfigResponse getConfigForDevice(String payload, String signature) {
         Device device = authenticateDeviceFromPayload(payload, signature);
 
-        DeviceConfig config = configRepository.findByDeviceId(device.getId())
-                .orElseGet(() -> createDefaultConfig(device));
-
-        return DeviceConfigResponse.fromEntity(config, device);
-    }
-
-    @Transactional
-    public DeviceConfigResponse updateOwnerConfig(String deviceIdStr, String keycloakId, UpdateOwnerConfigRequest req) {
-        Device device = getDeviceAndVerifyOwnership(deviceIdStr, keycloakId);
-
-        DeviceConfig config = configRepository.findByDeviceId(device.getId())
-                .orElseGet(() -> createDefaultConfig(device));
-
-        Map<String, Object> currentConfigs = config.getUserConfigs();
-        if (currentConfigs == null) currentConfigs = new java.util.HashMap<>();
-
-        if (req.pollingInterval() != null) currentConfigs.put("polling_interval", req.pollingInterval());
-        if (req.fullThreshold() != null) currentConfigs.put("full_threshold", req.fullThreshold());
-
-        config.setUserConfigs(currentConfigs);
-        configRepository.save(config);
-
-        return DeviceConfigResponse.fromEntity(config, device);
+        return DeviceConfigResponse.fromData(getMergedConfigs(device), device);
     }
 
     // ==========================================
@@ -155,17 +129,14 @@ public class ConfigService {
         log.info("Device {} reported OTA status: {} - {}", device.getMac(), status, message);
 
         if ("SUCCESS".equalsIgnoreCase(status)) {
-            DeviceConfig config = configRepository.findByDeviceId(device.getId()).orElse(null);
-            if (config != null) {
-                // Desktop hiện tại chưa xử lý OTA, chỉ cập nhật bin version cho ESP32.
-                if (device.getTargetBinFirmware() != null) {
-                    device.setBinVersion(device.getTargetBinFirmware().getVersion());
-                }
-                if (device.getTargetDesktopFirmware() != null) {
-                    device.setDesktopVersion(device.getTargetDesktopFirmware().getVersion());
-                }
-                deviceRepository.save(device);
+            // Desktop hiện tại chưa xử lý OTA, chỉ cập nhật bin version cho ESP32.
+            if (device.getTargetBinFirmware() != null) {
+                device.setBinVersion(device.getTargetBinFirmware().getVersion());
             }
+            if (device.getTargetDesktopFirmware() != null) {
+                device.setDesktopVersion(device.getTargetDesktopFirmware().getVersion());
+            }
+            deviceRepository.save(device);
         }
     }
 
@@ -215,13 +186,24 @@ public class ConfigService {
         return device;
     }
 
-    private DeviceConfig createDefaultConfig(Device device) {
-        DeviceConfig config = new DeviceConfig();
-        config.setDevice(device);
-        config.setUserConfigs(Map.of(
-                "polling_interval", 300,
-                "full_threshold", 80.0
-        ));
-        return configRepository.save(config);
+    private Map<String, Object> getMergedConfigs(Device device) {
+        Map<String, Object> finalConfig = new HashMap<>();
+
+        // 1. Cấp User: Thêm cấu hình của người dùng trước
+        if (device.getUserConfigs() != null) {
+            finalConfig.putAll(device.getUserConfigs());
+        }
+
+        // 2. Cấp Tenant (Device Group): Đè lên cấu hình User nếu có thuộc tính trùng
+        if (device.getDeviceGroup() != null && device.getDeviceGroup().getMetadata() != null) {
+            finalConfig.putAll(device.getDeviceGroup().getMetadata());
+        }
+
+        // 3. Cấp Admin (Device Profile): Có quyền cao nhất, đè lên tất cả
+        if (device.getDeviceProfile() != null && device.getDeviceProfile().getSharedSpecs() != null) {
+            finalConfig.putAll(device.getDeviceProfile().getSharedSpecs());
+        }
+
+        return finalConfig;
     }
 }

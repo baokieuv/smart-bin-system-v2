@@ -1,6 +1,7 @@
 package com.smart_bin.device_service.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 
 public record DeviceImportItem(
@@ -10,5 +11,6 @@ public record DeviceImportItem(
 
         String name,
 
-        String groupCode
+        @NotNull(message = "Claim code is required")
+        String claimCode
 ) {}

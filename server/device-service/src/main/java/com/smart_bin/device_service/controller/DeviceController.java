@@ -24,18 +24,18 @@ public class DeviceController {
     private final ResponseFactory responseFactory;
     private final DeviceService deviceService;
 
-    @PostMapping("/import")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
-    public ResponseEntity<ApiResponseFormat<Object>> importDevices(
-            @Valid @RequestBody ImportDeviceRequest request,
-            @AuthenticationPrincipal Jwt jwt
-    ) {
-        String actorId = jwt.getSubject();
-        var response = deviceService.importDevices(request, actorId);
-        return responseFactory.response(SuccessCode.CREATED, response);
-    }
+//    @PostMapping("/import")
+//    @PreAuthorize("hasAnyRole(" +
+//            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+//            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+//    public ResponseEntity<ApiResponseFormat<Object>> importDevices(
+//            @Valid @RequestBody ImportDeviceRequest request,
+//            @AuthenticationPrincipal Jwt jwt
+//    ) {
+//        String actorId = jwt.getSubject();
+//        var response = deviceService.importDevices(request, actorId);
+//        return responseFactory.response(SuccessCode.CREATED, response);
+//    }
 
     @PostMapping("/claim")
     public ResponseEntity<ApiResponseFormat<Object>> claimDevice(
@@ -91,12 +91,26 @@ public class DeviceController {
 
     @PutMapping("/{deviceId}")
     public ResponseEntity<ApiResponseFormat<Object>> updateDevice(
-            @Valid @RequestBody UpdateDeviceRequest request,
+            @Valid @RequestBody UpdateDeviceUserRequest request,
             @PathVariable String deviceId,
             @AuthenticationPrincipal Jwt jwt
     ){
         String keycloakId = jwt.getSubject();
-        var response = deviceService.updateDevice(deviceId, request, keycloakId);
+        var response = deviceService.updateDeviceByUser(deviceId, request, keycloakId);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PutMapping("/tenant/{deviceId}")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    public ResponseEntity<ApiResponseFormat<Object>> updateDeviceByTenant(
+            @Valid @RequestBody UpdateDeviceTenantRequest request,
+            @PathVariable String deviceId,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String tenantId = jwt.getSubject();
+        var response = deviceService.updateDeviceByTenant(deviceId, request, tenantId);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

@@ -99,10 +99,11 @@ public class TenantController {
 
     @PostMapping("/map-user")
     public ResponseEntity<ApiResponseFormat<Object>> mapTenantToUser(
-            @Valid @RequestBody TenantUserMapRequest request,
-            @RequestHeader("x-internal-secret") String internalSecret
+            @RequestHeader("x-internal-secret") String internalSecret,
+            @RequestParam("tenantId") String tenantId,
+            @RequestParam("userId") String userId
     ) {
-        var response = service.mappingTenantAndUser(request, internalSecret);
+        var response = service.mappingTenantAndUser(tenantId, userId, internalSecret);
         return responseFactory.response(SuccessCode.OK, response);
     }
 }

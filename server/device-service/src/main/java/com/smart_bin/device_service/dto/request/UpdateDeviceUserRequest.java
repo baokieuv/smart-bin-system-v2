@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Min;
 
 import java.util.Map;
 
-public record UpdateDeviceRequest(
+public record UpdateDeviceUserRequest(
         String name,
 
         @Min(value = -90, message = "Latitude must be greater than or equal to -90")
@@ -16,6 +16,9 @@ public record UpdateDeviceRequest(
         @Max(value = 180, message = "Longitude must be less than or equal to 180")
         Double longitude,
 
-        String scope,
+        Double pollingInterval,
+
+        Double fullThreshold,
+
         Map<String, Object> additionalAttributes
 ) {}

@@ -11,20 +11,24 @@ import java.util.Map;
 import java.util.UUID;
 
 @Entity
-@Table(name = "device_configs")
+@Table(name = "device_profiles")
 @Getter
 @Setter
-public class DeviceConfig extends BaseEntity {
+public class DeviceProfile extends BaseEntity {
     @Id
     @GeneratedValue(generator = "uuid-v7-generator")
     private UUID id;
 
-    @OneToOne
-    @JoinColumn(name = "device_id", nullable = false, unique = true)
-    private Device device;
+    @Column(nullable = false, unique = true)
+    private String code;
 
-    // --- Cấu hình do User (Chủ sở hữu) quyết định ---
+    @Column(nullable = false)
+    private String name;
+
+    private String description;
+
+    // --- Thông số chung cho tất cả thiết bị thuộc Model này ---
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "user_configs", nullable = false)
-    private Map<String, Object> userConfigs;
+    @Column(name = "admin_configs")
+    private Map<String, Object> sharedSpecs;
 }

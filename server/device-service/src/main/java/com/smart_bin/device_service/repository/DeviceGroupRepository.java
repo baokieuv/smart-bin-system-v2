@@ -13,8 +13,10 @@ import java.util.UUID;
 public interface DeviceGroupRepository extends JpaRepository<DeviceGroup, UUID> {
     List<DeviceGroup> findByCodeIn(Collection<String> codes);
     Optional<DeviceGroup> findByIdAndActiveTrue(UUID id);
+    Optional<DeviceGroup> findByIdAndTenantIdAndActiveTrue(UUID id, String tenantId);
     Optional<DeviceGroup> findByCodeAndActiveTrue(String code);
     Page<DeviceGroup> findAllByActiveTrue(Pageable pageable);
+    List<DeviceGroup> findAllByTenantIdAndActiveTrue(String id, Pageable pageable);
     boolean existsByCodeAndActiveTrue(String code);
     boolean existsByCodeAndIdNotAndActiveTrue(String code, UUID id);
 }

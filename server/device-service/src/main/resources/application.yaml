@@ -66,6 +66,8 @@ app:
   webhook:
     allowed-ips: 127.0.0.1, 172.16.0.0/12, 192.168.0.0/16
   iam-service:
+    internal-secret: ${IAM_SERVICE_SECRET:SUPER_SECRET_INTERNAL_KEY}
     url: ${IAM_SERVICE_URL:http://localhost:2106}
   media-service:
+    internal-secret: ${MEDIA_SERVICE_SECRET:SUPER_SECRET_INTERNAL_KEY}
     url: ${MEDIA_SERVICE_URL:http://localhost:2109}

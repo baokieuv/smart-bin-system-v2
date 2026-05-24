@@ -2,6 +2,7 @@ package com.smart_bin.device_service.service;
 
 import com.nimbusds.jose.shaded.gson.JsonObject;
 import com.nimbusds.jose.shaded.gson.JsonParser;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.core.io.Resource;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.exception.ApiException;
@@ -92,28 +93,7 @@ public class DeviceSecurityService {
 
     public String calculateSha256(MultipartFile file) {
         try (InputStream is = file.getInputStream()) {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-
-            // Đọc từng chunk 8KB một thay vì load toàn bộ file vào RAM
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = is.read(buffer)) != -1) {
-                digest.update(buffer, 0, bytesRead);
-            }
-
-            byte[] hashBytes = digest.digest();
-
-            // Chuyển mảng byte thành chuỗi Hexadecimal (Hệ cơ số 16)
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hashBytes) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) {
-                    hexString.append('0');
-                }
-                hexString.append(hex);
-            }
-
-            return hexString.toString();
+            return DigestUtils.sha256Hex(is);
         } catch (Exception e) {
             log.error("Lỗi khi đọc hoặc băm file firmware", e);
             throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể xử lý file firmware.");
