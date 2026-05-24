@@ -130,6 +130,8 @@ class DetectionWorker(QThread):
 
             if self._should_classify(now):
                 if now - self.last_result_at < APP_CONFIG.detection.min_result_interval_seconds:
+                    # Still within cooldown — sleep briefly instead of burning CPU.
+                    time.sleep(APP_CONFIG.detection.pause_sleep_seconds)
                     continue
 
                 try:

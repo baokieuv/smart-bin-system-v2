@@ -5,7 +5,7 @@ import shutil
 import time
 import mimetypes
 from pathlib import Path
-from typing import Any
+from typing import Any, Type
 
 from src.models.api_response import ApiResponseFormat
 from src.models.device_dto import DeviceDto
@@ -39,28 +39,27 @@ class DeviceClient:
         # mac_num = hex(uuid.getnode()).replace('0x', '').zfill(12).upper()
         # return ':'.join(mac_num[i: i + 2] for i in range(0, 11, 2))
         
-        return "F0:E7:63:51:1C:8D"
+        return "F0:E7:63:51:1C:70"
         
     def _generate_payload_and_signature(
         self,
-        extra_fields: dict[str, Any] | None = None,
-        include_timestamp: bool = True,
+        extra_fields: dict[str, Any] | None = None
     ) -> tuple[bool, str, str]:
-        """Create compact JSON payload and corresponding RSA signature."""
+        """Create compact JSON payload and corresponding HMAC signature."""
         mac = self.get_mac_address()
         
         payload_dict = {
             "mac": mac,
+            "timestamp": int(time.time() * 1000)
         }
-        if include_timestamp:
-            payload_dict["timestamp"] = int(time.time() * 1000)
+    
         if extra_fields:
             payload_dict.update(extra_fields)
         
         # Compact JSON string ensures signature consistency with server-side verification.
         payload_str = json.dumps(payload_dict, separators=(',', ':'))
         
-        ok, signature_or_error = self._encrypt_data(payload_str, True)
+        ok, signature_or_error = self._encrypt_data(payload_str)
         
         return ok, payload_str, signature_or_error
 
@@ -87,13 +86,11 @@ class DeviceClient:
         metadata_header: str | None = None,
         base_url: str | None = None,
         extra_fields: dict[str, Any] | None = None,
-        include_timestamp: bool = True,
         allow_key_refresh: bool = True,
     ) -> tuple[bool, HttpResponse | str]:
         """Send signed POST request where body must match signed payload exactly."""
         ok, payload_str, signature_or_error = self._generate_payload_and_signature(
-            extra_fields,
-            include_timestamp=include_timestamp,
+            extra_fields = extra_fields
         )
         if not ok:
             return False, signature_or_error
@@ -147,31 +144,12 @@ class DeviceClient:
         return str(parsed.get("code") or "").upper() == "AVT0012"
 
     @staticmethod
-    def _parse_device_api_response(
+    def _parse_api_response(
         response_json: dict[str, Any],
-    ) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
-        """Parse backend wrapper JSON into typed ApiResponseFormat[DeviceDto]."""
-        api_response = ApiResponseFormat.from_dict(response_json, details_class=DeviceDto)
-        if api_response.success:
-            return True, api_response
-        return False, api_response.message
-
-    @staticmethod
-    def _parse_device_config_api_response(
-        response_json: dict[str, Any],
-    ) -> tuple[bool, ApiResponseFormat[DeviceConfigDto] | str]:
-        """Parse backend wrapper JSON into typed ApiResponseFormat[DeviceConfigDto]."""
-        api_response = ApiResponseFormat.from_dict(response_json, details_class=DeviceConfigDto)
-        if api_response.success:
-            return True, api_response
-        return False, api_response.message
-    
-    @staticmethod
-    def _parse_ota_check_api_response(
-        response_json: dict[str, Any],
-    ) -> tuple[bool, ApiResponseFormat[OtaCheckResponseDto] | str]:
-        """Parse OTA check response wrapper JSON."""
-        api_response = ApiResponseFormat.from_dict(response_json, details_class=OtaCheckResponseDto)
+        details_class: Type[Any],
+    ) -> tuple[bool, ApiResponseFormat[Any] | str]:
+        """Parse backend wrapper JSON into ApiResponseFormat using provided DTO class."""
+        api_response = ApiResponseFormat.from_dict(response_json, details_class=details_class)
         if api_response.success:
             return True, api_response
         return False, api_response.message
@@ -263,10 +241,10 @@ class DeviceClient:
         }
 
     def activate_device(self) -> tuple[bool, ApiResponseFormat[DeviceDto] | str]:
-        """Activate current device using MAC, tenant/group identifiers, public key, and ESP32 metadata."""
+        """Activate current device using MAC, tenant/group identifiers, derived secret, and ESP32 metadata."""
         self.logger.info("Call activate_device")
 
-        key_pair = self.key_manager.ensure_key_pair()
+        mac_address = self.get_mac_address()
         hw_ok, hw_metadata_or_error = self._get_hardware_metadata(timeout=5.0)
         if not hw_ok:
             return False, hw_metadata_or_error
@@ -274,12 +252,10 @@ class DeviceClient:
         ok, response_or_error = self._post_signed_request(
             "activate",
             extra_fields={
-                "tenantSecret": APP_CONFIG.backend.tenant_secret,
-                "groupCode": APP_CONFIG.backend.group_code,
-                "publicKey": key_pair.public_key_pem,
+                "mac": mac_address,
+                "profileCode": APP_CONFIG.backend.profile_code,
                 "hwMetadata": hw_metadata_or_error,
             },
-            include_timestamp=False,
             allow_key_refresh=False,
         )
         if not ok:
@@ -293,7 +269,7 @@ class DeviceClient:
                     return True, "Device already activated"
                 return False, error_payload
 
-            return self._parse_device_api_response(response.json())
+            return self._parse_api_response(response.json(), DeviceDto)
         except ValueError:
             self.logger.warning("activate_device parse response error")
             return False, "Failed to parse server response"
@@ -314,7 +290,7 @@ class DeviceClient:
             if not response.ok:
                 return False, self._parse_error_response(response)
 
-            return self._parse_device_config_api_response(response.json())
+            return self._parse_api_response(response.json(), DeviceConfigDto)
         except ValueError:
             self.logger.warning("get_device_config parse response error")
             return False, "Failed to parse server response"
@@ -452,12 +428,12 @@ class DeviceClient:
                 "etag": response.headers.get("ETag") or response.headers.get("etag"),
                 "requestId": response.headers.get("x-amz-request-id"),
             }
-        except Exception as e:
-            self.logger.warning("upload_presigned_url network error: %s", e)
-            return False, f"Failed to upload image via presigned URL: {str(e)}"
         except OSError as e:
             self.logger.warning("upload_presigned_url read file error: %s", e)
             return False, f"Failed to read image file: {str(e)}"
+        except Exception as e:
+            self.logger.warning("upload_presigned_url network error: %s", e)
+            return False, f"Failed to upload image via presigned URL: {str(e)}"
 
     def _confirm_detection_upload(
         self,
@@ -502,7 +478,7 @@ class DeviceClient:
             if not response.ok:
                 return False, self._parse_error_response(response)
 
-            ok, parsed_or_error = self._parse_ota_check_api_response(response.json())
+            ok, parsed_or_error = self._parse_api_response(response.json(), OtaCheckResponseDto)
             if not ok:
                 return False, parsed_or_error
 
@@ -532,10 +508,10 @@ class DeviceClient:
         except ValueError:
             return False, "Failed to parse OTA status response"
     
-    def _encrypt_data(self, payload: str, is_private: bool) -> tuple[bool, str]:
-        """Sign payload using RSA key and return base64 signature."""
+    def _encrypt_data(self, payload: str) -> tuple[bool, str]:
+        """Sign payload using the derived HMAC secret and return a base64 signature."""
         try:
-            signature_b64 = self.key_manager.sign(payload)
+            signature_b64 = self.key_manager.sign(payload, self.get_mac_address())
             return True, signature_b64
         except FileNotFoundError as exc:
             self.logger.warning("Key file not found: %s", exc)

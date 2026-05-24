@@ -12,7 +12,6 @@ public interface DeviceProfileRepository extends JpaRepository<DeviceProfile, UU
     Page<DeviceProfile> findAllByActiveTrue(Pageable pageable);
     Optional<DeviceProfile> findByIdAndActiveTrue(UUID id);
     Optional<DeviceProfile> findByCodeAndActiveTrue(String code);
-    Optional<DeviceProfile> findByProvisionKeyAndActiveTrue(String code);
     boolean existsByCodeAndActiveTrue(String code);
     boolean existsByCode(String code);
 }

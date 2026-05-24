@@ -16,6 +16,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Objects;
+
 @RestController
 @RequestMapping("/api/v1/devices")
 @RequiredArgsConstructor
@@ -42,7 +44,6 @@ public class DeviceController {
             @Valid @RequestBody ClaimDeviceRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        // ID nội bộ của User lấy từ token Keycloak
         String userId = jwt.getSubject();
         var response = deviceService.claimDevice(request, userId);
         return responseFactory.response(SuccessCode.OK, response);
@@ -72,7 +73,7 @@ public class DeviceController {
         String actorId = jwt.getSubject();
 
         boolean isSuperAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equalsIgnoreCase(UserRole.SUPER_ADMIN.getRoleName()) ||
+                .anyMatch(auth -> Objects.requireNonNull(auth.getAuthority()).equalsIgnoreCase(UserRole.SUPER_ADMIN.getRoleName()) ||
                         auth.getAuthority().equalsIgnoreCase("ROLE_" + UserRole.SUPER_ADMIN.getRoleName()));
 
         var response = deviceService.getAllDevicesForAdmin(page, size, actorId, isSuperAdmin);
@@ -165,9 +166,10 @@ public class DeviceController {
 
     @PostMapping("/public/activate")
     public ResponseEntity<ApiResponseFormat<Object>> provisionDevice(
-            @Valid @RequestBody DeviceProvisionRequest request
+            @RequestHeader("X-Signature") String signature,
+            @RequestBody String request
     ) {
-        var response = deviceService.provisionDevice(request);
+        var response = deviceService.provisionDevice(request, signature);
         return responseFactory.response(SuccessCode.OK, response);
     }
 }

@@ -11,9 +11,6 @@ public record DeviceProvisionRequest(
         @NotBlank(message = "Profile Code không được để trống")
         String profileCode,
 
-        @NotBlank(message = "Public Key của thiết bị không được để trống")
-        String publicKey,
-
         @NotNull(message = "Hardware Metadata không được để trống")
         Map<String, Object> hwMetadata
 ) {}

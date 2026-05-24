@@ -11,6 +11,8 @@ This project is an admin web app to configure and operate:
 - Orders
 - Users
 - Devices
+- Device groups
+- Device profiles
 - Notifications
 
 It is mapped from the current user-facing app smart-bin-system-v2-fe.
@@ -57,13 +59,15 @@ Then open http://localhost:3000.
 - /orders
 - /users
 - /devices
+- /device-groups
+- /device-profiles
 - /notifications
 - /settings
 
 ## Access Control
 
-- `super_admin` sees all admin tabs.
-- `admin` only sees Users, Devices, Notifications, and Settings.
+- `super_admin` sees dashboard, users, devices, device profiles, firmwares, firmware mappings, notifications, and settings.
+- `admin` sees dashboard, users, device groups, devices, notifications, and settings.
 
 ## Note
 

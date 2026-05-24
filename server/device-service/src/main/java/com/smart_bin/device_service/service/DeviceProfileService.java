@@ -43,8 +43,6 @@ public class DeviceProfileService {
         }
 
         DeviceProfile profile = mapper.toEntity(request);
-        profile.setProvisionKey(request.code() + "_" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        profile.setProvisionSecret(UUID.randomUUID().toString().replace("-", ""));
         profile.setActive(true);
 
         return deviceProfileRepository.save(profile);

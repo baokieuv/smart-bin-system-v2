@@ -29,10 +29,12 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
 
     boolean existsByDeviceGroup_IdAndActiveTrue(UUID groupId);
 
-    @Query("SELECT d FROM Device d LEFT JOIN FETCH d.deviceConfig")
+    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceProfile LEFT JOIN FETCH d.deviceGroup",
+            countQuery = "SELECT COUNT(d) FROM Device d")
     Page<Device> findAllForAdminWithConfig(Pageable pageable);
 
-    @Query("SELECT d FROM Device d LEFT JOIN FETCH d.deviceConfig WHERE d.tenantId = :tenantId")
+    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceProfile LEFT JOIN FETCH d.deviceGroup WHERE d.tenantId = :tenantId",
+            countQuery = "SELECT COUNT(d) FROM Device d WHERE d.tenantId = :tenantId")
     Page<Device> findAllByTenantIdForAdminWithConfig(@Param("tenantId") String tenantId, Pageable pageable);
 
     @Query("SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup WHERE d.mac = :mac")

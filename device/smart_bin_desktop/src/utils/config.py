@@ -180,7 +180,7 @@ class Esp32OtaConfig:
 class BackendConfig:
 	"""Backend config -> provision secret."""
 	tenant_secret: str = _env_str("SMART_BIN_TENANT_SECRET", "08290f771ce747c487dff9f1707212037cfcc90721f84a29")
-	group_code: str = _env_str("SMART_BIN_GROUP_CODE", "SMART_BIN_60L")
+	profile_code: str = _env_str("SMART_BIN_PROFILE_CODE", "SMART_BIN_60L")
 	activate_retry_max_delay_seconds: int = _env_int("SMART_BIN_ACTIVATE_RETRY_MAX_DELAY_SECONDS", 60)
  
 
@@ -220,14 +220,6 @@ class PathConfig:
 	@property
 	def trash_model_path(self) -> Path:
 		return self.models_dir / "trash_classification.tflite"
-
-	@property
-	def private_key_path(self) -> Path:
-		return self.devices_key_dir / "private_key.pem"
-
-	@property
-	def public_key_path(self) -> Path:
-		return self.devices_key_dir / "public_key.pem"
 
 	@property
 	def devices_key_dir(self) -> Path:

@@ -1,8 +1,8 @@
 {
-  "accessToken": "GDerfYvuNLLmlhQ9m1hu",
+  "accessToken": "9x4o0waCzNZV0awe6aMA",
   "pollingInterval": 300,
   "fullThreshold": 80.0,
-  "targetBinFirmwareVersion": "0.0.1",
+  "targetBinFirmwareVersion": null,
   "targetDesktopVersion": null,
   "deviceHeight": 60.0
 }

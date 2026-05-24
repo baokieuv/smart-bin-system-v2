@@ -187,8 +187,12 @@ class ActuatorRepository:
         return task.result if task.result is not None else (False, f"Queued command failed: {task.cmd_name}")
 
     def _send_frame_and_wait_ack(self, frame: bytearray, timeout: float = 3.0) -> tuple[bool, str]:
-        ser = self._get_or_open_serial()
+        # _get_or_open_serial already acquires _serial_lock internally.
+        # Acquire the lock once here to make open + write + ack atomic.
         with self._serial_lock:
+            if self._serial_conn is None or not self._serial_conn.is_open:
+                self._serial_conn = self._open_serial()
+            ser = self._serial_conn
             ser.write(frame)
             if not self._wait_for_ack(ser, timeout=timeout):
                 return False, "ESP32 did not ACK command"
@@ -196,8 +200,10 @@ class ActuatorRepository:
 
     def _request_fill_levels_task(self, timeout: float = 3.0) -> tuple[bool, list[int] | None]:
         try:
-            ser = self._get_or_open_serial()
             with self._serial_lock:
+                if self._serial_conn is None or not self._serial_conn.is_open:
+                    self._serial_conn = self._open_serial()
+                ser = self._serial_conn
                 ser.write(self._create_frame(self.config.cmd_report_fill_level))
 
                 if timeout is None:
@@ -226,8 +232,10 @@ class ActuatorRepository:
     def _get_bin_version_task(self, timeout: float = 3.0) -> tuple[bool, str | None]:
         """Send bin version request and wait for ESP32 response frame."""
         try:
-            ser = self._get_or_open_serial()
             with self._serial_lock:
+                if self._serial_conn is None or not self._serial_conn.is_open:
+                    self._serial_conn = self._open_serial()
+                ser = self._serial_conn
                 ser.write(self._create_frame(self.config.cmd_get_version))
                 start = time.time()
                 buffer = bytearray()
@@ -251,8 +259,10 @@ class ActuatorRepository:
     def _get_system_info_task(self, timeout: float = 3.0) -> tuple[bool, SystemInfoDto | None]:
         """Send system-info request and wait for ESP32 response frame."""
         try:
-            ser = self._get_or_open_serial()
             with self._serial_lock:
+                if self._serial_conn is None or not self._serial_conn.is_open:
+                    self._serial_conn = self._open_serial()
+                ser = self._serial_conn
                 ser.write(self._create_frame(self.config.cmd_get_system_info))
                 start = time.time()
                 buffer = bytearray()
@@ -282,8 +292,10 @@ class ActuatorRepository:
             file_size = firmware_path.stat().st_size
             self.logger.info("Starting OTA upload file=%s size=%s", firmware_path.name, file_size)
 
-            ser = self._get_or_open_serial()
             with self._serial_lock:
+                if self._serial_conn is None or not self._serial_conn.is_open:
+                    self._serial_conn = self._open_serial()
+                ser = self._serial_conn
                 payload_start = struct.pack(">I", file_size)
                 ser.write(self._create_frame(self.config.cmd_ota_start, payload_start))
                 if not self._wait_for_ack(ser, timeout=10):

@@ -14,6 +14,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -30,6 +32,9 @@ public class DeviceSecurityService {
 
     @Value("classpath:private_key.pem")
     private Resource privateKeyResource;
+
+    @Value("${app.master-secret:DEFAULT_MASTER_SECRET_KEY}")
+    private String masterSecret;
 
     @PostConstruct
     public void init() {
@@ -57,22 +62,26 @@ public class DeviceSecurityService {
         }
     }
 
-    // 2. Xác thực thiết bị: Dùng Public Key CỦA THIẾT BỊ để verify signature thiết bị gửi lên
-    public void verifySignatureWithDeviceKey(String payload, String signature, String devicePublicKeyPem) {
+    // 2. Xác thực thiết bị: Dùng Khóa bí mật (Device Secret) để verify HMAC signature thiết bị gửi lên
+    public void verifySignatureWithDeviceKey(String payload, String signature, String deviceSecret) {
         try {
-            PublicKey deviceKey = PemUtils.getPublicKeyFromString(devicePublicKeyPem);
-            byte[] digitalSignature = Base64.getDecoder().decode(signature);
+            String algorithm = "HmacSHA256";
+            Mac mac = Mac.getInstance(algorithm);
+            SecretKeySpec secretKeySpec = new SecretKeySpec(deviceSecret.getBytes(StandardCharsets.UTF_8), algorithm);
+            mac.init(secretKeySpec);
 
-            Signature verify = Signature.getInstance("SHA256withRSA");
-            verify.initVerify(deviceKey);
-            verify.update(payload.getBytes(StandardCharsets.UTF_8));
+            byte[] serverCalculatedHmac = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
 
-            if (!verify.verify(digitalSignature)) {
-                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR, "Invalid signature from device");
+            byte[] deviceSignature = Base64.getDecoder().decode(signature);
+
+            if (!MessageDigest.isEqual(serverCalculatedHmac, deviceSignature)) {
+                throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR, "Invalid HMAC signature from device");
             }
+        } catch (ApiException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Verification error: ", e);
-            throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR, "Signature verification failed");
+            log.error("HMAC Verification error: ", e);
+            throw new ApiException(CoreErrorCode.VALIDATION_SIGNATURE_ERROR, "HMAC verification failed");
         }
     }
 
@@ -97,6 +106,22 @@ public class DeviceSecurityService {
         } catch (Exception e) {
             log.error("Lỗi khi đọc hoặc băm file firmware", e);
             throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể xử lý file firmware.");
+        }
+    }
+
+    // Hàm tạo Device Secret từ MAC Address
+    public String generateDeviceSecret(String macAddress) {
+        try {
+            String dataToSign = macAddress + "SMART_BIN_DEVICE";
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(masterSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKeySpec);
+            byte[] hmacBytes = mac.doFinal(dataToSign.getBytes(StandardCharsets.UTF_8));
+
+            return Base64.getEncoder().encodeToString(hmacBytes);
+        } catch (Exception e) {
+            log.error("Error generating device secret", e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Cannot generate device secret");
         }
     }
 }

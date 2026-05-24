@@ -19,6 +19,9 @@ public class DeviceGroup extends BaseEntity {
     @GeneratedValue(generator = "uuid-v7-generator")
     private UUID id;
 
+    @Column(nullable = false, unique = true)
+    private String code;
+
     @Column(name = "tenant_id", nullable = false, length = 36)
     private String tenantId; // Nhóm này thuộc về Tenant nào
 

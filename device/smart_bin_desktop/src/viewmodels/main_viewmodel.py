@@ -24,7 +24,6 @@ class MainViewModel(QObject):
     """
 
     # State signals consumed by MainWindow for screen transitions.
-        # State signals consumed by MainWindow for screen transitions.
     state_loading = pyqtSignal(str)
     state_welcome = pyqtSignal()
     state_feedback = pyqtSignal(TrashData)
@@ -84,17 +83,17 @@ class MainViewModel(QObject):
         self.telemetry_timer = QTimer()
         self.telemetry_timer.setSingleShot(False)
         self.telemetry_timer.setInterval(self.telemetry_interval_ms)
-        self.telemetry_timer.timeout.connect(self._send_periodic_telemetry)
+        self.telemetry_timer.timeout.connect(self.runtime.send_periodic_telemetry)
 
         self.config_refresh_timer = QTimer()
         self.config_refresh_timer.setSingleShot(False)
         self.config_refresh_timer.setInterval(self.device_config_polling_seconds * 1000)
-        self.config_refresh_timer.timeout.connect(self._retry_refresh_device_config)
+        self.config_refresh_timer.timeout.connect(self.runtime.retry_refresh_device_config)
 
         self.app_version_timer = QTimer()
         self.app_version_timer.setSingleShot(False)
         self.app_version_timer.setInterval(self.app_version_check_interval_ms)
-        self.app_version_timer.timeout.connect(self._check_app_version)
+        self.app_version_timer.timeout.connect(self.runtime.check_app_version)
 
         self.upload_timer = QTimer()
         self.upload_timer.setSingleShot(False)
@@ -104,7 +103,7 @@ class MainViewModel(QObject):
         self.fill_levels_poll_timer = QTimer()
         self.fill_levels_poll_timer.setSingleShot(False)
         self.fill_levels_poll_timer.setInterval(self.fill_levels_poll_interval_seconds * 1000)  # Convert seconds to ms
-        self.fill_levels_poll_timer.timeout.connect(self._poll_fill_levels)
+        self.fill_levels_poll_timer.timeout.connect(self.runtime.poll_fill_levels)
         self.logger.info("MainViewModel initialized")
 
     def start_system(self):
@@ -258,24 +257,6 @@ class MainViewModel(QObject):
         """Expose MAC for device-link QR screen."""
         return self.device_client.get_mac_address()
 
-    def _initialize_telemetry_loop(self):
-        self.runtime.refresh_device_config(reason="initialize_telemetry")
-
-    def _refresh_device_config(self, reason: str):
-        self.runtime.refresh_device_config(reason)
-
-    def _retry_refresh_device_config(self):
-        self.runtime.retry_refresh_device_config()
-
-    def _send_periodic_telemetry(self):
-        self.runtime.send_periodic_telemetry()
-
-    def _check_app_version(self):
-        self.runtime.check_app_version()
-
-    def _poll_fill_levels(self):
-        self.runtime.poll_fill_levels()
-
     def shutdown(self):
         """Stop timers and worker when app closes."""
         self.telemetry_timer.stop()
@@ -390,10 +371,6 @@ class MainViewModel(QObject):
 
         return "Device config is unavailable. Press Activate Device and app will retry every 5 minutes."
 
-    def _save_detection_metadata(self, trash_data: TrashData, feedback: str) -> Path:
-        """Backward-compatible wrapper; delegated to DetectionMetadataStore."""
-        return self.metadata_store.save_detection(trash_data, feedback)
-
     def _update_current_feedback(self, feedback: str):
         """Patch feedback for current detection metadata, if available."""
         if not self.current_detection_metadata_path:
@@ -404,19 +381,3 @@ class MainViewModel(QObject):
         """Timer callback for batched detection upload via helper manager."""
         self.upload_manager.run_batch(self.upload_batch_size)
 
-    def _collect_pending_upload_items(self) -> list[dict]:
-        """Backward-compatible wrapper returning dict shape used by legacy callers."""
-        items = self.metadata_store.collect_pending_items(self.upload_batch_size)
-        return [
-            {
-                "filename": item.filename,
-                "image_path": item.image_path,
-                "metadata_path": item.metadata_path,
-                "metadata": item.metadata,
-            }
-            for item in items
-        ]
-
-    def _safe_delete_file(self, file_path: str):
-        """Backward-compatible delete helper; delegated to metadata store."""
-        self.metadata_store.safe_delete(file_path)

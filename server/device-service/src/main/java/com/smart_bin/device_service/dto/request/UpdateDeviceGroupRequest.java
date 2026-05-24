@@ -5,6 +5,6 @@ import java.util.Map;
 public record UpdateDeviceGroupRequest(
         String code,
         String name,
-        Map<String, Object> sharedSpecs,
+        Map<String, Object> metadata,
         String description
 ) {}

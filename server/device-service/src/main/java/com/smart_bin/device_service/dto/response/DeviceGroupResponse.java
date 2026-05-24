@@ -7,6 +7,6 @@ public record DeviceGroupResponse(
         UUID id,
         String code,
         String name,
-        Map<String, Object> sharedSpecs,
+        Map<String, Object> metadata,
         String description
 ) {}

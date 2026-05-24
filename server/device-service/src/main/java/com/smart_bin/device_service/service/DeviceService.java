@@ -231,16 +231,35 @@ public class DeviceService {
     }
 
     @Transactional
-    public Object provisionDevice(DeviceProvisionRequest request) {
+    public Object provisionDevice(String payload, String signature) {
+        DeviceProvisionRequest request;
+        try {
+            request = objectMapper.readValue(payload, DeviceProvisionRequest.class);
+        } catch (JacksonException e) {
+            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid payload format");
+        }
+
+        Optional<Device> existingDeviceOpt = repository.findByMac(request.mac());
+        String deviceSecret;
+
+        if (existingDeviceOpt.isPresent() && existingDeviceOpt.get().getPublicKey() != null) {
+            deviceSecret = existingDeviceOpt.get().getPublicKey();
+        } else {
+            deviceSecret = securityService.generateDeviceSecret(request.mac());
+        }
+
+        securityService.verifySignatureWithDeviceKey(payload, signature, deviceSecret);
+
         DeviceProfile profile = profileRepository.findByCodeAndActiveTrue(request.profileCode())
                 .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Mã mẫu thiết bị (Profile Code) không hợp lệ hoặc không tồn tại."));
 
-        Optional<Device> existingDeviceOpt = repository.findByMac(request.mac());
         boolean isNewDevice = existingDeviceOpt.isEmpty();
 
         Device device = isNewDevice
                 ? initializeNewDevice(request, profile)
                 : resetExistingDeviceForProvision(existingDeviceOpt.get(), request, profile);
+
+        device.setPublicKey(deviceSecret);
 
         processCachedClaimData(device, request.mac());
 
@@ -310,7 +329,6 @@ public class DeviceService {
     private Device initializeNewDevice(DeviceProvisionRequest request, DeviceProfile profile) {
         Device device = new Device();
         device.setMac(request.mac());
-        device.setPublicKey(request.publicKey());
         device.setHwMetadata(request.hwMetadata());
         device.setState(DeviceState.ACTIVE);
         device.setStatus(DeviceStatus.OFFLINE);
@@ -322,7 +340,6 @@ public class DeviceService {
         if (device.getPublicKey() != null && device.getState() == DeviceState.ACTIVE) {
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED, "Thiết bị này đã được kích hoạt trước đó.");
         }
-        device.setPublicKey(request.publicKey());
         device.setHwMetadata(request.hwMetadata());
         device.setState(DeviceState.ACTIVE);
         device.setStatus(DeviceStatus.OFFLINE);
