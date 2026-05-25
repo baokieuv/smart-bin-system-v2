@@ -10,8 +10,8 @@ import org.springframework.http.HttpStatus;
 public enum SuccessCode implements ApiResponseCode { // Optional: A common interface for all codes
 
     // --- Generic Success ---
-    OK(true,"AVTS0001", "success.ok", HttpStatus.OK),
-    CREATED(true, "AVTS0002", "success.created", HttpStatus.CREATED);
+    OK(true,"SMBS0001", "success.ok", HttpStatus.OK),
+    CREATED(true, "SMBS0002", "success.created", HttpStatus.CREATED);
     private final boolean success;
     private final String code;
     private final String message; // This is a key for your messages.properties

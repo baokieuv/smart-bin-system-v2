@@ -6,6 +6,7 @@ import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.media_service.dto.response.MediaFileDto;
 import com.smart_bin.media_service.dto.response.PresignedUrlResponse;
 import com.smart_bin.media_service.dto.response.UploadFileResponse;
+import com.smart_bin.media_service.exception.MediaErrorCode;
 import io.minio.*;
 import io.minio.http.Method;
 import io.minio.messages.Item;
@@ -90,17 +91,17 @@ public class MediaStorageService {
         } catch (ApiException ex) {
             throw ex;
         } catch (Exception ex) {
-            throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Upload to MinIO failed");
+            throw new ApiException(MediaErrorCode.UPLOAD_FAILED);
         }
     }
 
     public PresignedUrlResponse createPresignedUploadUrl(String keycloakId, String folder, String oldObjectName, String contentType) {
         if (!StringUtils.hasText(contentType)) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "contentType is required");
+            throw new ApiException(MediaErrorCode.MISSING_CONTENT_TYPE);
         }
 
         if (!allowedMimeTypes().contains(contentType.trim().toLowerCase(Locale.ROOT))) {
-            throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
+            throw new ApiException(MediaErrorCode.UNSUPPORTED_FILE_TYPE);
         }
 
         // Sinh ra tên file hợp lý dựa trên logic
@@ -117,7 +118,7 @@ public class MediaStorageService {
             );
             return new PresignedUrlResponse(finalObjectName, url, uploadUrlExpiryMinutes * 60);
         } catch (Exception ex) {
-            throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Generate presigned upload URL failed");
+            throw new ApiException(MediaErrorCode.GENERATE_PRESIGNED_URL_FAILED);
         }
     }
 
@@ -139,7 +140,7 @@ public class MediaStorageService {
             );
             return new PresignedUrlResponse(fullObjectName, url, downloadUrlExpiryMinutes * 60);
         } catch (Exception ex) {
-            throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Generate presigned download URL failed");
+            throw new ApiException(MediaErrorCode.GENERATE_PRESIGNED_URL_FAILED);
         }
     }
 
@@ -164,7 +165,7 @@ public class MediaStorageService {
             }
             return responses;
         } catch (Exception ex) {
-            throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Cannot list files from MinIO");
+            throw new ApiException(MediaErrorCode.LIST_FILES_FAILED);
         }
     }
 
@@ -178,16 +179,17 @@ public class MediaStorageService {
                             .build()
             );
         } catch (Exception ex) {
-            throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Delete file from MinIO failed");
+            throw new ApiException(MediaErrorCode.DELETE_FILE_FAILED);
         }
     }
 
     public PresignedUrlResponse createInternalPresignedUploadUrl(String macAddress, String fileName, String contentType) {
         if (!StringUtils.hasText(fileName) || !StringUtils.hasText(macAddress) || !StringUtils.hasText(contentType)) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "fileName, macAddress and contentType are required");
+            throw new ApiException(MediaErrorCode.MISSING_REQUIRED_DEVICE_PARAMS);
         }
+
         if (!allowedMimeTypes().contains(contentType.trim().toLowerCase(Locale.ROOT))) {
-            throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID);
+            throw new ApiException(MediaErrorCode.UNSUPPORTED_FILE_TYPE);
         }
         String safeMac = macAddress.replace(":", "").replace("-", "");
         String objectName = "devices/" + safeMac + "/" + Constants.generateFileName(contentType, "");
@@ -203,7 +205,7 @@ public class MediaStorageService {
             );
             return new PresignedUrlResponse(objectName, url, uploadUrlExpiryMinutes * 60);
         } catch (Exception ex) {
-            throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Generate internal presigned URL failed");
+            throw new ApiException(MediaErrorCode.GENERATE_PRESIGNED_URL_FAILED);
         }
     }
 
@@ -230,7 +232,7 @@ public class MediaStorageService {
         } catch (ApiException ex) {
             throw ex;
         } catch (Exception ex) {
-            throw new ApiException(CoreErrorCode.EXTERNAL_API_ERROR, "Upload to MinIO failed");
+            throw new ApiException(MediaErrorCode.UPLOAD_FAILED);
         }
     }
 
@@ -252,7 +254,7 @@ public class MediaStorageService {
                 }
 
                 if (!allowed.contains(detectedMimeType)) {
-                    throw new ApiException(CoreErrorCode.FILE_IS_NOT_VALID, "Định dạng file không được hỗ trợ: " + detectedMimeType);
+                    throw new ApiException(MediaErrorCode.UNSUPPORTED_FILE_TYPE, "Định dạng file không được hỗ trợ: " + detectedMimeType);
                 }
             }
         }
@@ -325,7 +327,7 @@ public class MediaStorageService {
     private String resolveUserObjectName(String keycloakId, String objectName) {
         String normalized = normalizePrefix(objectName);
         if (!StringUtils.hasText(normalized)) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "objectName is required");
+            throw new ApiException(MediaErrorCode.MISSING_OBJECT_NAME);
         }
 
         // Tự động gọt bỏ phần domain hoặc bucket name bị thừa ở phía trước (nếu có)
@@ -353,16 +355,15 @@ public class MediaStorageService {
 
         String cleaned = StringUtils.cleanPath(input).replace('\\', '/').trim();
         if (cleaned.startsWith("/")) cleaned = cleaned.substring(1);
-        if (cleaned.contains("..")) throw new ApiException(CoreErrorCode.BAD_REQUEST, "Path traversal is not allowed");
+        if (cleaned.contains("..")) throw new ApiException(MediaErrorCode.PATH_TRAVERSAL_DETECTED);
 
-        // Đã sửa để file và folder xử lý độc lập, không ép buộc thêm dấu "/" cuối cùng
         return cleaned;
     }
 
     private String sanitizeFileName(String fileName) {
         if (!StringUtils.hasText(fileName)) return "";
         String cleaned = StringUtils.cleanPath(Objects.requireNonNull(fileName)).replace('\\', '/');
-        if (cleaned.contains("..")) throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid file name");
+        if (cleaned.contains("..")) throw new ApiException(MediaErrorCode.INVALID_FILE_NAME);
         int slashIndex = cleaned.lastIndexOf('/');
         if (slashIndex >= 0) cleaned = cleaned.substring(slashIndex + 1);
         return cleaned;
