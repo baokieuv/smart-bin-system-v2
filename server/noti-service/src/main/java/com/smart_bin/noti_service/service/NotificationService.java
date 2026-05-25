@@ -6,6 +6,7 @@ import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.noti_service.dto.request.MarkNotiRequest;
 import com.smart_bin.noti_service.dto.response.NotificationDto;
 import com.smart_bin.noti_service.entity.Notification;
+import com.smart_bin.noti_service.exception.NotiErrorCode;
 import com.smart_bin.noti_service.mapper.NotificationMapper;
 import com.smart_bin.noti_service.repository.NotificationRepository;
 import jakarta.transaction.Transactional;
@@ -60,12 +61,11 @@ public class NotificationService {
     }
 
     public Long markAsRead(String keycloakId, Long id){
-        Notification notification = repository.findById(id).orElseThrow(
-                () -> new ApiException(CoreErrorCode.BAD_REQUEST, "Notification not found")
-        );
+        Notification notification = repository.findById(id)
+                .orElseThrow(() -> new ApiException(NotiErrorCode.NOTIFICATION_NOT_FOUND));
 
         if (!notification.getKeycloakId().equals(keycloakId)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không có quyền thao tác trên thông báo này");
+            throw new ApiException(NotiErrorCode.NOTIFICATION_FORBIDDEN_ACCESS);
         }
 
         notification.setRead(true);

@@ -1,5 +1,7 @@
 package com.smart_bin.noti_service.service;
 
+import com.smart_bin.core.exception.ApiException;
+import com.smart_bin.noti_service.exception.NotiErrorCode;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -75,7 +77,7 @@ public class EmailService {
 
             mailSender.send(message);
         } catch (MessagingException e) {
-            throw new RuntimeException("Failed to send email: " + subject, e);
+            throw new ApiException(NotiErrorCode.EMAIL_SEND_FAILED, "Failed to send email: " + subject);
         }
     }
 }

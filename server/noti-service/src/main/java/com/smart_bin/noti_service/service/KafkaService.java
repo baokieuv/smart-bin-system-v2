@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smart_bin.core.common.EmailType;
 import com.smart_bin.core.dto.EmailEventDto;
 import com.smart_bin.core.dto.NotificationEventDto;
+import com.smart_bin.core.exception.ApiException;
+import com.smart_bin.noti_service.exception.NotiErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -57,7 +59,7 @@ public class KafkaService {
 
         } catch (Exception e) {
             log.error("Lỗi khi xử lý event gửi email: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to consume email event", e);
+            throw new ApiException(NotiErrorCode.KAFKA_EMAIL_CONSUME_FAILED);
         }
     }
 
@@ -69,7 +71,7 @@ public class KafkaService {
             notificationService.createAndSendNotification(dto.keycloakId(), dto.title(), dto.message(), dto.type());
         } catch (Exception e) {
             log.error("Lỗi khi xử lý event gửi thông báo: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to consume notification event", e);
+            throw new ApiException(NotiErrorCode.KAFKA_NOTI_CONSUME_FAILED);
         }
     }
 }
