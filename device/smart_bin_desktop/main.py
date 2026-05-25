@@ -1,18 +1,18 @@
-import sys
 import logging
 import os
+import sys
 import warnings
+
 from PyQt6.QtWidgets import QApplication
+
 from src.utils.config import APP_CONFIG
 
 
-def _configure_runtime_noise():
-    # These flags must be set before TensorFlow/Ultralytics imports.
+def _configure_runtime_noise() -> None:
+    """Suppress TensorFlow / absl log noise before the AI stack is imported."""
     os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", APP_CONFIG.runtime_noise.tf_cpp_min_log_level)
     os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", APP_CONFIG.runtime_noise.tf_enable_onednn_opts)
     os.environ.setdefault("ABSL_MIN_LOG_LEVEL", APP_CONFIG.runtime_noise.absl_min_log_level)
-
-    # Hide deprecation warning from tf.lite.Interpreter coming from dependency stack.
     warnings.filterwarnings(
         "ignore",
         message=r".*tf\.lite\.Interpreter is deprecated.*",
@@ -20,46 +20,42 @@ def _configure_runtime_noise():
     )
 
 
-def _configure_logging():
-    # Centralized logging format so all modules share the same readable runtime trace.
+def _configure_logging() -> None:
     log_level = getattr(logging, APP_CONFIG.logging.level_name.upper(), logging.INFO)
-    logging.basicConfig(
-        level=log_level,
-        format=APP_CONFIG.logging.format,
-    )
+    logging.basicConfig(level=log_level, format=APP_CONFIG.logging.format)
 
-def main():
-    # Runtime/logging must be configured before importing AI stack.
+
+def _build_app() -> tuple:
+    """Construct and wire the three top-level objects: worker, viewmodel, window.
+
+    Imports are deferred so that env-based TF/absl flags are already in place
+    before Ultralytics / TensorFlow load any native extensions.
+    """
+    from src.services.detection_worker import DetectionWorker      # noqa: PLC0415
+    from src.viewmodels.main_viewmodel import MainViewModel         # noqa: PLC0415
+    from src.views.main_window import MainWindow                    # noqa: PLC0415
+
+    worker = DetectionWorker()
+    viewmodel = MainViewModel(worker)
+    window = MainWindow(viewmodel)
+    return worker, viewmodel, window
+
+
+def main() -> None:
     _configure_runtime_noise()
     _configure_logging()
     logger = logging.getLogger("smart_bin.main")
-    logger.info("Starting Smart Bin Desktop")
-
-    # Delayed import keeps env-based runtime flags effective for TensorFlow/Ultralytics.
-    from src.services.detection_worker import DetectionWorker
-    from src.viewmodels.main_viewmodel import MainViewModel
-    from src.views.main_window import MainWindow
+    logger.info("Starting Smart Bin Desktop v%s", APP_CONFIG.desktop_version)
 
     app = QApplication(sys.argv)
-    
-    # 1) Worker runs camera + AI pipeline on background thread.
-    worker = DetectionWorker()
-    logger.info("DetectionWorker initialized")
-    
-    # 2) ViewModel orchestrates state between worker and UI.
-    viewmodel = MainViewModel(worker)
-    logger.info("MainViewModel initialized")
-    
-    # 3) MainWindow subscribes to ViewModel state.
-    window = MainWindow(viewmodel)
+
+    _worker, viewmodel, window = _build_app()
     window.show()
-    logger.info("MainWindow displayed")
-    
-    # 4) Start detection + telemetry pipeline.
     viewmodel.start_system()
     logger.info("System started")
-    
+
     sys.exit(app.exec())
-    
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     main()

@@ -33,7 +33,7 @@ public class DeviceSecurityService {
     @Value("classpath:private_key.pem")
     private Resource privateKeyResource;
 
-    @Value("${app.master-secret:DEFAULT_MASTER_SECRET_KEY}")
+    @Value("${app.secret-key:SECRET_KEY_12345}")
     private String masterSecret;
 
     @PostConstruct

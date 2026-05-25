@@ -1,180 +1,281 @@
+"""Cross-platform Wi-Fi operations abstraction (Windows / Linux)."""
+
 import logging
-import os
 import platform
 import re
 import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import List
 from xml.sax.saxutils import escape
+
+# Error messages — kept as constants so they're easy to translate or mock.
+_ERR_UNSUPPORTED = "Hệ điều hành hiện tại không hỗ trợ cấu hình Wi-Fi"
+_ERR_SECURE_NO_PASSWORD = "Mật khẩu không được để trống"
+_ERR_NO_NETWORKS = "Không tìm thấy mạng Wi-Fi"
+_ERR_CONNECT_FALLBACK = "Hệ thống không kết nối vào đúng SSID (có thể đã fallback sang mạng khác)"
+_ERR_CONNECT_GENERIC = "Không thể kết nối"
+_ERR_DELETE_GENERIC = "Không xóa được profile"
+_ERR_ADD_PROFILE = "Không add được Wi-Fi profile"
+
+_PLATFORM = platform.system()
+_IS_WINDOWS = _PLATFORM == "Windows"
+_IS_LINUX = _PLATFORM == "Linux"
+_IS_SUPPORTED = _IS_WINDOWS or _IS_LINUX
 
 
 class WifiService:
-    """Cross-platform Wi-Fi operations abstraction for Windows/Linux desktop app."""
+    """Cross-platform Wi-Fi management using netsh (Windows) and nmcli (Linux)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = logging.getLogger("smart_bin.wifi_service")
         self.last_error: str = ""
 
+    # ------------------------------------------------------------------
+    # Platform guards
+    # ------------------------------------------------------------------
+
     @staticmethod
     def is_supported() -> bool:
-        return platform.system() in ("Windows", "Linux")
+        return _IS_SUPPORTED
 
     @staticmethod
     def current_platform() -> str:
-        return platform.system()
+        return _PLATFORM
 
-    def scan_networks(self) -> List[str]:
-        """Return only SSID names from detailed scan results."""
+    def _require_supported(self) -> bool:
+        """Set last_error and return False if platform is unsupported."""
+        if not _IS_SUPPORTED:
+            self.last_error = _ERR_UNSUPPORTED
+            return False
+        return True
+
+    # ------------------------------------------------------------------
+    # Public scan API
+    # ------------------------------------------------------------------
+
+    def scan_networks(self) -> list[str]:
+        """Return SSID names only."""
         return [n["ssid"] for n in self.scan_network_details()]
 
-    def scan_network_details(self) -> List[dict]:
-        """Scan available Wi-Fi networks with platform-specific implementations."""
+    def scan_network_details(self) -> list[dict]:
+        """Return list of dicts with keys: ssid, secure, connected."""
         self.last_error = ""
-        if not self.is_supported():
-            self.last_error = "He dieu hanh hien tai khong ho tro cau hinh Wi-Fi"
+        if not self._require_supported():
             return []
 
-        if self.current_platform() == "Windows":
-            networks = self._scan_networks_windows()
-        else:
-            networks = self._scan_networks_linux()
-
-        self.logger.info("Scan wifi xong (%s), tim thay %s mang", self.current_platform(), len(networks))
+        networks = self._scan_networks_windows() if _IS_WINDOWS else self._scan_networks_linux()
+        self.logger.info("Wi-Fi scan done (%s): found %d networks", _PLATFORM, len(networks))
         if not networks and not self.last_error:
-            self.last_error = "Khong tim thay mang Wi-Fi"
+            self.last_error = _ERR_NO_NETWORKS
         return networks
 
+    # ------------------------------------------------------------------
+    # Public connect API
+    # ------------------------------------------------------------------
+
     def has_saved_profile(self, ssid: str) -> bool:
-        """Check whether a connection profile already exists for given SSID."""
-        if not self.is_supported():
+        if not self._require_supported():
             return False
+        if _IS_WINDOWS:
+            return self._run(["netsh", "wlan", "show", "profile", f"name={ssid}"]).returncode == 0
 
-        if self.current_platform() == "Windows":
-            result = self._run_cmd(["netsh", "wlan", "show", "profile", f"name={ssid}"])
-            return result.returncode == 0
-
-        result = self._run_cmd(["nmcli", "-t", "-f", "NAME", "connection", "show"])
+        result = self._run(["nmcli", "-t", "-f", "NAME", "connection", "show"])
         if result.returncode != 0:
             return False
-        profiles = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-        return ssid in profiles
+        return ssid in {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
     def connect_saved_profile(self, ssid: str) -> tuple[bool, str]:
-        """Connect using existing profile; verify final connected SSID afterwards."""
-        if not self.is_supported():
-            return False, "He dieu hanh hien tai khong ho tro cau hinh Wi-Fi"
-
-        if self.current_platform() == "Windows":
-            result = self._run_cmd(["netsh", "wlan", "connect", f"name={ssid}", f"ssid={ssid}"])
-            if result.returncode == 0:
-                if self._wait_until_connected(ssid):
-                    return True, "Da ket noi Wi-Fi"
-                self.last_error = "He thong khong ket noi vao dung SSID (co the da fallback sang mang khac)"
-                return False, self.last_error
-            msg = (result.stderr or result.stdout).strip() or "Khong the ket noi"
-            self.last_error = msg
-            return False, msg
-
-        # Linux: try known connection profile first.
-        up_result = self._run_cmd(["nmcli", "connection", "up", "id", ssid])
-        if up_result.returncode == 0:
-            if self._wait_until_connected(ssid):
-                return True, "Da ket noi Wi-Fi"
-
-        # Fallback: if profile name is not equal to SSID, let nmcli attempt by SSID.
-        wifi_result = self._run_cmd(["nmcli", "device", "wifi", "connect", ssid])
-        if wifi_result.returncode == 0:
-            if self._wait_until_connected(ssid):
-                return True, "Da ket noi Wi-Fi"
-
-        msg = (wifi_result.stderr or wifi_result.stdout or up_result.stderr or up_result.stdout).strip() or "Khong the ket noi"
-        self.last_error = msg
-        return False, msg
+        if not self._require_supported():
+            return False, _ERR_UNSUPPORTED
+        return self._connect_windows_saved(ssid) if _IS_WINDOWS else self._connect_linux_saved(ssid)
 
     def connect_with_password(self, ssid: str, password: str, secure: bool = True) -> tuple[bool, str]:
-        """Connect to network by creating/using credentials based on platform."""
-        if not self.is_supported():
-            return False, "He dieu hanh hien tai khong ho tro cau hinh Wi-Fi"
-
+        if not self._require_supported():
+            return False, _ERR_UNSUPPORTED
         if secure and not password:
-            return False, "Mat khau khong duoc de trong"
+            return False, _ERR_SECURE_NO_PASSWORD
+        return self._connect_linux_password(ssid, password, secure) if _IS_LINUX else self._connect_windows_password(ssid, password, secure)
 
-        if self.current_platform() == "Linux":
-            if secure:
-                cmd = ["nmcli", "device", "wifi", "connect", ssid, "password", password]
-            else:
-                cmd = ["nmcli", "device", "wifi", "connect", ssid]
-            result = self._run_cmd(cmd)
+    def forget_saved_profile(self, ssid: str) -> tuple[bool, str]:
+        if not self._require_supported():
+            return False, _ERR_UNSUPPORTED
+        if _IS_WINDOWS:
+            result = self._run(["netsh", "wlan", "delete", "profile", f"name={ssid}"])
             if result.returncode == 0:
-                if self._wait_until_connected(ssid):
-                    return True, "Da ket noi Wi-Fi"
-                self.last_error = "He thong khong ket noi vao dung SSID (co the da fallback sang mang khac)"
-                return False, self.last_error
-            msg = (result.stderr or result.stdout).strip() or "Khong the ket noi"
-            self.last_error = msg
-            return False, msg
+                return True, "Đã xóa profile Wi-Fi"
+            return self._fail(_cmd_output(result) or _ERR_DELETE_GENERIC)
 
-        profile_xml = self._build_windows_profile_xml(ssid, password, secure)
+        result = self._run(["nmcli", "connection", "delete", "id", ssid])
+        if result.returncode == 0:
+            return True, "Đã xóa profile Wi-Fi"
+        return self._fail(_cmd_output(result) or _ERR_DELETE_GENERIC)
+
+    def get_connected_ssid(self) -> str | None:
+        if not _IS_SUPPORTED:
+            return None
+        return self._get_connected_ssid_windows() if _IS_WINDOWS else self._get_connected_ssid_linux()
+
+    # ------------------------------------------------------------------
+    # Windows-specific connect helpers
+    # ------------------------------------------------------------------
+
+    def _connect_windows_saved(self, ssid: str) -> tuple[bool, str]:
+        result = self._run(["netsh", "wlan", "connect", f"name={ssid}", f"ssid={ssid}"])
+        if result.returncode == 0 and self._wait_until_connected(ssid):
+            return True, "Đã kết nối Wi-Fi"
+        if result.returncode == 0:
+            return self._fail(_ERR_CONNECT_FALLBACK)
+        return self._fail(_cmd_output(result) or _ERR_CONNECT_GENERIC)
+
+    def _connect_windows_password(self, ssid: str, password: str, secure: bool) -> tuple[bool, str]:
+        xml = self._build_windows_profile_xml(ssid, password, secure)
         temp_path = None
         try:
-            with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-8") as f:
-                f.write(profile_xml)
-                temp_path = f.name
+            with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-8") as fh:
+                fh.write(xml)
+                temp_path = fh.name
 
-            add_result = self._run_cmd(["netsh", "wlan", "add", "profile", f"filename={temp_path}", "user=current"])
-            if add_result.returncode != 0:
-                msg = (add_result.stderr or add_result.stdout).strip() or "Khong add duoc wifi profile"
-                self.last_error = msg
-                return False, msg
-
+            add = self._run(["netsh", "wlan", "add", "profile", f"filename={temp_path}", "user=current"])
+            if add.returncode != 0:
+                return self._fail(_cmd_output(add) or _ERR_ADD_PROFILE)
             return self.connect_saved_profile(ssid)
         finally:
             if temp_path:
-                try:
-                    Path(temp_path).unlink(missing_ok=True)
-                except OSError:
-                    pass
+                Path(temp_path).unlink(missing_ok=True)
 
-    def _build_windows_profile_xml(self, ssid: str, password: str, secure: bool) -> str:
+    # ------------------------------------------------------------------
+    # Linux-specific connect helpers
+    # ------------------------------------------------------------------
+
+    def _connect_linux_saved(self, ssid: str) -> tuple[bool, str]:
+        # Try by profile name first, then fall back to bare SSID connect.
+        for cmd in (
+            ["nmcli", "connection", "up", "id", ssid],
+            ["nmcli", "device", "wifi", "connect", ssid],
+        ):
+            result = self._run(cmd)
+            if result.returncode == 0 and self._wait_until_connected(ssid):
+                return True, "Đã kết nối Wi-Fi"
+
+        return self._fail(_ERR_CONNECT_GENERIC)
+
+    def _connect_linux_password(self, ssid: str, password: str, secure: bool) -> tuple[bool, str]:
+        cmd = ["nmcli", "device", "wifi", "connect", ssid]
+        if secure:
+            cmd += ["password", password]
+        result = self._run(cmd)
+        if result.returncode == 0 and self._wait_until_connected(ssid):
+            return True, "Đã kết nối Wi-Fi"
+        if result.returncode == 0:
+            return self._fail(_ERR_CONNECT_FALLBACK)
+        return self._fail(_cmd_output(result) or _ERR_CONNECT_GENERIC)
+
+    # ------------------------------------------------------------------
+    # Scan implementations
+    # ------------------------------------------------------------------
+
+    def _scan_networks_windows(self) -> list[dict]:
+        seen: dict[str, dict] = {}
+        networks: list[dict] = []
+        connected = self._get_connected_ssid_windows()
+
+        result = self._run(["netsh", "wlan", "show", "networks", "mode=bssid"])
+        if result.returncode != 0:
+            self.last_error = self._normalize_windows_wlan_error(result.stdout, result.stderr)
+
+        ssid_re = re.compile(r"^\s*SSID\s+\d+\s*:\s*(.*)$", re.IGNORECASE)
+        auth_re = re.compile(r"^\s*Authentication\s*:\s*(.*)$", re.IGNORECASE)
+        current: dict | None = None
+
+        for line in result.stdout.splitlines():
+            m = ssid_re.match(line)
+            if m:
+                ssid = m.group(1).strip()
+                if ssid and ssid not in seen:
+                    current = {"ssid": ssid, "secure": True, "connected": ssid == connected}
+                    seen[ssid] = current
+                    networks.append(current)
+                else:
+                    current = seen.get(ssid)
+                continue
+            if current and (am := auth_re.match(line)):
+                current["secure"] = "open" not in am.group(1).strip().lower()
+
+        # Ensure the currently connected network is always listed.
+        if connected and connected not in seen:
+            networks.append({"ssid": connected, "secure": True, "connected": True})
+
+        return networks
+
+    def _scan_networks_linux(self) -> list[dict]:
+        seen: dict[str, dict] = {}
+        networks: list[dict] = []
+
+        result = self._run([
+            "nmcli", "-t", "--escape", "no",
+            "-f", "ACTIVE,SECURITY,SSID",
+            "device", "wifi", "list", "--rescan", "yes",
+        ])
+        if result.returncode != 0:
+            self.last_error = _cmd_output(result) or "Không scan được Wi-Fi bằng nmcli"
+            return networks
+
+        for line in result.stdout.splitlines():
+            parts = line.split(":", 2)
+            if len(parts) != 3:
+                continue
+            active, security, ssid = (p.strip() for p in parts)
+            if not ssid:
+                continue
+            if ssid not in seen:
+                net = {"ssid": ssid, "secure": bool(security), "connected": active.lower() == "yes"}
+                seen[ssid] = net
+                networks.append(net)
+            elif active.lower() == "yes":
+                seen[ssid]["connected"] = True
+
+        return networks
+
+    # ------------------------------------------------------------------
+    # Connected SSID helpers
+    # ------------------------------------------------------------------
+
+    def _get_connected_ssid_linux(self) -> str | None:
+        result = self._run(["nmcli", "-t", "-f", "ACTIVE,SSID", "device", "wifi", "list"])
+        if result.returncode != 0:
+            return None
+        for line in result.stdout.splitlines():
+            if line.startswith("yes:"):
+                ssid = line.split(":", 1)[1].strip()
+                if ssid:
+                    return ssid
+        return None
+
+    def _get_connected_ssid_windows(self) -> str | None:
+        result = self._run(["netsh", "wlan", "show", "interfaces"])
+        if result.returncode != 0 and not self.last_error:
+            self.last_error = self._normalize_windows_wlan_error(result.stdout, result.stderr)
+        for line in result.stdout.splitlines():
+            text = line.strip()
+            lower = text.lower()
+            if lower.startswith("ssid") and "bssid" not in lower and ":" in text:
+                ssid = text.split(":", 1)[1].strip()
+                if ssid:
+                    return ssid
+        return None
+
+    # ------------------------------------------------------------------
+    # Windows profile XML builder
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_windows_profile_xml(ssid: str, password: str, secure: bool) -> str:
         ssid_xml = escape(ssid)
         password_xml = escape(password)
-        if not secure:
-            return f"""<?xml version=\"1.0\"?>
-<WLANProfile xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v1\">
-    <name>{ssid_xml}</name>
-    <SSIDConfig>
-        <SSID>
-            <name>{ssid_xml}</name>
-        </SSID>
-    </SSIDConfig>
-    <connectionType>ESS</connectionType>
-    <connectionMode>auto</connectionMode>
-    <MSM>
-        <security>
-            <authEncryption>
-                <authentication>open</authentication>
-                <encryption>none</encryption>
-                <useOneX>false</useOneX>
-            </authEncryption>
-        </security>
-    </MSM>
-</WLANProfile>
-"""
-
-        return f"""<?xml version=\"1.0\"?>
-<WLANProfile xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v1\">
-    <name>{ssid_xml}</name>
-    <SSIDConfig>
-        <SSID>
-            <name>{ssid_xml}</name>
-        </SSID>
-    </SSIDConfig>
-    <connectionType>ESS</connectionType>
-    <connectionMode>auto</connectionMode>
-    <MSM>
-        <security>
+        security_block = ""
+        if secure:
+            security_block = f"""
             <authEncryption>
                 <authentication>WPA2PSK</authentication>
                 <encryption>AES</encryption>
@@ -184,167 +285,82 @@ class WifiService:
                 <keyType>passPhrase</keyType>
                 <protected>false</protected>
                 <keyMaterial>{password_xml}</keyMaterial>
-            </sharedKey>
+            </sharedKey>"""
+        else:
+            security_block = """
+            <authEncryption>
+                <authentication>open</authentication>
+                <encryption>none</encryption>
+                <useOneX>false</useOneX>
+            </authEncryption>"""
+
+        return f"""<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+    <name>{ssid_xml}</name>
+    <SSIDConfig>
+        <SSID><name>{ssid_xml}</name></SSID>
+    </SSIDConfig>
+    <connectionType>ESS</connectionType>
+    <connectionMode>auto</connectionMode>
+    <MSM>
+        <security>{security_block}
         </security>
     </MSM>
 </WLANProfile>
 """
 
-    def _run_cmd(self, cmd: list[str]) -> subprocess.CompletedProcess:
+    # ------------------------------------------------------------------
+    # Windows error normalizer
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_windows_wlan_error(stdout: str, stderr: str) -> str:
+        combined = f"{stdout}\n{stderr}".strip().lower()
+        if "location permission" in combined:
+            return "Windows đang chặn quyền Location cho WLAN. Hãy bật Location Services."
+        if "requires elevation" in combined or "error 5" in combined:
+            return "Cần chạy app với quyền Administrator để truy cập WLAN."
+        if "autoconfig service" in combined:
+            return "WLAN AutoConfig service chưa bật."
+        return (stderr or stdout).strip() or "Không scan được Wi-Fi trên Windows"
+
+    # ------------------------------------------------------------------
+    # Subprocess wrapper
+    # ------------------------------------------------------------------
+
+    def _run(self, cmd: list[str]) -> subprocess.CompletedProcess:
         result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-            encoding="utf-8",
-            errors="ignore",
+            cmd, capture_output=True, text=True,
+            check=False, encoding="utf-8", errors="ignore",
         )
         self.logger.debug(
-            "CMD rc=%s cmd=%s stdout=%s stderr=%s",
-            result.returncode,
-            " ".join(cmd),
-            (result.stdout or "")[:200],
-            (result.stderr or "")[:200],
+            "CMD rc=%d cmd=%s stdout=%s stderr=%s",
+            result.returncode, " ".join(cmd),
+            (result.stdout or "")[:200], (result.stderr or "")[:200],
         )
         return result
 
-    def forget_saved_profile(self, ssid: str) -> tuple[bool, str]:
-        if not self.is_supported():
-            return False, "He dieu hanh hien tai khong ho tro cau hinh Wi-Fi"
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
-        if self.current_platform() == "Windows":
-            result = self._run_cmd(["netsh", "wlan", "delete", "profile", f"name={ssid}"])
-            if result.returncode == 0:
-                return True, "Da xoa profile Wi-Fi"
-            msg = (result.stderr or result.stdout).strip() or "Khong xoa duoc profile"
-            self.last_error = msg
-            return False, msg
+    def _fail(self, message: str) -> tuple[bool, str]:
+        self.last_error = message
+        return False, message
 
-        # Linux / NetworkManager
-        result = self._run_cmd(["nmcli", "connection", "delete", "id", ssid])
-        if result.returncode == 0:
-            return True, "Da xoa profile Wi-Fi"
-
-        msg = (result.stderr or result.stdout).strip() or "Khong xoa duoc profile"
-        self.last_error = msg
-        return False, msg
-
-    def get_connected_ssid(self) -> str | None:
-        if not self.is_supported():
-            return None
-        if self.current_platform() == "Windows":
-            return self._get_connected_ssid_windows()
-        return self._get_connected_ssid_linux()
-
-    def _wait_until_connected(self, target_ssid: str, timeout_seconds: float = 8.0) -> bool:
-        deadline = time.time() + timeout_seconds
+    def _wait_until_connected(self, target_ssid: str, timeout: float = 8.0) -> bool:
+        deadline = time.time() + timeout
         while time.time() < deadline:
-            current = self.get_connected_ssid()
-            if current == target_ssid:
+            if self.get_connected_ssid() == target_ssid:
                 return True
             time.sleep(0.5)
         return False
 
-    def _scan_networks_windows(self) -> List[dict]:
-        networks: list[dict] = []
-        seen: dict[str, dict] = {}
-        connected_ssid = self._get_connected_ssid_windows()
 
-        # Primary scan from visible WLAN list.
-        result = self._run_cmd(["netsh", "wlan", "show", "networks", "mode=bssid"])
-        if result.returncode != 0:
-            self.last_error = self._normalize_windows_wlan_error(result.stdout, result.stderr)
-        pattern = re.compile(r"^\s*SSID\s+\d+\s*:\s*(.*)$", re.IGNORECASE)
-        auth_pattern = re.compile(r"^\s*Authentication\s*:\s*(.*)$", re.IGNORECASE)
-        current = None
-        for line in result.stdout.splitlines():
-            m = pattern.match(line)
-            if m:
-                ssid = m.group(1).strip()
-                current = {"ssid": ssid, "secure": True, "connected": ssid == connected_ssid}
-                if ssid and ssid not in seen:
-                    seen[ssid] = current
-                    networks.append(current)
-                else:
-                    current = seen.get(ssid)
-                continue
+# ---------------------------------------------------------------------------
+# Module-level helper (not a method — no `self` needed)
+# ---------------------------------------------------------------------------
 
-            if not current:
-                continue
-
-            am = auth_pattern.match(line)
-            if am:
-                auth_value = am.group(1).strip().lower()
-                current["secure"] = "open" not in auth_value
-
-        # Fallback: ensure currently connected SSID is visible in list.
-        if connected_ssid and connected_ssid not in seen:
-            networks.append({"ssid": connected_ssid, "secure": True, "connected": True})
-
-        return networks
-
-    def _scan_networks_linux(self) -> List[dict]:
-        networks: list[dict] = []
-        seen: dict[str, dict] = {}
-        result = self._run_cmd(["nmcli", "-t", "--escape", "no", "-f", "ACTIVE,SECURITY,SSID", "device", "wifi", "list", "--rescan", "yes"])
-        if result.returncode != 0:
-            self.last_error = (result.stderr or result.stdout).strip() or "Khong scan duoc Wi-Fi bang nmcli"
-            return networks
-
-        for line in result.stdout.splitlines():
-            parts = line.split(":", 2)
-            if len(parts) != 3:
-                continue
-            active, security, ssid = parts[0].strip(), parts[1].strip(), parts[2].strip()
-            if not ssid:
-                continue
-
-            net = {
-                "ssid": ssid,
-                "secure": bool(security),
-                "connected": active.lower() == "yes",
-            }
-
-            if ssid not in seen:
-                seen[ssid] = net
-                networks.append(net)
-            elif net["connected"]:
-                seen[ssid]["connected"] = True
-
-        return networks
-
-    def _get_connected_ssid_linux(self) -> str | None:
-        result = self._run_cmd(["nmcli", "-t", "-f", "ACTIVE,SSID", "device", "wifi", "list"])
-        if result.returncode != 0:
-            return None
-        for line in result.stdout.splitlines():
-            if not line.startswith("yes:"):
-                continue
-            ssid = line.split(":", 1)[1].strip()
-            if ssid:
-                return ssid
-        return None
-
-    def _get_connected_ssid_windows(self) -> str | None:
-        iface = self._run_cmd(["netsh", "wlan", "show", "interfaces"])
-        if iface.returncode != 0 and not self.last_error:
-            self.last_error = self._normalize_windows_wlan_error(iface.stdout, iface.stderr)
-        for line in iface.stdout.splitlines():
-            text = line.strip()
-            lower = text.lower()
-            if lower.startswith("ssid") and "bssid" not in lower and ":" in text:
-                ssid = text.split(":", 1)[1].strip()
-                if ssid:
-                    return ssid
-        return None
-
-    def _normalize_windows_wlan_error(self, stdout: str, stderr: str) -> str:
-        text = f"{stdout}\n{stderr}".strip().lower()
-        if "location permission" in text:
-            return "Windows dang chan quyen Location cho WLAN. Hay bat Location Services."
-        if "requires elevation" in text or "error 5" in text:
-            return "Can chay app voi quyen Administrator de truy cap WLAN."
-        if "autoconfig service" in text:
-            return "WLAN AutoConfig service chua bat."
-        raw = (stderr or stdout).strip()
-        return raw or "Khong scan duoc Wi-Fi tren Windows"
+def _cmd_output(result: subprocess.CompletedProcess) -> str:
+    """Return the first non-empty output stream from a subprocess result."""
+    return (result.stderr or result.stdout or "").strip()

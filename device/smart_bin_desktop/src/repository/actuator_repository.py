@@ -7,12 +7,14 @@ import hmac
 import logging
 import struct
 import time
-from pathlib import Path
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from queue import Empty, Queue
-import serial
 from threading import Event, Lock, Thread
-from typing import Callable, Any
+from typing import Any, Callable, Generator
+
+import serial
 
 from src.models.system_info_dto import SystemInfoDto
 from src.utils.config import APP_CONFIG
@@ -20,20 +22,31 @@ from src.utils.config import APP_CONFIG
 
 @dataclass
 class CommandTask:
-    """Represents a command to be sent to ESP32."""
-    cmd_name: str = ""  # For logging
+    """One unit of work dispatched to the serial queue worker."""
+
+    cmd_name: str = ""
     action: Callable[[], tuple[bool, Any]] | None = None
     done_event: Event = field(default_factory=Event, repr=False)
     result: tuple[bool, Any] | None = field(default=None, repr=False)
 
 
 class ActuatorRepository:
-    """Send framed commands to the ESP32 actuator firmware over serial.
+    """Send HMAC-framed commands to the ESP32 actuator over serial.
 
-    Public API:
-    - control_step_motor(degree)
-    - request_fill_levels()
-    - upload_ota(firmware_file=None)
+    All serial I/O is serialised through a single background queue worker so
+    commands never race each other.  The public API returns immediately after
+    enqueuing (fire-and-forget) *or* blocks until the queued task completes,
+    depending on the caller's needs.
+
+    Public API
+    ----------
+    control_step_motor(degree)
+    update_device_config(full_threshold, device_height)
+    request_fill_levels(timeout) -> (ok, [int] | None)
+    get_bin_version(timeout)    -> (ok, str | None)
+    get_system_info(timeout)    -> (ok, SystemInfoDto | None)
+    upload_ota(firmware_file)   -> (ok, str)
+    close_serial()
     """
 
     def __init__(
@@ -41,23 +54,26 @@ class ActuatorRepository:
         com_port: str | None = None,
         baud_rate: int | None = None,
         firmware_file: str | Path | None = None,
-    ):
+    ) -> None:
         self.logger = logging.getLogger("smart_bin.actuator_repository")
         self.config = APP_CONFIG.esp32_ota
         self.com_port = com_port or self.config.com_port
         self.baud_rate = baud_rate or self.config.baud_rate
         self.firmware_file = Path(firmware_file) if firmware_file else Path(self.config.firmware_file)
-        # Shared serial connection
+
         self._serial_conn: serial.Serial | None = None
         self._serial_lock = Lock()
-        # Command queue for sequential execution
-        self._command_queue: Queue = Queue()
+
+        self._command_queue: Queue[CommandTask] = Queue()
         self._queue_stop = Event()
-        self._queue_worker = Thread(target=self._command_queue_worker, daemon=True)
+        self._queue_worker = Thread(target=self._run_queue, daemon=True, name="smart-bin-serial-queue")
         self._queue_worker.start()
 
+    # ------------------------------------------------------------------
+    # Serial connection helpers
+    # ------------------------------------------------------------------
+
     def _open_serial(self) -> serial.Serial:
-        """Open a serial connection with the configured defaults."""
         ser = serial.Serial(self.com_port, self.baud_rate, timeout=1)
         ser.setDTR(False)
         ser.setRTS(False)
@@ -65,17 +81,20 @@ class ActuatorRepository:
         ser.reset_input_buffer()
         return ser
 
-    def _get_or_open_serial(self) -> serial.Serial:
-        """Get existing serial connection or open a new one if not already open."""
+    @contextmanager
+    def _serial_session(self) -> Generator[serial.Serial, None, None]:
+        """Acquire the serial lock, (re-)open the port if needed, yield the connection.
+
+        Using a context manager instead of the old _get_or_open_serial() +
+        separate `with self._serial_lock` avoids the double-acquire deadlock:
+        the lock is held for the entire open → write → read cycle.
+        """
         with self._serial_lock:
-            if self._serial_conn is not None and self._serial_conn.is_open:
-                return self._serial_conn
-            # Open new connection and store it
-            self._serial_conn = self._open_serial()
-            return self._serial_conn
+            if self._serial_conn is None or not self._serial_conn.is_open:
+                self._serial_conn = self._open_serial()
+            yield self._serial_conn
 
     def _close_serial(self) -> None:
-        """Close the shared serial connection."""
         with self._serial_lock:
             if self._serial_conn is not None and self._serial_conn.is_open:
                 try:
@@ -84,79 +103,91 @@ class ActuatorRepository:
                     pass
             self._serial_conn = None
 
+    # ------------------------------------------------------------------
+    # Frame encoding / decoding
+    # ------------------------------------------------------------------
+
     def _calculate_hmac(self, cmd: int, length: int, payload: bytes) -> bytes:
-        len_h = (length >> 8) & 0xFF
-        len_l = length & 0xFF
-        msg = bytearray([cmd, len_h, len_l])
+        msg = bytearray([cmd, (length >> 8) & 0xFF, length & 0xFF])
         if payload:
             msg.extend(payload)
         return hmac.new(self.config.secret_key, msg, hashlib.sha256).digest()
 
     def _create_frame(self, cmd: int, payload: bytes = b"") -> bytearray:
         length = len(payload)
-        len_h = (length >> 8) & 0xFF
-        len_l = length & 0xFF
-        frame = bytearray([self.config.header_1, self.config.header_2, cmd, len_h, len_l])
+        frame = bytearray([
+            self.config.header_1,
+            self.config.header_2,
+            cmd,
+            (length >> 8) & 0xFF,
+            length & 0xFF,
+        ])
         frame.extend(payload)
         frame.extend(self._calculate_hmac(cmd, length, payload))
         frame.append(self.config.tail)
         return frame
 
-    # Frame parsing helpers (used by telemetry and version read)
-    def _extract_valid_frame(self, buffer: bytearray):
-        """Scan buffer for a valid framed message. Returns (cmd, payload, consumed).
+    def _extract_valid_frame(
+        self, buffer: bytearray
+    ) -> tuple[int | None, bytes | None, int]:
+        """Scan buffer for the next valid HMAC-authenticated frame.
 
-        Frame format: [H1][H2][CMD][LEN_H][LEN_L][PAYLOAD...][HMAC(32)][TAIL]
+        Frame layout: [H1][H2][CMD][LEN_H][LEN_L][PAYLOAD…][HMAC-32][TAIL]
+
+        Returns (cmd, payload, bytes_consumed).  bytes_consumed == 0 means
+        no complete frame was found yet.
         """
-        min_frame = 5 + 0 + 32 + 1
+        min_frame = 5 + 32 + 1  # header(5) + hmac(32) + tail(1)
         while len(buffer) >= min_frame:
-            if buffer[0] == self.config.header_1 and buffer[1] == self.config.header_2:
-                cmd = buffer[2]
-                length = (buffer[3] << 8) | buffer[4]
-                total_len = 5 + length + 32 + 1
-                if len(buffer) >= total_len:
-                    payload = bytes(buffer[5:5+length])
-                    received_mac = bytes(buffer[5+length:5+length+32])
-                    tail = buffer[5+length+32]
-                    if tail == self.config.tail and self._calculate_hmac(cmd, length, payload) == received_mac:
-                        return cmd, payload, total_len
-                    else:
-                        buffer.pop(0)
-                else:
-                    break
-            else:
+            if buffer[0] != self.config.header_1 or buffer[1] != self.config.header_2:
                 buffer.pop(0)
+                continue
+
+            cmd = buffer[2]
+            length = (buffer[3] << 8) | buffer[4]
+            total_len = 5 + length + 32 + 1
+
+            if len(buffer) < total_len:
+                break  # wait for more bytes
+
+            payload = bytes(buffer[5 : 5 + length])
+            received_mac = bytes(buffer[5 + length : 5 + length + 32])
+            tail = buffer[5 + length + 32]
+
+            if tail == self.config.tail and self._calculate_hmac(cmd, length, payload) == received_mac:
+                return cmd, payload, total_len
+
+            buffer.pop(0)  # bad frame — advance and retry
+
         return None, None, 0
 
     def _wait_for_ack(self, ser: serial.Serial, timeout: float = 3.0) -> bool:
-        """Wait for ACK/NACK response from ESP32."""
-        start_time = time.time()
+        """Block until ACK/NACK arrives or timeout expires."""
+        deadline = time.time() + timeout
         buffer = bytearray()
 
-        while time.time() - start_time < timeout:
-            if ser.in_waiting > 0:
+        while time.time() < deadline:
+            if ser.in_waiting:
                 buffer.extend(ser.read(ser.in_waiting))
-                
-                # Sử dụng _extract_valid_frame để quét HMAC packet chuẩn xác
-                cmd, payload, consumed = self._extract_valid_frame(buffer)
-                
-                if consumed > 0:
+                cmd, _payload, consumed = self._extract_valid_frame(buffer)
+                if consumed:
                     if cmd == self.config.cmd_ack:
                         return True
-                    elif cmd == self.config.cmd_nack:
+                    if cmd == self.config.cmd_nack:
                         self.logger.warning("Received NACK from ESP32")
                         return False
-                    
-                    # Nếu là frame rác hoặc lệnh khác, cắt đi để quét tiếp
                     buffer = buffer[consumed:]
-                    
             time.sleep(0.01)
 
-        self.logger.warning("ACK timeout. Buffer=%s", buffer.hex(" "))
+        self.logger.warning("ACK timeout. buffer=%s", buffer.hex(" "))
         return False
 
-    def _command_queue_worker(self) -> None:
-        """Continuously process queued commands in FIFO order."""
+    # ------------------------------------------------------------------
+    # Command queue
+    # ------------------------------------------------------------------
+
+    def _run_queue(self) -> None:
+        """Background thread — consume and execute tasks in FIFO order."""
         while not self._queue_stop.is_set():
             try:
                 task: CommandTask = self._command_queue.get(timeout=0.2)
@@ -164,10 +195,7 @@ class ActuatorRepository:
                 continue
 
             try:
-                if task.action is None:
-                    task.result = (False, "Missing command action")
-                else:
-                    task.result = task.action()
+                task.result = task.action() if task.action else (False, "Missing command action")
             except Exception as exc:
                 self.logger.exception("Error executing queued command %s", task.cmd_name)
                 task.result = (False, str(exc))
@@ -175,24 +203,22 @@ class ActuatorRepository:
                 task.done_event.set()
                 self._command_queue.task_done()
 
-    def _queue_command(self, action: Callable[[], tuple[bool, Any]], cmd_name: str) -> CommandTask:
-        """Queue a command action for serial delivery."""
+    def _enqueue(self, action: Callable[[], tuple[bool, Any]], cmd_name: str) -> CommandTask:
         task = CommandTask(cmd_name=cmd_name, action=action)
         self._command_queue.put(task)
         return task
 
     def _wait_for_task(self, task: CommandTask, timeout: float | None = None) -> tuple[bool, Any]:
         if not task.done_event.wait(timeout):
-            return False, f"Timed out waiting for queued command: {task.cmd_name}"
-        return task.result if task.result is not None else (False, f"Queued command failed: {task.cmd_name}")
+            return False, f"Timed out waiting for: {task.cmd_name}"
+        return task.result or (False, f"Command produced no result: {task.cmd_name}")
+
+    # ------------------------------------------------------------------
+    # Task implementations (run inside queue worker)
+    # ------------------------------------------------------------------
 
     def _send_frame_and_wait_ack(self, frame: bytearray, timeout: float = 3.0) -> tuple[bool, str]:
-        # _get_or_open_serial already acquires _serial_lock internally.
-        # Acquire the lock once here to make open + write + ack atomic.
-        with self._serial_lock:
-            if self._serial_conn is None or not self._serial_conn.is_open:
-                self._serial_conn = self._open_serial()
-            ser = self._serial_conn
+        with self._serial_session() as ser:
             ser.write(frame)
             if not self._wait_for_ack(ser, timeout=timeout):
                 return False, "ESP32 did not ACK command"
@@ -200,82 +226,64 @@ class ActuatorRepository:
 
     def _request_fill_levels_task(self, timeout: float = 3.0) -> tuple[bool, list[int] | None]:
         try:
-            with self._serial_lock:
-                if self._serial_conn is None or not self._serial_conn.is_open:
-                    self._serial_conn = self._open_serial()
-                ser = self._serial_conn
+            with self._serial_session() as ser:
                 ser.write(self._create_frame(self.config.cmd_report_fill_level))
-
-                if timeout is None:
-                    timeout = 3.0
-
-                start = time.time()
+                deadline = time.time() + timeout
                 buffer = bytearray()
-                while time.time() - start < timeout:
-                    if ser.in_waiting > 0:
+                while time.time() < deadline:
+                    if ser.in_waiting:
                         buffer.extend(ser.read(ser.in_waiting))
                         cmd, payload, consumed = self._extract_valid_frame(buffer)
-                        if consumed > 0:
-                            if cmd == self.config.cmd_report_fill_level and payload and len(payload) >= 1:
-                                fill_levels = list(payload)
-                                self.logger.info("Received fill levels: %s", fill_levels)
-                                return True, fill_levels
+                        if consumed:
+                            if cmd == self.config.cmd_report_fill_level and payload:
+                                self.logger.info("Fill levels: %s", list(payload))
+                                return True, list(payload)
                             buffer = buffer[consumed:]
                     time.sleep(0.01)
 
             self.logger.warning("Timeout waiting for fill levels response")
             return False, None
-        except Exception as exc:
+        except Exception:
             self.logger.exception("Failed to request fill levels")
             return False, None
 
     def _get_bin_version_task(self, timeout: float = 3.0) -> tuple[bool, str | None]:
-        """Send bin version request and wait for ESP32 response frame."""
         try:
-            with self._serial_lock:
-                if self._serial_conn is None or not self._serial_conn.is_open:
-                    self._serial_conn = self._open_serial()
-                ser = self._serial_conn
+            with self._serial_session() as ser:
                 ser.write(self._create_frame(self.config.cmd_get_version))
-                start = time.time()
+                deadline = time.time() + timeout
                 buffer = bytearray()
-                while time.time() - start < timeout:
-                    if ser.in_waiting > 0:
+                while time.time() < deadline:
+                    if ser.in_waiting:
                         buffer.extend(ser.read(ser.in_waiting))
                         cmd, payload, consumed = self._extract_valid_frame(buffer)
-                        if consumed > 0:
+                        if consumed:
                             if cmd == self.config.cmd_get_version:
-                                try:
-                                    return True, payload.decode('utf-8', errors='ignore').rstrip('\x00')
-                                except Exception:
-                                    return True, None
+                                version = payload.decode("utf-8", errors="ignore").rstrip("\x00") if payload else None
+                                return True, version or None
                             buffer = buffer[consumed:]
                     time.sleep(0.01)
             return False, None
-        except Exception as exc:
+        except Exception:
             self.logger.exception("Failed to query bin version")
-            return False, str(exc)
+            return False, None
 
     def _get_system_info_task(self, timeout: float = 3.0) -> tuple[bool, SystemInfoDto | None]:
-        """Send system-info request and wait for ESP32 response frame."""
         try:
-            with self._serial_lock:
-                if self._serial_conn is None or not self._serial_conn.is_open:
-                    self._serial_conn = self._open_serial()
-                ser = self._serial_conn
+            with self._serial_session() as ser:
                 ser.write(self._create_frame(self.config.cmd_get_system_info))
-                start = time.time()
+                deadline = time.time() + timeout
                 buffer = bytearray()
-                while time.time() - start < timeout:
-                    if ser.in_waiting > 0:
+                while time.time() < deadline:
+                    if ser.in_waiting:
                         buffer.extend(ser.read(ser.in_waiting))
                         cmd, payload, consumed = self._extract_valid_frame(buffer)
-                        if consumed > 0:
+                        if consumed:
                             if cmd == self.config.cmd_get_system_info:
                                 try:
                                     return True, SystemInfoDto.from_payload(payload)
                                 except Exception:
-                                    self.logger.exception("Invalid system info payload received")
+                                    self.logger.exception("Invalid system info payload")
                                     return False, None
                             buffer = buffer[consumed:]
                     time.sleep(0.01)
@@ -292,44 +300,33 @@ class ActuatorRepository:
             file_size = firmware_path.stat().st_size
             self.logger.info("Starting OTA upload file=%s size=%s", firmware_path.name, file_size)
 
-            with self._serial_lock:
-                if self._serial_conn is None or not self._serial_conn.is_open:
-                    self._serial_conn = self._open_serial()
-                ser = self._serial_conn
-                payload_start = struct.pack(">I", file_size)
-                ser.write(self._create_frame(self.config.cmd_ota_start, payload_start))
+            with self._serial_session() as ser:
+                # --- OTA start ---
+                ser.write(self._create_frame(self.config.cmd_ota_start, struct.pack(">I", file_size)))
                 if not self._wait_for_ack(ser, timeout=10):
                     return False, "ESP32 did not ACK OTA start"
 
+                # --- OTA data chunks ---
                 bytes_sent = 0
-                last_logged_percent = 0
-                with open(firmware_path, "rb") as f:
-                    while True:
-                        chunk = f.read(self.config.chunk_size)
-                        if not chunk:
-                            break
+                last_logged_pct = 0
+                with open(firmware_path, "rb") as fh:
+                    while chunk := fh.read(self.config.chunk_size):
                         ser.write(self._create_frame(self.config.cmd_ota_data, chunk))
                         if not self._wait_for_ack(ser, timeout=2):
                             return False, f"ESP32 did not ACK OTA data at byte {bytes_sent}"
                         bytes_sent += len(chunk)
+                        pct = int(bytes_sent / file_size * 100)
+                        if pct >= last_logged_pct + 10 or pct == 100:
+                            bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+                            self.logger.info("OTA [%s] %3d%% (%d/%d bytes)", bar, pct, bytes_sent, file_size)
+                            last_logged_pct = (pct // 10) * 10
 
-                        progress_percent = int((bytes_sent / file_size) * 100)
-                        if progress_percent >= last_logged_percent + 10 or progress_percent == 100:
-                            progress_bar = "█" * (progress_percent // 10) + "░" * (10 - progress_percent // 10)
-                            self.logger.info(
-                                "OTA progress: [%s] %3d%% (%s / %s bytes)",
-                                progress_bar,
-                                progress_percent,
-                                bytes_sent,
-                                file_size,
-                            )
-                            last_logged_percent = (progress_percent // 10) * 10
-
+                # --- OTA end ---
                 ser.write(self._create_frame(self.config.cmd_ota_end))
                 if not self._wait_for_ack(ser, timeout=3):
                     return False, "ESP32 did not ACK OTA end"
 
-            self.logger.info("OTA firmware upload completed successfully. Bytes sent: %s", bytes_sent)
+            self.logger.info("OTA upload completed. bytes_sent=%d", bytes_sent)
             return True, "OTA upload completed successfully"
         except Exception as exc:
             self.logger.exception("OTA upload failed")
@@ -340,26 +337,23 @@ class ActuatorRepository:
     # ------------------------------------------------------------------
 
     def control_step_motor(self, degree: int) -> tuple[bool, str]:
-        """Rotate the step motor by the requested angle in degrees.
-        
-        Command is queued and sent when ESP32 is ready (no pending ACK).
-        """
+        """Rotate the stepper motor by *degree* degrees (fire-and-forget)."""
         try:
-            self.logger.info("Queueing step motor command degree=%s", degree)
-            payload = struct.pack(">h", int(degree))
-            frame = self._create_frame(self.config.cmd_ctrl_stepper, payload)
-            self._queue_command(lambda: self._send_frame_and_wait_ack(frame, timeout=2.0), f"control_stepper({degree}°)")
+            frame = self._create_frame(self.config.cmd_ctrl_stepper, struct.pack(">h", int(degree)))
+            self._enqueue(lambda: self._send_frame_and_wait_ack(frame, timeout=2.0), f"stepper({degree}°)")
             return True, f"Step motor command queued: {degree}°"
         except Exception as exc:
             self.logger.exception("Failed to queue step motor command")
             return False, str(exc)
 
     def update_device_config(self, full_threshold: float, device_height: float) -> tuple[bool, str]:
-        """Send threshold and height config to ESP32."""
+        """Push threshold and height config to ESP32 (fire-and-forget)."""
         try:
-            payload = struct.pack("<fB", float(device_height), int(full_threshold))
-            frame = self._create_frame(self.config.cmd_ctrl_device_config, payload)
-            self._queue_command(
+            frame = self._create_frame(
+                self.config.cmd_ctrl_device_config,
+                struct.pack("<fB", float(device_height), int(full_threshold)),
+            )
+            self._enqueue(
                 lambda: self._send_frame_and_wait_ack(frame, timeout=2.0),
                 f"device_config(height={device_height}, threshold={int(full_threshold)})",
             )
@@ -368,46 +362,26 @@ class ActuatorRepository:
             self.logger.exception("Failed to queue device config command")
             return False, str(exc)
 
-    def get_bin_version(self, timeout: float | None = None) -> tuple[bool, str | None]:
-        """Request bin version from ESP32; returns (ok, version_str|None)."""
-        task = self._queue_command(lambda: self._get_bin_version_task(timeout), "get_bin_version")
-        wait_timeout = None if timeout is None else timeout + 1.0
-        return self._wait_for_task(task, timeout=wait_timeout)
+    def get_bin_version(self, timeout: float = 3.0) -> tuple[bool, str | None]:
+        task = self._enqueue(lambda: self._get_bin_version_task(timeout), "get_bin_version")
+        return self._wait_for_task(task, timeout=timeout + 1.0)
 
-    def request_fill_levels(self, timeout: float | None = None) -> tuple[bool, list[int] | None]:
-        """Send request command to get fill levels from ESP32.
-        
-        This method should be called periodically (default interval from config.esp32_ota.fill_levels_poll_interval_seconds).
-        Returns (success, fill_levels_list) where fill_levels_list is [bin1, bin2, bin3, bin4] or None if failed.
-        """
-        task = self._queue_command(lambda: self._request_fill_levels_task(timeout), "request_fill_levels")
-        wait_timeout = None if timeout is None else timeout + 1.0
-        return self._wait_for_task(task, timeout=wait_timeout)
+    def request_fill_levels(self, timeout: float = 3.0) -> tuple[bool, list[int] | None]:
+        task = self._enqueue(lambda: self._request_fill_levels_task(timeout), "request_fill_levels")
+        return self._wait_for_task(task, timeout=timeout + 1.0)
 
     def upload_ota(self, firmware_file: str | Path | None = None) -> tuple[bool, str]:
-        """Upload firmware to the ESP32 using the framed OTA protocol."""
         firmware_path = Path(firmware_file) if firmware_file else self.firmware_file
-        task = self._queue_command(lambda: self._upload_ota_task(firmware_path), f"upload_ota({firmware_path.name})")
+        task = self._enqueue(lambda: self._upload_ota_task(firmware_path), f"upload_ota({firmware_path.name})")
         return self._wait_for_task(task, timeout=None)
 
-    def get_system_info(self, timeout: float | None = None) -> tuple[bool, SystemInfoDto | None]:
-        """Request chip, flash, and RAM information from the ESP32."""
-        task = self._queue_command(lambda: self._get_system_info_task(timeout or 3.0), "get_system_info")
-        wait_timeout = None if timeout is None else timeout + 1.0
-        return self._wait_for_task(task, timeout=wait_timeout)
+    def get_system_info(self, timeout: float = 3.0) -> tuple[bool, SystemInfoDto | None]:
+        task = self._enqueue(lambda: self._get_system_info_task(timeout), "get_system_info")
+        return self._wait_for_task(task, timeout=timeout + 1.0)
 
     def close_serial(self) -> None:
-        """Close the serial connection."""
         self._queue_stop.set()
         self._close_serial()
-
-    def process_command_queue_if_ready(self) -> bool:
-        """Process command queue if ESP32 is ready (not waiting for ACK).
-        
-        Should be called regularly (e.g., from app timer).
-        Returns True if a command was processed from queue.
-        """
-        return not self._command_queue.empty()
 
 
 # Backward-compatible alias for older imports.

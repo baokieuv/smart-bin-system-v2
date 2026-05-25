@@ -292,8 +292,7 @@ public class DeviceService {
         if (existingDeviceOpt.isPresent() && existingDeviceOpt.get().getPublicKey() != null) {
             deviceSecret = existingDeviceOpt.get().getPublicKey();
         } else {
-            deviceSecret = securityService.generateDeviceSecret(request.mac(), com.smart_bin.device_service.common.Constants.USER_CLAIM_KEY)
-                    .substring(0, 6).toUpperCase();
+            deviceSecret = securityService.generateDeviceSecret(request.mac(), com.smart_bin.device_service.common.Constants.USER_CLAIM_KEY);
         }
 
         securityService.verifySignatureWithDeviceKey(payload, signature, deviceSecret);
