@@ -110,9 +110,9 @@ public class DeviceSecurityService {
     }
 
     // Hàm tạo Device Secret từ MAC Address
-    public String generateDeviceSecret(String macAddress) {
+    public String generateDeviceSecret(String macAddress, String extraInfo) {
         try {
-            String dataToSign = macAddress + "SMART_BIN_DEVICE";
+            String dataToSign = macAddress + extraInfo;
             Mac mac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKeySpec = new SecretKeySpec(masterSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
             mac.init(secretKeySpec);

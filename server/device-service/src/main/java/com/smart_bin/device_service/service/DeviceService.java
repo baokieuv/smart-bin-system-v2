@@ -16,6 +16,7 @@ import com.smart_bin.device_service.dto.request.*;
 import com.smart_bin.device_service.dto.response.DetectionResultDto;
 import com.smart_bin.device_service.dto.response.DeviceDto;
 import com.smart_bin.device_service.dto.response.DeviceProvisionResponse;
+import com.smart_bin.device_service.dto.response.ImportDeviceResponse;
 import com.smart_bin.device_service.entity.*;
 import com.smart_bin.device_service.exception.DeviceErrorCode;
 import com.smart_bin.device_service.mapper.DeviceMapper;
@@ -68,8 +69,53 @@ public class DeviceService {
     private String claimSecret;
 
     @Transactional
+    public List<ImportDeviceResponse> importDevicesByTenant(ImportDeviceRequest request, String tenantId) {
+        List<ImportDeviceResponse> results = new ArrayList<>();
+
+        for (DeviceImportItem item : request.devices()) {
+            String mac = item.mac();
+            String claimCode = item.claimCode();
+
+            String expectedCode = securityService.generateDeviceSecret(mac, com.smart_bin.device_service.common.Constants.TENANT_CLAIM_KEY)
+                    .substring(0, 6).toUpperCase();
+
+            if (claimCode == null || !claimCode.toUpperCase().equals(expectedCode)) {
+                results.add(new ImportDeviceResponse(mac, "FAILED", "Claim code không hợp lệ."));
+                continue;
+            }
+
+            Optional<Device> deviceOpt = repository.findByMac(mac);
+
+            if (deviceOpt.isPresent()) {
+                Device device = deviceOpt.get();
+
+                if (device.getTenantId() != null && !device.getTenantId().equals(tenantId)) {
+                    results.add(new ImportDeviceResponse(mac, "FAILED", "Thiết bị đã thuộc quyền quản lý của Tenant khác."));
+                } else if (device.getTenantId() != null) {
+                    results.add(new ImportDeviceResponse(mac, "SKIPPED", "Thiết bị đã nằm trong danh sách của bạn."));
+                } else {
+                    device.setTenantId(tenantId);
+                    repository.save(device);
+                    results.add(new ImportDeviceResponse(mac, "SUCCESS", "Gán Tenant thành công cho thiết bị đã tồn tại."));
+                }
+            } else {
+                Device shellDevice = new Device();
+                shellDevice.setMac(mac);
+                shellDevice.setTenantId(tenantId);
+                shellDevice.setState(DeviceState.PENDING); // Trạng thái chờ kích hoạt
+                repository.save(shellDevice);
+
+                results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));
+            }
+        }
+
+        return results;
+    }
+
+    @Transactional
     public String claimDevice(ClaimDeviceRequest request, String userId) {
-        String expectedCode = DigestUtils.sha256Hex(request.mac() + claimSecret).substring(0, 6).toUpperCase();
+        String expectedCode = securityService.generateDeviceSecret(request.mac(), com.smart_bin.device_service.common.Constants.USER_CLAIM_KEY)
+                .substring(0, 6).toUpperCase();
 
         if (request.claimCode() == null || !request.claimCode().toUpperCase().equals(expectedCode)) {
             throw new ApiException(CoreErrorCode.BAD_REQUEST, "Claim code không hợp lệ.");
@@ -210,8 +256,9 @@ public class DeviceService {
     public void deleteDevice(String id, String keycloakId){
         Device device = getDeviceAndVerifyUserOwnership(id, keycloakId);
 
-        // Chuyển thiết bị về trạng thái lưu kho, KHÔNG xóa trên ThingsBoard
-        device.setActive(false);
+        // Thiết bị của Tenant -> Trả về kho Tenant
+        device.setActive(device.getTenantId() != null); // Thiết bị tự do -> Tạm vô hiệu hóa
+
         device.setUserId(null);
         device.setState(DeviceState.PENDING);
         device.setClaimedAt(null);
@@ -245,7 +292,8 @@ public class DeviceService {
         if (existingDeviceOpt.isPresent() && existingDeviceOpt.get().getPublicKey() != null) {
             deviceSecret = existingDeviceOpt.get().getPublicKey();
         } else {
-            deviceSecret = securityService.generateDeviceSecret(request.mac());
+            deviceSecret = securityService.generateDeviceSecret(request.mac(), com.smart_bin.device_service.common.Constants.USER_CLAIM_KEY)
+                    .substring(0, 6).toUpperCase();
         }
 
         securityService.verifySignatureWithDeviceKey(payload, signature, deviceSecret);
@@ -263,7 +311,7 @@ public class DeviceService {
 
         processCachedClaimData(device, request.mac());
 
-        syncWithThingsBoard(device, isNewDevice, request.mac());
+        syncWithThingsBoard(device, request.mac());
 
         // 4. Tự động tìm và gán Firmware dựa trên hw_metadata
         autoAssignFirmware(device);
@@ -368,10 +416,10 @@ public class DeviceService {
         }
     }
 
-    private void syncWithThingsBoard(Device device, boolean isNewDevice, String mac) {
+    private void syncWithThingsBoard(Device device, String mac) {
         Map<String, Object> attributes = new HashMap<>();
 
-        if (isNewDevice) {
+        if (device.getDeviceId() == null) {
             String defaultName = "SmartBin-" + mac.replace(":", "").replace("-", "");
             if (device.getName() == null || device.getName().isBlank()) {
                 device.setName(defaultName);

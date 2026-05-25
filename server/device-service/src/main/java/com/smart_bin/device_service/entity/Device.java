@@ -69,7 +69,7 @@ public class Device extends BaseEntity {
 
     // --- Metadata phần cứng (Dùng để quyết định Firmware trên) ---
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "hw_metadata", nullable = false)
+    @Column(name = "hw_metadata")
     private Map<String, Object> hwMetadata;
 
     // --- Quan hệ ---
@@ -78,7 +78,7 @@ public class Device extends BaseEntity {
     private DeviceGroup deviceGroup;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "profile_id", nullable = false)
+    @JoinColumn(name = "profile_id")
     private DeviceProfile deviceProfile;
 
     @JdbcTypeCode(SqlTypes.JSON)

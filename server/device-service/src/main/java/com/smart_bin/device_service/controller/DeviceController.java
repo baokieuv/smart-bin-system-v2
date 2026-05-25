@@ -26,18 +26,18 @@ public class DeviceController {
     private final ResponseFactory responseFactory;
     private final DeviceService deviceService;
 
-//    @PostMapping("/import")
-//    @PreAuthorize("hasAnyRole(" +
-//            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-//            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
-//    public ResponseEntity<ApiResponseFormat<Object>> importDevices(
-//            @Valid @RequestBody ImportDeviceRequest request,
-//            @AuthenticationPrincipal Jwt jwt
-//    ) {
-//        String actorId = jwt.getSubject();
-//        var response = deviceService.importDevices(request, actorId);
-//        return responseFactory.response(SuccessCode.CREATED, response);
-//    }
+    @PostMapping("/import")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    public ResponseEntity<ApiResponseFormat<Object>> importDevices(
+            @Valid @RequestBody ImportDeviceRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        String actorId = jwt.getSubject();
+        var response = deviceService.importDevicesByTenant(request, actorId);
+        return responseFactory.response(SuccessCode.CREATED, response);
+    }
 
     @PostMapping("/claim")
     public ResponseEntity<ApiResponseFormat<Object>> claimDevice(
