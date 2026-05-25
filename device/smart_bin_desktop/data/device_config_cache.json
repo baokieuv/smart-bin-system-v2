@@ -1,8 +1,0 @@
-{
-  "accessToken": "RUgTVmDLuyXlo8vnPEdT",
-  "pollingInterval": 300,
-  "fullThreshold": 90.0,
-  "targetBinFirmwareVersion": null,
-  "targetDesktopVersion": null,
-  "deviceHeight": 100.0
-}

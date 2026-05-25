@@ -96,8 +96,6 @@ class DeviceClient:
         if not ok:
             return False, sig_or_err
 
-        self.logger.error("%s: %s", sig_or_err, payload_str)
-
         headers: dict[str, str] = {signature_header: sig_or_err, "Content-Type": "application/json"}
         if metadata_header is not None:
             headers["metadata"] = metadata_header
