@@ -1,6 +1,5 @@
 package com.smart_bin.device_service.interceptor;
 
-import com.smart_bin.core.dto.ApiResponseFormat;
 import com.smart_bin.device_service.service.DeviceSecurityService;
 import com.smart_bin.device_service.utils.HardwareSecureResponse;
 import lombok.RequiredArgsConstructor;

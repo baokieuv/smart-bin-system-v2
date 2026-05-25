@@ -47,18 +47,18 @@ public class ConfigService {
         try {
             fwType = FirmwareType.valueOf(type.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Loại firmware không hợp lệ (Chỉ nhận ESP32 hoặc RASPBERRY_PI)");
+            throw new ApiException(DeviceErrorCode.INVALID_FIRMWARE_TYPE);
         }
 
         if (firmwareRepository.findByVersionAndType(version, fwType).isPresent()) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Version firmware cho dòng thiết bị này đã tồn tại.");
+            throw new ApiException(DeviceErrorCode.FIRMWARE_VERSION_EXISTED);
         }
 
         String fileHash = securityService.calculateSha256(file);
         String signature = securityService.signResponseWithServerKey(fileHash);
 
         JsonNode uploadRes = mediaClient.uploadFileInternal(internalSecret, file, "firmwares_" + fwType.name() + "_" + version, "firmwares");
-        String objectPath = uploadRes.get("data").get("objectUrl").asText();
+        String objectPath = uploadRes.get("data").get("objectUrl").asString();
 
         Firmware firmware = new Firmware();
         firmware.setVersion(version);
@@ -77,7 +77,7 @@ public class ConfigService {
     @Transactional
     public void deleteFirmware(UUID id) {
         Firmware fw = firmwareRepository.findById(id)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Không tìm thấy Firmware"));
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_NOT_FOUND));
         fw.setActive(false);
         firmwareRepository.save(fw);
     }
@@ -90,6 +90,8 @@ public class ConfigService {
         UUID deviceId = UUID.fromString(deviceIdStr);
         Device device = deviceRepository.findByIdAndActiveTrue(deviceId)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        // TODO check access
 
         return DeviceConfigResponse.fromData(getMergedConfigs(device), device);
     }
@@ -174,7 +176,7 @@ public class ConfigService {
         try {
             deviceId = UUID.fromString(deviceIdStr);
         } catch (IllegalArgumentException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST);
+            throw new ApiException(DeviceErrorCode.INVALID_ID_FORMAT);
         }
 
         Device device = deviceRepository.findByIdAndActiveTrue(deviceId)

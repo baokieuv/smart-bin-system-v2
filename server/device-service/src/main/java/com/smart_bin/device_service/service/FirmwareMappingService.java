@@ -1,12 +1,12 @@
 package com.smart_bin.device_service.service;
 
 import com.smart_bin.core.exception.ApiException;
-import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.dto.request.CreateFirmwareMappingRequest;
 import com.smart_bin.device_service.dto.request.UpdateFirmwareMappingRequest;
 import com.smart_bin.device_service.dto.response.FirmwareMappingResponse;
 import com.smart_bin.device_service.entity.Firmware;
 import com.smart_bin.device_service.entity.FirmwareMapping;
+import com.smart_bin.device_service.exception.DeviceErrorCode;
 import com.smart_bin.device_service.mapper.FirmwareMappingMapper;
 import com.smart_bin.device_service.repository.FirmwareMappingRepository;
 import com.smart_bin.device_service.repository.FirmwareRepository;
@@ -30,7 +30,7 @@ public class FirmwareMappingService {
     @Transactional
     public FirmwareMappingResponse createMapping(CreateFirmwareMappingRequest request) {
         Firmware targetFw = firmwareRepository.findById(UUID.fromString(request.targetFirmwareId()))
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Firmware đích không tồn tại"));
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_NOT_FOUND));
 
         FirmwareMapping mapping = new FirmwareMapping();
         mapping.setMetadataCriteria(request.metadataCriteria());
@@ -53,14 +53,14 @@ public class FirmwareMappingService {
 
     public FirmwareMappingResponse getMappingById(String id) {
         FirmwareMapping mapping = mappingRepository.findByIdAndActiveTrue(UUID.fromString(id))
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Không tìm thấy cấu hình"));
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_MAPPING_NOT_FOUND));
         return mapper.toResponse(mapping);
     }
 
     @Transactional
     public FirmwareMappingResponse updateMapping(String id, UpdateFirmwareMappingRequest request) {
         FirmwareMapping mapping = mappingRepository.findByIdAndActiveTrue(UUID.fromString(id))
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Không tìm thấy cấu hình"));
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_MAPPING_NOT_FOUND));
 
         if (request.metadataCriteria() != null && !request.metadataCriteria().isEmpty()) {
             mapping.setMetadataCriteria(request.metadataCriteria());
@@ -68,7 +68,7 @@ public class FirmwareMappingService {
 
         if (request.targetFirmwareId() != null && !request.targetFirmwareId().isBlank()) {
             Firmware targetFw = firmwareRepository.findById(UUID.fromString(request.targetFirmwareId()))
-                    .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Firmware đích không tồn tại"));
+                    .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_NOT_FOUND));
             mapping.setTargetFirmware(targetFw);
         }
 
@@ -86,7 +86,7 @@ public class FirmwareMappingService {
     @Transactional
     public void deleteMapping(String id) {
         FirmwareMapping mapping = mappingRepository.findById(UUID.fromString(id))
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Không tìm thấy cấu hình"));
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_MAPPING_NOT_FOUND));
 
         mapping.setActive(false); // Xóa mềm
         mappingRepository.save(mapping);

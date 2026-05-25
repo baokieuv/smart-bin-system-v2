@@ -20,7 +20,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.security.Signature;
 import java.time.Instant;
 import java.util.Base64;

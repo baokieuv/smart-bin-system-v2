@@ -7,7 +7,6 @@ import com.smart_bin.device_service.dto.request.CreateDeviceProfileRequest;
 import com.smart_bin.device_service.service.DeviceProfileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.apache.kafka.shaded.com.google.protobuf.Api;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;

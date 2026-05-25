@@ -1,9 +1,7 @@
 package com.smart_bin.device_service.config;
 
-import com.smart_bin.core.dto.ApiResponseFormat;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;

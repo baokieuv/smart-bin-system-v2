@@ -6,7 +6,6 @@ import com.smart_bin.core.common.NotificationType;
 import com.smart_bin.core.dto.NotificationEventDto;
 import com.smart_bin.core.dto.PageResponseDto;
 import com.smart_bin.core.exception.ApiException;
-import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.DetectionFeedback;
 import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.common.DeviceStatus;
@@ -24,7 +23,6 @@ import com.smart_bin.device_service.repository.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
@@ -118,7 +116,7 @@ public class DeviceService {
                 .substring(0, 6).toUpperCase();
 
         if (request.claimCode() == null || !request.claimCode().toUpperCase().equals(expectedCode)) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Claim code không hợp lệ.");
+            throw new ApiException(DeviceErrorCode.INVALID_CLAIM_CODE);
         }
 
         Optional<Device> deviceOpt = repository.findByMac(request.mac());
@@ -232,15 +230,12 @@ public class DeviceService {
             if (request.groupId().trim().isEmpty()) {
                 device.setDeviceGroup(null);
             } else {
-                try {
-                    UUID groupId = UUID.fromString(request.groupId());
-                    DeviceGroup group = groupRepository.findByIdAndTenantIdAndActiveTrue(groupId, tenantId)
-                            .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Nhóm thiết bị không tồn tại hoặc bạn không có quyền truy cập."));
+                UUID groupId = parseUUID(request.groupId());
 
-                    device.setDeviceGroup(group);
-                } catch (IllegalArgumentException e) {
-                    throw new ApiException(CoreErrorCode.BAD_REQUEST, "Định dạng Group ID không hợp lệ");
-                }
+                DeviceGroup group = groupRepository.findByIdAndTenantIdAndActiveTrue(groupId, tenantId)
+                        .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_GROUP_NOT_FOUND));
+
+                device.setDeviceGroup(group);
             }
             device = repository.save(device);
         }
@@ -279,11 +274,13 @@ public class DeviceService {
 
     @Transactional
     public Object provisionDevice(String payload, String signature) {
+        securityService.parsePayloadAndCheckTimestamp(payload);
+
         DeviceProvisionRequest request;
         try {
             request = objectMapper.readValue(payload, DeviceProvisionRequest.class);
         } catch (JacksonException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid payload format");
+            throw new ApiException(DeviceErrorCode.INVALID_PAYLOAD_FORMAT);
         }
 
         Optional<Device> existingDeviceOpt = repository.findByMac(request.mac());
@@ -298,7 +295,7 @@ public class DeviceService {
         securityService.verifySignatureWithDeviceKey(payload, signature, deviceSecret);
 
         DeviceProfile profile = profileRepository.findByCodeAndActiveTrue(request.profileCode())
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Mã mẫu thiết bị (Profile Code) không hợp lệ hoặc không tồn tại."));
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_PROFILE_NOT_FOUND));
 
         boolean isNewDevice = existingDeviceOpt.isEmpty();
 
@@ -466,8 +463,9 @@ public class DeviceService {
 
         // Kiểm tra quyền của Normal User
         if (device.getUserId() == null || !device.getUserId().equals(userId)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không phải chủ sở hữu thiết bị này");
+            throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
         }
+
         return device;
     }
 
@@ -478,8 +476,9 @@ public class DeviceService {
 
         // Kiểm tra quyền của Tenant
         if (device.getTenantId() == null || !device.getTenantId().equals(tenantId)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Thiết bị này không thuộc quyền quản lý của tổ chức bạn");
+            throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
         }
+
         return device;
     }
 
@@ -487,7 +486,7 @@ public class DeviceService {
         try {
             return UUID.fromString(id);
         } catch (IllegalArgumentException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid ID format");
+            throw new ApiException(DeviceErrorCode.INVALID_ID_FORMAT);
         }
     }
 
@@ -519,7 +518,7 @@ public class DeviceService {
 
     private String claimExistingDevice(Device device, ClaimDeviceRequest request, String userId) {
         if (device.getUserId() != null) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Thiết bị này đã được liên kết với một tài khoản khác.");
+            throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_CLAIMED);
         }
         device.setUserId(userId);
         device.setClaimedAt(System.currentTimeMillis());
@@ -558,7 +557,7 @@ public class DeviceService {
             redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(cacheData), 7, TimeUnit.DAYS);
             return "Đã ghi nhận yêu cầu. Thiết bị sẽ liên kết khi cắm điện.";
         } catch (Exception e) {
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi khi lưu thông tin thiết bị.");
+            throw new ApiException(DeviceErrorCode.DEVICE_CLAIM_CACHE_ERROR);
         }
     }
 
@@ -566,7 +565,7 @@ public class DeviceService {
         try {
             return objectMapper.readValue(metadata, DetectionResultDto.class);
         } catch (JacksonException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid metadata format");
+            throw new ApiException(DeviceErrorCode.INVALID_METADATA_FORMAT);
         }
     }
 

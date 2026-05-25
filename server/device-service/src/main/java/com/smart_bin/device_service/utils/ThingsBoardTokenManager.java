@@ -63,8 +63,8 @@ public class ThingsBoardTokenManager {
                 .body(JsonNode.class);
 
         if (response != null) {
-            this.jwtToken = response.get("token").asText();
-            this.refreshToken = response.get("refreshToken").asText();
+            this.jwtToken = response.get("token").asString();
+            this.refreshToken = response.get("refreshToken").asString();
         }
     }
 

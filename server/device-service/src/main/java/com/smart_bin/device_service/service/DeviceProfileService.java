@@ -1,9 +1,9 @@
 package com.smart_bin.device_service.service;
 
 import com.smart_bin.core.exception.ApiException;
-import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.dto.request.CreateDeviceProfileRequest;
 import com.smart_bin.device_service.entity.DeviceProfile;
+import com.smart_bin.device_service.exception.DeviceErrorCode;
 import com.smart_bin.device_service.mapper.DeviceProfileMapper;
 import com.smart_bin.device_service.repository.DeviceProfileRepository;
 import com.smart_bin.device_service.repository.DeviceRepository;
@@ -34,12 +34,12 @@ public class DeviceProfileService {
     public DeviceProfile getDeviceProfileById(String id){
         UUID uuid = parseUUID(id);
         return deviceProfileRepository.findById(uuid)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Device profile not found"));
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_PROFILE_NOT_FOUND));
     }
 
     public DeviceProfile createDeviceProfile(CreateDeviceProfileRequest request){
         if (deviceProfileRepository.existsByCodeAndActiveTrue(request.code())){
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Device profile code already exists");
+            throw new ApiException(DeviceErrorCode.DEVICE_PROFILE_CODE_EXISTED);
         }
 
         DeviceProfile profile = mapper.toEntity(request);
@@ -51,11 +51,11 @@ public class DeviceProfileService {
     public DeviceProfile updateDeviceProfile(String id, CreateDeviceProfileRequest request){
         UUID uuid = parseUUID(id);
         DeviceProfile existingProfile = deviceProfileRepository.findById(uuid)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Device profile not found"));
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_PROFILE_NOT_FOUND));
 
         if (!existingProfile.getCode().equals(request.code()) &&
                 deviceProfileRepository.existsByCode(request.code())) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Device profile code already exists");
+            throw new ApiException(DeviceErrorCode.DEVICE_PROFILE_CODE_EXISTED);
         }
 
         existingProfile.setName(request.name());
@@ -67,10 +67,10 @@ public class DeviceProfileService {
     public String deleteDeviceProfile(String id){
         UUID uuid = parseUUID(id);
         DeviceProfile existingProfile = deviceProfileRepository.findById(uuid)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Device profile not found"));
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_PROFILE_NOT_FOUND));
 
         if (deviceRepository.existsByDeviceProfile_IdAndActiveTrue(uuid)) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Không thể xóa. Đang có thiết bị liên kết với mẫu thiết bị này.");
+            throw new ApiException(DeviceErrorCode.DEVICE_PROFILE_IN_USE);
         }
 
         existingProfile.setActive(false);
@@ -82,7 +82,7 @@ public class DeviceProfileService {
         try {
             return UUID.fromString(id);
         } catch (IllegalArgumentException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid ID format");
+            throw new ApiException(DeviceErrorCode.INVALID_ID_FORMAT);
         }
     }
 }

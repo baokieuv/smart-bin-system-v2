@@ -164,18 +164,18 @@ public class ThingsBoardService {
 
         try {
             JsonNode alarmNode = objectMapper.readTree(payload);
-            String deviceIdStr = alarmNode.path("deviceId").asText();
+            String deviceIdStr = alarmNode.path("deviceId").asString();
 
             UUID deviceId;
             try {
                 deviceId = UUID.fromString(deviceIdStr);
             } catch (IllegalArgumentException e) {
-                throw new ApiException(CoreErrorCode.BAD_REQUEST, "Invalid UUID");
+                throw new ApiException(DeviceErrorCode.INVALID_ID_FORMAT);
             }
 
-            String alarmType = alarmNode.path("alarmType").asText();
-            String severity = alarmNode.path("severity").asText();
-            String status = alarmNode.path("status").asText();
+            String alarmType = alarmNode.path("alarmType").asString();
+            String severity = alarmNode.path("severity").asString();
+            String status = alarmNode.path("status").asString();
 
             Device device = repository.findByIdAndActiveTrue(deviceId).orElseThrow(() ->
                     new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
@@ -198,7 +198,7 @@ public class ThingsBoardService {
 
         } catch (JacksonException ex){
             log.error("Failed to parse ThingsBoard alarm payload: {}", payload, ex);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Parse payload failed");
+            throw new ApiException(DeviceErrorCode.INVALID_PAYLOAD_FORMAT);
         }
     }
 
