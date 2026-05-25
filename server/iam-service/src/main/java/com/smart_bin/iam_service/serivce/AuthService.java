@@ -3,7 +3,6 @@ package com.smart_bin.iam_service.serivce;
 import com.auth0.jwt.JWT;
 import com.smart_bin.core.common.EmailType;
 import com.smart_bin.core.exception.ApiException;
-import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.common.TokenType;
 import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.*;
@@ -35,7 +34,7 @@ public class AuthService {
         Optional<Tenant> tenantOpt = tenantRepository.findByEmail(request.username()).filter(Tenant::isActive);
         if (tenantOpt.isPresent()) {
             if (tenantOpt.get().getState() != UserState.ACTIVE) {
-                throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Tài khoản đối tác đã bị khóa hoặc chưa kích hoạt.");
+                throw new ApiException(AuthErrorCode.PARTNER_ACCOUNT_BLOCKED);
             }
             return keycloakService.login(request);
         }
@@ -48,7 +47,7 @@ public class AuthService {
             return keycloakService.login(request);
         }
 
-        throw new ApiException(UserErrorCode.USER_NOT_FOUND, "Email hoặc mật khẩu không chính xác.");
+        throw new ApiException(AuthErrorCode.WRONG_CREDENTIALS);
     }
 
     public void logout(String refreshToken) {
@@ -82,11 +81,11 @@ public class AuthService {
     @Transactional
     public String changePassword(String keycloakId, ChangePasswordRequest request) {
         if (request.currentPassword().equals(request.newPassword())) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Mật khẩu mới không được trùng với mật khẩu hiện tại.");
+            throw new ApiException(AuthErrorCode.PASSWORD_MUST_BE_DIFFERENT);
         }
 
         if (!request.newPassword().equals(request.confirmPassword())) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Mật khẩu xác nhận không khớp.");
+            throw new ApiException(AuthErrorCode.PASSWORD_MISMATCH);
         }
 
         String email;
@@ -103,7 +102,7 @@ public class AuthService {
             LoginRequest loginRequest = new LoginRequest(email, request.currentPassword(), null);
             keycloakService.login(loginRequest);
         } catch (Exception e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Mật khẩu hiện tại không chính xác.");
+            throw new ApiException(AuthErrorCode.CURRENT_PASSWORD_INCORRECT);
         }
 
         keycloakService.updatePassword(keycloakId, request.newPassword());
@@ -116,7 +115,7 @@ public class AuthService {
     public String requestPasswordReset(ResetPasswordRequest request) {
         Optional<Tenant> tenantOpt = tenantRepository.findByEmail(request.email()).filter(Tenant::isActive);
         if (tenantOpt.isPresent()) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Tài khoản doanh nghiệp vui lòng liên hệ quản trị viên để hỗ trợ cấp lại mật khẩu.");
+            throw new ApiException(AuthErrorCode.TENANT_RESET_PASSWORD_NOT_SUPPORTED);
         }
 
         User user = userRepository.findByEmailAndActiveTrue(request.email()).orElse(null);
@@ -136,10 +135,10 @@ public class AuthService {
     @Transactional
     public String confirmPasswordReset(ConfirmPasswordReset request) {
         User user = userRepository.findByActionTokenAndActiveTrue(request.token())
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Token không hợp lệ hoặc không tồn tại."));
+                .orElseThrow(() -> new ApiException(AuthErrorCode.INVALID_TOKEN));
 
         if (System.currentTimeMillis() > user.getActionTokenExpiry()) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Token đã hết hạn. Vui lòng yêu cầu lại.");
+            throw new ApiException(AuthErrorCode.TOKEN_EXPIRED);
         }
 
         if (!user.isEmailVerified()) {

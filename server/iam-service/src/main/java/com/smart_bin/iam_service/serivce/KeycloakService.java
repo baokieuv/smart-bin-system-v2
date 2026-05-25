@@ -11,7 +11,6 @@ import com.smart_bin.iam_service.exception.AuthErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
-import org.keycloak.representations.idm.FederatedIdentityRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
@@ -84,13 +83,13 @@ public class KeycloakService {
                 throw new ApiException(CoreErrorCode.BAD_REQUEST, "Email already exists in Keycloak");
             } else {
                 log.error("Failed to create user in Keycloak. Status: {}", response.getStatus());
-                throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Failed to create user in identity provider.");
+                throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Failed to create user in identity provider.");
             }
         } catch (ApiException e) {
             throw e; // Ném tiếp ApiException không cần bọc lại
         } catch (Exception e) {
             log.error("Error creating user in Keycloak", e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi hệ thống khi tạo tài khoản.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED);
         }
     }
 
@@ -121,7 +120,7 @@ public class KeycloakService {
             } else if (response.getStatus() == 409) {
                 throw new ApiException(CoreErrorCode.BAD_REQUEST, "Email Tenant đã tồn tại trên Identity Provider");
             } else {
-                throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Failed to create Tenant in Keycloak");
+                throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Failed to create Tenant in Keycloak");
             }
         }
     }
@@ -162,9 +161,9 @@ public class KeycloakService {
                 // Xử lý trường hợp Keycloak đã có user này (có thể do xóa DB nhưng chưa xóa Keycloak)
                 log.warn("Tài khoản Super Admin đã tồn tại trên Keycloak Provider.");
                 List<UserRepresentation> existingUsers = keycloak.realm(realm).users().search(email, true);
-                return existingUsers.get(0).getId();
+                return existingUsers.getFirst().getId();
             } else {
-                throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể tạo Super Admin trên Keycloak. Status: " + response.getStatus());
+                throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Không thể tạo Super Admin trên Keycloak. Status: " + response.getStatus());
             }
         }
     }
@@ -178,7 +177,7 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).update(user);
         } catch (Exception e) {
             log.error("Error updating user info for {} in Keycloak", userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật thông tin người dùng.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Không thể cập nhật thông tin người dùng.");
         }
     }
 
@@ -190,7 +189,7 @@ public class KeycloakService {
             logoutAllSessions(userId); // Kick ra ngay lập tức
         } catch (Exception e) {
             log.error("Error disabling user {} in Keycloak", userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi khi khóa tài khoản.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi khi khóa tài khoản.");
         }
     }
 
@@ -214,7 +213,7 @@ public class KeycloakService {
 
         } catch (Exception e) {
             log.error("Error updating role to user {} in Keycloak", userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật quyền người dùng.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Không thể cập nhật quyền người dùng.");
         }
     }
 
@@ -233,7 +232,7 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).update(user);
         } catch (Exception e) {
             log.error("Error updating attribute {} for user {} in Keycloak", key, userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi cập nhật thông tin hệ thống.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi cập nhật thông tin hệ thống.");
         }
     }
 
@@ -245,7 +244,7 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).update(user);
         } catch (Exception e) {
             log.error("Error enabling user {} in Keycloak", userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi khi kích hoạt tài khoản.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi khi kích hoạt tài khoản.");
         }
     }
 
@@ -264,7 +263,7 @@ public class KeycloakService {
             throw new ApiException(AuthErrorCode.UNAUTHORIZED, "Email hoặc mật khẩu không chính xác.");
         } catch (Exception e) {
             log.error("Error during login for user: {}", request.username(), e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi hệ thống khi đăng nhập.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi hệ thống khi đăng nhập.");
         }
     }
 
@@ -283,7 +282,7 @@ public class KeycloakService {
             return fetchToken(body);
         } catch (RestClientResponseException e) {
             log.error("Failed to exchange Google token. Keycloak response: {}", e.getResponseBodyAsString());
-            throw new ApiException(AuthErrorCode.UNAUTHORIZED, "Xác thực Google thất bại.");
+            throw new ApiException(AuthErrorCode.GOOGLE_AUTH_FAILED);
         } catch (Exception e) {
             log.error("Error during Google token exchange", e);
             throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi hệ thống khi xác thực Google.");
@@ -304,7 +303,7 @@ public class KeycloakService {
             throw new ApiException(AuthErrorCode.UNAUTHORIZED, "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
         } catch (Exception e) {
             log.error("Error refreshing token", e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi làm mới phiên đăng nhập.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi làm mới phiên đăng nhập.");
         }
     }
 
@@ -339,7 +338,7 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).resetPassword(credential);
         } catch (Exception e) {
             log.error("Error updating password in Keycloak for user {}", userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật mật khẩu.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Không thể cập nhật mật khẩu.");
         }
     }
 
@@ -357,7 +356,7 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).update(user);
         } catch (Exception e) {
             log.error("Error updating user info for {} in Keycloak", userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể cập nhật thông tin người dùng.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Không thể cập nhật thông tin người dùng.");
         }
     }
 
@@ -366,7 +365,7 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).logout();
         } catch (Exception e) {
             log.error("Error logging out sessions in Keycloak for user {}", userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi khi đăng xuất các phiên.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi khi đăng xuất các phiên.");
         }
     }
 
@@ -375,7 +374,7 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).remove();
         } catch (Exception e) {
             log.error("Error deleting user {} from Keycloak", userId, e);
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi xóa tài khoản.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi xóa tài khoản.");
         }
     }
 
@@ -388,7 +387,7 @@ public class KeycloakService {
                 .body(Map.class);
 
         if (response == null) {
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Hệ thống xác thực không phản hồi.");
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Hệ thống xác thực không phản hồi.");
         }
 
         return new TokenResponse(

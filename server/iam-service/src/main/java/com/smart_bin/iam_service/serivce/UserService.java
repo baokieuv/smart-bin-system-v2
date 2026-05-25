@@ -187,7 +187,7 @@ public class UserService {
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         if (targetUser.getEmail().equalsIgnoreCase(rootEmail)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Không thể sửa trạng thái của Root Admin.");
+            throw new ApiException(AuthErrorCode.CANNOT_MODIFY_ROOT_ADMIN);
         }
 
         UserState newState = request.state();
@@ -221,7 +221,7 @@ public class UserService {
     public Object updateUser(String keycloakId, UpdateUserRequest request) {
         if (request.avatarUrl() != null && !request.avatarUrl().isBlank()) {
             if (!request.avatarUrl().startsWith("https://s3.kvbhust.id.vn")) {
-                throw new ApiException(CoreErrorCode.BAD_REQUEST, "Avatar URL không hợp lệ");
+                throw new ApiException(UserErrorCode.INVALID_AVATAR_URL);
             }
         }
 
@@ -265,7 +265,7 @@ public class UserService {
                 .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
         if (targetUser.getEmail().equalsIgnoreCase(rootEmail)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Tài khoản Root của hệ thống là bất khả xâm phạm.");
+            throw new ApiException(AuthErrorCode.CANNOT_MODIFY_ROOT_ADMIN);
         }
 
         targetUser.setActive(false); // Đánh dấu xóa mềm

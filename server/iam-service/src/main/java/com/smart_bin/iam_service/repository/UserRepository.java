@@ -1,10 +1,7 @@
 package com.smart_bin.iam_service.repository;
 
 
-import com.smart_bin.core.common.UserRole;
 import com.smart_bin.iam_service.entity.User;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

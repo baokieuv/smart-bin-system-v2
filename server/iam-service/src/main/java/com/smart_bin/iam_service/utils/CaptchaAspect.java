@@ -1,7 +1,5 @@
 package com.smart_bin.iam_service.utils;
 
-import com.smart_bin.core.exception.ApiException;
-import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.serivce.CaptchaService;
 import lombok.RequiredArgsConstructor;
 import org.aspectj.lang.ProceedingJoinPoint;

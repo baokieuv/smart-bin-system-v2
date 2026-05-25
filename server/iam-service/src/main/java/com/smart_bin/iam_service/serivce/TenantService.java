@@ -10,17 +10,17 @@ import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.CreateTenantRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateTenantStatusRequest;
 import com.smart_bin.iam_service.dto.auth.response.TenantDto;
-import com.smart_bin.iam_service.dto.user.request.TenantUserMapRequest;
 import com.smart_bin.iam_service.dto.user.response.UserDto;
 import com.smart_bin.iam_service.entity.Tenant;
 import com.smart_bin.iam_service.entity.TenantUserControl;
 import com.smart_bin.iam_service.entity.User;
+import com.smart_bin.iam_service.exception.AuthErrorCode;
+import com.smart_bin.iam_service.exception.UserErrorCode;
 import com.smart_bin.iam_service.mapper.TenantMapper;
 import com.smart_bin.iam_service.mapper.UserMapper;
 import com.smart_bin.iam_service.repository.TenantRepository;
 import com.smart_bin.iam_service.repository.TenantUserControlRepository;
 import com.smart_bin.iam_service.repository.UserRepository;
-import jakarta.validation.constraints.Email;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -55,7 +55,7 @@ public class TenantService {
     @Transactional
     public TenantDto createTenant(CreateTenantRequest request) {
         if (tenantRepository.findByEmail(request.email()).isPresent()) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Email Tenant đã tồn tại!");
+            throw new ApiException(UserErrorCode.EMAIL_ALREADY_IN_USE);
         }
 
         String password = generateRandomPassword();
@@ -90,10 +90,10 @@ public class TenantService {
     @Transactional
     public TenantDto updateTenantStatus(String tenantId, String actorId, UpdateTenantStatusRequest request) {
         Tenant tenant = tenantRepository.findById(UUID.fromString(tenantId))
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Không tìm thấy Tenant"));
+                .orElseThrow(() -> new ApiException(UserErrorCode.TENANT_NOT_FOUND));
 
         if (tenant.getKeycloakId().equals(actorId)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không thể thay đổi trạng thái của chính mình");
+            throw new ApiException(AuthErrorCode.CANNOT_CHANGE_OWN_STATUS);
         }
 
         UserState newState = UserState.fromString(request.status());
@@ -116,7 +116,7 @@ public class TenantService {
 
     public Page<UserDto> getTenantUsers(String tenantKeycloakId, boolean isSuperAdmin, Long page, Long size) {
         Tenant tenant = tenantRepository.findByKeycloakId(tenantKeycloakId)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Tài khoản không phải Tenant hợp lệ"));
+                .orElseThrow(() -> new ApiException(UserErrorCode.INVALID_TENANT));
 
         int pageIndex = (page != null && page > 0) ? page.intValue() - 1 : 0;
         int pageSize = (size != null && size > 0) ? size.intValue() : 10;
@@ -137,11 +137,11 @@ public class TenantService {
     @Transactional
     public String updateTenantUserStatus(String tenantKeycloakId, String targetUserId, String newStatus) {
         Tenant tenant = tenantRepository.findByKeycloakId(tenantKeycloakId)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.FORBIDDEN_ACCESS));
+                .orElseThrow(() -> new ApiException(UserErrorCode.INVALID_TENANT));
 
         TenantUserControl controlRecord = tenantUserControlRepository
                 .findByTenantIdAndUserId(tenant.getId(), UUID.fromString(targetUserId))
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "User này không thuộc quyền quản lý của bạn"));
+                .orElseThrow(() -> new ApiException(AuthErrorCode.USER_NOT_IN_TENANT));
 
         controlRecord.setState(UserState.valueOf(newStatus)); // Update State
         tenantUserControlRepository.save(controlRecord);
@@ -151,11 +151,11 @@ public class TenantService {
 
     public String verifyTenantSecret(String internalSecret, String secret) {
         if (!appInternalSecret.equals(internalSecret)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Internal secret không hợp lệ");
+            throw new ApiException(AuthErrorCode.INVALID_INTERNAL_SECRET);
         }
 
         Tenant tenant = tenantRepository.findByProvisionSecret(secret)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Secret không hợp lệ"));
+                .orElseThrow(() -> new ApiException(AuthErrorCode.INVALID_PROVISION_SECRET));
 
         return tenant.getKeycloakId();
     }
@@ -172,7 +172,7 @@ public class TenantService {
                 .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "User không tồn tại"));
 
         if (tenantUserControlRepository.existsByTenantIdAndUserId(tenant.getId(), user.getId())) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "User đã được gán cho Tenant này");
+            throw new ApiException(UserErrorCode.USER_ALREADY_MAPPED_TO_TENANT);
         }
 
         TenantUserControl controlRecord = new TenantUserControl();
