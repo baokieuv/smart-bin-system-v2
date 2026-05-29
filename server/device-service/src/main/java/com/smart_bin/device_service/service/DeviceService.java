@@ -3,6 +3,7 @@ package com.smart_bin.device_service.service;
 import com.nimbusds.jose.shaded.gson.JsonObject;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.common.NotificationType;
+import com.smart_bin.core.common.SyncTenantUserType;
 import com.smart_bin.core.dto.NotificationEventDto;
 import com.smart_bin.core.dto.PageResponseDto;
 import com.smart_bin.core.exception.ApiException;
@@ -289,7 +290,7 @@ public class DeviceService {
         if (existingDeviceOpt.isPresent() && existingDeviceOpt.get().getPublicKey() != null) {
             deviceSecret = existingDeviceOpt.get().getPublicKey();
         } else {
-            deviceSecret = securityService.generateDeviceSecret(request.mac(), com.smart_bin.device_service.common.Constants.USER_CLAIM_KEY);
+            deviceSecret = securityService.generateDeviceSecret(request.mac(), com.smart_bin.device_service.common.Constants.DEVICE_CLAIM_KEY);
         }
 
         securityService.verifySignatureWithDeviceKey(payload, signature, deviceSecret);

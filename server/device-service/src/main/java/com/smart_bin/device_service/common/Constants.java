@@ -6,6 +6,10 @@ public class Constants {
 
     public static final String USER_CLAIM_KEY = "SMART_BIN_USER";
     public static final String TENANT_CLAIM_KEY = "SMART_BIN_TENANT";
+    public static final String DEVICE_CLAIM_KEY = "SMART_BIN_DEVICE";
+
+    public static final String SYNC_ADDING_ACTION = "adding";
+    public static final String SYNC_REMOVING_ACTION = "removing";
 
     public Constants() {
     }

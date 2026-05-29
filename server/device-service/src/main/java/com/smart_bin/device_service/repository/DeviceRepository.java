@@ -40,4 +40,6 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
     Optional<Device> findByMacWithGroup(@Param("mac") String mac);
 
     boolean existsByDeviceProfile_IdAndActiveTrue(UUID profileId);
+
+    long countByUserIdAndTenantId(String userId, String tenantId);
 }
