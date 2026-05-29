@@ -331,22 +331,26 @@ class MainViewModelRuntime:
 
     def _upload_ota_async(self, firmware_file: str | Path, backend_version: str | None) -> None:
         vm = self.vm
-        ok, msg = vm.actuator_client.upload_ota(firmware_file)
-        vm.latest_ota_result = {"ok": ok, "message": msg, "backend_version": backend_version}
+        vm.enter_ota_update_mode()
+        try:
+            ok, msg = vm.actuator_client.upload_ota(firmware_file)
+            vm.latest_ota_result = {"ok": ok, "message": msg, "backend_version": backend_version}
 
-        report_ok, report_msg = vm.device_client.report_ota_status("SUCCESS" if ok else "FAILED", msg)
-        if not report_ok:
-            vm.logger.warning("Failed to report OTA status: %s", report_msg)
+            report_ok, report_msg = vm.device_client.report_ota_status("SUCCESS" if ok else "FAILED", msg)
+            if not report_ok:
+                vm.logger.warning("Failed to report OTA status: %s", report_msg)
 
-        if ok:
-            if backend_version:
-                RUNTIME_VERSIONS.set_bin_version(backend_version)
-                vm.latest_bin_version = backend_version
-            vm.state_toast.emit(f"OTA upload completed. Bin updated to {backend_version}", True)
-            vm.logger.info("OTA successful — bin now at version %s", backend_version)
-        else:
-            vm.state_toast.emit(f"OTA upload failed: {msg}", False)
-            vm.logger.warning("OTA upload failed: %s", msg)
+            if ok:
+                if backend_version:
+                    RUNTIME_VERSIONS.set_bin_version(backend_version)
+                    vm.latest_bin_version = backend_version
+                vm.state_toast.emit(f"OTA upload completed. Bin updated to {backend_version}", True)
+                vm.logger.info("OTA successful — bin now at version %s", backend_version)
+            else:
+                vm.state_toast.emit(f"OTA upload failed: {msg}", False)
+                vm.logger.warning("OTA upload failed: %s", msg)
+        finally:
+            vm.exit_ota_update_mode()
 
     def poll_fill_levels(self) -> None:
         self._start_background_task(

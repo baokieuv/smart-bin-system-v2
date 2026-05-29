@@ -5,7 +5,7 @@ import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { firmwareMappingsAdminApi } from "@/services/api/firmware-mappings-admin";
 import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
-import type { FirmwareMappingDto } from "@/types/firmware-mapping";
+import type { FirmwareMappingDto, UpdateFirmwareMappingRequest } from "@/types/firmware-mapping";
 import type { FirmwareDto } from "@/types/firmware";
 
 function JsonModal({ value, onClose, onSave }: { value: string; onClose: () => void; onSave: (json: string) => void }) {
@@ -50,7 +50,6 @@ function JsonModal({ value, onClose, onSave }: { value: string; onClose: () => v
 export default function FirmwareMappingsPage() {
   const [mappings, setMappings] = useState<FirmwareMappingDto[]>([]);
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
 
   const [firmwares, setFirmwares] = useState<FirmwareDto[]>([]);
 
@@ -59,7 +58,6 @@ export default function FirmwareMappingsPage() {
   const [showJsonModal, setShowJsonModal] = useState(false);
 
   const load = async () => {
-    setLoading(true);
     try {
       const res = await firmwareMappingsAdminApi.getMappings({ page: 1, size: 200 });
       setMappings(unwrapListPayload(res.data));
@@ -68,8 +66,6 @@ export default function FirmwareMappingsPage() {
       setFirmwares(unwrapListPayload(fwRes.data));
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Load failed");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -83,12 +79,14 @@ export default function FirmwareMappingsPage() {
     try {
       const metadata = JSON.parse(form.metadataJson || "{}");
       if (editing) {
-        await firmwareMappingsAdminApi.updateMapping(editing.id, {
+        const request: UpdateFirmwareMappingRequest = {
           metadataCriteria: metadata,
           targetFirmwareId: form.targetFirmwareId,
           priority: Number(form.priority || 0),
           active: editing.active,
-        } as any);
+        };
+
+        await firmwareMappingsAdminApi.updateMapping(editing.id, request);
         setMessage("Mapping updated");
       } else {
         await firmwareMappingsAdminApi.createMapping({

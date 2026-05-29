@@ -1,10 +1,14 @@
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import { FlatCompat } from "@eslint/eslintrc";
+import js from "@eslint/js";
+
+const compat = new FlatCompat({
+  baseDirectory: process.cwd(),
+  recommendedConfig: js.configs.recommended,
+});
 
 const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
     rules: {
       "react-hooks/set-state-in-effect": "off",

@@ -17,8 +17,8 @@ from src.services.main_viewmodel_runtime import MainViewModelRuntime
 from src.utils.config import APP_CONFIG
 
 # Error codes that have dedicated hint messages.
-_ERR_NOT_ACTIVE = "AVT3010"
-_ERR_NOT_FOUND = {"DEVICE_NOT_FOUND", "AVT3004"}
+_ERR_NOT_ACTIVE = "SMB3010"
+_ERR_NOT_FOUND = {"DEVICE_NOT_FOUND", "SMB3004"}
 
 # Markers used to detect garbage HTML/JS in backend error bodies.
 _SUSPICIOUS_RESPONSE_MARKERS = (
@@ -89,6 +89,7 @@ class MainViewModel(QObject):
         self._fill_levels_refresh_running = False
         self._ota_upload_running = False
         self._telemetry_reauth_running = False
+        self._ota_update_active = False
 
         # --- Wire signals ---
         self.worker.trash_detected.connect(self._on_trash_detected)
@@ -148,6 +149,45 @@ class MainViewModel(QObject):
         self.worker.stop()
         self.logger.info("MainViewModel shutdown completed")
 
+    def enter_ota_update_mode(self, message: str = "Hệ thống đang cập nhật...") -> None:
+        """Freeze normal activity and show the loading screen while OTA runs."""
+        self._ota_update_active = True
+        for timer in (
+            self.feedback_timer,
+            self.thanks_timer,
+            self.telemetry_timer,
+            self.config_refresh_timer,
+            self.app_version_timer,
+            self.upload_timer,
+            self.fill_levels_poll_timer,
+        ):
+            timer.stop()
+        self.worker.pause_detection()
+        self.state_loading.emit(message)
+        self.logger.info("Entered OTA update mode")
+
+    def exit_ota_update_mode(self) -> None:
+        """Return from OTA mode and resume normal runtime activity."""
+        if not self._ota_update_active:
+            return
+
+        self._ota_update_active = False
+        self.worker.resume_detection()
+
+        if self.access_token and not self.telemetry_timer.isActive():
+            self.telemetry_timer.start()
+        if not self.config_refresh_timer.isActive():
+            self.config_refresh_timer.start()
+        if not self.app_version_timer.isActive():
+            self.app_version_timer.start()
+        if not self.upload_timer.isActive():
+            self.upload_timer.start()
+        if not self.fill_levels_poll_timer.isActive():
+            self.fill_levels_poll_timer.start()
+
+        self.reset_to_welcome()
+        self.logger.info("Exited OTA update mode")
+
     # ------------------------------------------------------------------
     # Worker callbacks
     # ------------------------------------------------------------------
@@ -174,6 +214,10 @@ class MainViewModel(QObject):
 
     def _on_trash_detected(self, trash_data: TrashData) -> None:
         """Persist detection, actuate stepper, and transition to feedback screen."""
+        if self._ota_update_active:
+            self.logger.info("Ignoring detection while OTA update is active")
+            return
+
         self.logger.info(
             "Detection received: category=%s label=%s conf=%.3f id=%s",
             trash_data.category, trash_data.label, trash_data.confidence, trash_data.detection_id,
@@ -205,6 +249,10 @@ class MainViewModel(QObject):
 
     def handle_feedback(self, is_correct: bool) -> None:
         """Record user feedback and transition to the thanks screen."""
+        if self._ota_update_active:
+            self.logger.info("Ignoring feedback while OTA update is active")
+            return
+
         self.feedback_timer.stop()
         self._update_current_feedback("correct" if is_correct else "wrong")
         self.logger.info("User feedback: %s", "correct" if is_correct else "wrong")
@@ -213,6 +261,10 @@ class MainViewModel(QObject):
 
     def reset_to_welcome(self) -> None:
         """Return to welcome screen and resume real-time detection."""
+        if self._ota_update_active:
+            self.logger.info("Skipping reset_to_welcome while OTA update is active")
+            return
+
         self.feedback_timer.stop()
         self.thanks_timer.stop()
         self.worker.resume_detection()
@@ -279,6 +331,9 @@ class MainViewModel(QObject):
 
     def get_device_mac_address(self) -> str:
         return self.device_client.get_mac_address()
+
+    def get_device_claim_code(self) -> str:
+        return self.device_client.get_claim_code()
 
     # ------------------------------------------------------------------
     # Internal helpers

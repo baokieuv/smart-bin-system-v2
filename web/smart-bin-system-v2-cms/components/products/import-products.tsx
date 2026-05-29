@@ -3,7 +3,6 @@
 import { useState } from "react";
 import * as XLSX from "xlsx";
 import { shopAdminApi } from "@/services/api/shop-admin";
-import type { ProductDto } from "@/types/shop";
 
 type ProductImportItem = { sku?: string; name: string; price?: string | number; categoryId?: string; description?: string; imageUrl?: string };
 
@@ -36,7 +35,6 @@ export default function ImportProductsPanel({ onImported }: { onImported?: () =>
         const skuKey = keys.find((k) => /sku|code/.test(k.toLowerCase()));
         const nameKey = keys.find((k) => /name|title/.test(k.toLowerCase()));
         const priceKey = keys.find((k) => /price|cost/.test(k.toLowerCase()));
-        const stockKey = keys.find((k) => /stock|quantity|qty/.test(k.toLowerCase()));
         const imageKey = keys.find((k) => /image|imageurl|thumbnail/.test(k.toLowerCase()));
         const catKey = keys.find((k) => /category|categoryId|cat/.test(k.toLowerCase()));
         const descKey = keys.find((k) => /description|desc/.test(k.toLowerCase()));

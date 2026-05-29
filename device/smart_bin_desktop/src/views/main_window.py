@@ -98,10 +98,11 @@ class MainWindow(QMainWindow):
         """Pause detection and display QR/MAC pairing screen."""
         self.viewmodel.worker.pause_detection()
         mac = self.viewmodel.get_device_mac_address()
+        claim_code = self.viewmodel.get_device_claim_code()
 
         def setup():
-            self.screen_device_link.update_mac_and_qr(mac)
-        self.logger.info("Show device link, mac=%s", mac)
+            self.screen_device_link.update_mac_and_qr(mac, claim_code)
+        self.logger.info("Show device link, mac=%s, claim_code=%s", mac, claim_code)
 
         self._fade_to(4, setup)
 

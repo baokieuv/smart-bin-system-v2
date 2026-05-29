@@ -221,6 +221,7 @@ export default function DashboardPage() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isAddDevicePopupOpen, setIsAddDevicePopupOpen] = useState(false);
     const [macAddress, setMacAddress] = useState('');
+    const [claimCode, setClaimCode] = useState('');
     const [addDeviceLatitude, setAddDeviceLatitude] = useState('');
     const [addDeviceLongitude, setAddDeviceLongitude] = useState('');
     const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -396,6 +397,7 @@ export default function DashboardPage() {
     const greeting = currentHour < 12 ? 'Good morning' : currentHour < 18 ? 'Good afternoon' : 'Good evening';
     const hasDevices = devices.length > 0;
     const MAC_PATTERN = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
+    const CLAIM_CODE_PATTERN = /^.{6}$/;
 
     const formatMacAddress = (rawValue: string) => {
         const normalized = rawValue
@@ -409,6 +411,10 @@ export default function DashboardPage() {
 
     const handleMacAddressChange = (value: string) => {
         setMacAddress(formatMacAddress(value));
+    };
+
+    const handleClaimCodeChange = (value: string) => {
+        setClaimCode(value.slice(0, 6));
     };
 
     const parseCoordinatePair = (latitudeValue: string, longitudeValue: string): LocationValue | null => {
@@ -425,7 +431,9 @@ export default function DashboardPage() {
     const addLocation = parseCoordinatePair(addDeviceLatitude, addDeviceLongitude);
     const editLocation = parseCoordinatePair(editDeviceLatitude, editDeviceLongitude);
     const isMacValid = MAC_PATTERN.test(macAddress.trim());
-    const canSubmitAddDevice = isMacValid && addLocation !== null && !isSubmittingDeviceAction;
+    const normalizedClaimCode = claimCode.trim();
+    const isClaimCodeValid = CLAIM_CODE_PATTERN.test(normalizedClaimCode);
+    const canSubmitAddDevice = isMacValid && isClaimCodeValid && addLocation !== null && !isSubmittingDeviceAction;
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files.length > 0) {
@@ -531,6 +539,7 @@ export default function DashboardPage() {
                 latitude: location.latitude,
                 longitude: location.longitude,
                 name: `Smart Bin ${normalizedMac.slice(-8)}`,
+                claimCode: normalizedClaimCode,
             });
 
             if (!response.success) {
@@ -543,6 +552,7 @@ export default function DashboardPage() {
             setSelectedDeviceId(created.id);
             setIsAddDevicePopupOpen(false);
             setMacAddress('');
+            setClaimCode('');
             setAddDeviceLatitude('');
             setAddDeviceLongitude('');
             pushToast('Device added successfully.', 'success');
@@ -875,6 +885,7 @@ export default function DashboardPage() {
     const closeAddDevicePopup = () => {
         setIsAddDevicePopupOpen(false);
         setMacAddress('');
+        setClaimCode('');
         setAddDeviceLatitude('');
         setAddDeviceLongitude('');
     };
@@ -991,7 +1002,9 @@ export default function DashboardPage() {
                 editDeviceLongitude={editDeviceLongitude}
                 editLocation={editLocation}
                 macAddress={macAddress}
+                claimCode={claimCode}
                 isMacValid={isMacValid}
+                isClaimCodeValid={isClaimCodeValid}
                 addDeviceLatitude={addDeviceLatitude}
                 addDeviceLongitude={addDeviceLongitude}
                 addLocation={addLocation}
@@ -1013,6 +1026,7 @@ export default function DashboardPage() {
                 onSaveDeviceChanges={handleUpdateDevice}
                 onCloseAddPopup={closeAddDevicePopup}
                 onMacAddressChange={handleMacAddressChange}
+                onClaimCodeChange={handleClaimCodeChange}
                 onAddLatitudeChange={setAddDeviceLatitude}
                 onAddLongitudeChange={setAddDeviceLongitude}
                 onAddLocationChange={(location) => {

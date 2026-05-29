@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
@@ -25,7 +25,7 @@ export default function FirmwaresPage() {
 
   const acceptedFilesText = useMemo(() => acceptedFileExtensions.join(", "), []);
 
-  const load = async (nextPage = page, nextSize = size) => {
+  const load = useCallback(async (nextPage = page, nextSize = size) => {
     const response = await firmwaresAdminApi.getFirmwares({ page: nextPage, size: nextSize });
     setItems(unwrapListPayload(response.data));
 
@@ -36,13 +36,13 @@ export default function FirmwaresPage() {
         setTotalPages(Math.max(1, backendTotalPages));
       }
     }
-  };
+  }, [page, size]);
 
   useEffect(() => {
     void load(page, size).catch((error) => {
       setMessage(error instanceof Error ? error.message : "Load failed");
     });
-  }, [page, size]);
+  }, [load, page, size]);
 
   const onUpload = async (event: FormEvent) => {
     event.preventDefault();

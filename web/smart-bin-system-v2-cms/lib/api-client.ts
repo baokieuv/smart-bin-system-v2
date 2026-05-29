@@ -38,6 +38,10 @@ const processQueue = (error: Error | null) => {
 // Simple in-memory cache for GET list endpoints. Keys are strings (endpoint + query by default).
 const getCache = new Map<string, { expiresAt: number; response: BaseResponse<unknown> }>();
 
+const clearGetCache = () => {
+  getCache.clear();
+};
+
 const isPermissionRelatedError = (status: number, message: string) => {
   if (status === 403) {
     return true;
@@ -131,6 +135,10 @@ export const apiClient = async <T = unknown>(endpoint: string, options: RequestO
         emitToast(message || "Không có quyền truy cập");
       }
       throw new ApiError(message, response.status);
+    }
+
+    if (method !== "GET") {
+      clearGetCache();
     }
 
     // Cache successful GET list responses when requested

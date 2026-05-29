@@ -9,7 +9,7 @@ import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
 import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
 import type { DeviceDto } from "@/types/device";
 import type { FirmwareDto } from "@/types/firmware";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 const firmwareLabel = (firmware: FirmwareDto) => {
   const suffix = firmware.description ? ` - ${firmware.description}` : "";
@@ -31,7 +31,7 @@ export default function DevicesPage() {
   const [devices, setDevices] = useState<DeviceDto[]>([]);
   const [firmwares, setFirmwares] = useState<FirmwareDto[]>([]);
   const [role, setRole] = useState<"super_admin" | "admin" | null>(null);
-  const [form, setForm] = useState({ name: "", mac: "", groupCode: "" });
+  const [form, setForm] = useState({ mac: "", claimCode: "" });
   const [deviceGroups, setDeviceGroups] = useState<{ id: string; code: string; name: string }[]>([]);
   const [message, setMessage] = useState("");
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
@@ -91,7 +91,7 @@ export default function DevicesPage() {
     }
   };
 
-  const load = async (nextPage = page, nextSize = size) => {
+  const load = useCallback(async (nextPage = page, nextSize = size) => {
     const response = await devicesAdminApi.getDevices({ page: nextPage, size: nextSize });
     setDevices(unwrapListPayload(response.data));
 
@@ -102,7 +102,7 @@ export default function DevicesPage() {
         setTotalPages(Math.max(1, backendTotalPages));
       }
     }
-  };
+  }, [page, size]);
 
   const loadFirmwares = async () => {
     const response = await firmwaresAdminApi.getFirmwares({ page: 1, size: 1000 });
@@ -114,7 +114,7 @@ export default function DevicesPage() {
   useEffect(() => {
     loadRole();
     void load(page, size);
-  }, [page, size]);
+  }, [load, page, size]);
 
   useEffect(() => {
     void loadFirmwares().catch(() => {
@@ -124,8 +124,8 @@ export default function DevicesPage() {
       try {
         const resp = await deviceGroupsAdminApi.getDeviceGroups({ page: 1, size: 200 });
         const items = unwrapListPayload(resp.data);
-        setDeviceGroups(items.map((i: any) => ({ id: i.id, code: i.code, name: i.name })));
-      } catch (err) {
+        setDeviceGroups(items.map((item) => ({ id: item.id, code: item.code, name: item.name })));
+      } catch {
         // ignore
       }
     })();
@@ -178,9 +178,9 @@ export default function DevicesPage() {
     event.preventDefault();
     try {
       await devicesAdminApi.importDevices({
-        devices: [{ name: form.name, mac: form.mac, groupCode: form.groupCode.trim() || undefined }],
+        devices: [{ mac: form.mac, claimCode: form.claimCode }],
       });
-      setForm({ name: "", mac: "", groupCode: "" });
+      setForm({ mac: "", claimCode: "" });
       setMessage("Imported 1 device");
       await load(page, size);
     } catch (error) {
@@ -513,31 +513,18 @@ export default function DevicesPage() {
           <form onSubmit={create} className="space-y-3">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Device name"
-              value={form.name}
-              onChange={(event) => setForm((v) => ({ ...v, name: event.target.value }))}
-              required
-            />
-            <input
-              className="w-full rounded-xl border border-slate-200 px-3 py-2"
               placeholder="MAC address"
               value={form.mac}
               onChange={(event) => setForm((v) => ({ ...v, mac: event.target.value }))}
               required
             />
-            <div>
-              <label className="sr-only">Group code</label>
-              <select
-                className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                value={form.groupCode}
-                onChange={(event) => setForm((v) => ({ ...v, groupCode: event.target.value }))}
-              >
-                <option value="">(no group)</option>
-                {deviceGroups.map((g) => (
-                  <option key={g.id} value={g.code}>{g.code} - {g.name}</option>
-                ))}
-              </select>
-            </div>
+            <input
+              className="w-full rounded-xl border border-slate-200 px-3 py-2"
+              placeholder="Claim code"
+              value={form.claimCode}
+              onChange={(event) => setForm((v) => ({ ...v, claimCode: event.target.value }))}
+              required
+            />
             <div className="flex items-center gap-2">
               <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
                 Add 1 device via import

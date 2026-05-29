@@ -13,7 +13,8 @@ from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
 from src.utils.config import APP_CONFIG
 
-_DEVICE_SUFFIX = "SMART_BIN_USER"
+_DEVICE_SUFFIX = "SMART_BIN_DEVICE"
+_CLAIM_CODE_SUFFIX = "SMART_BIN_USER"
 
 
 class DeviceKeyManager:
@@ -44,11 +45,15 @@ class DeviceKeyManager:
         if self._cached_secret and self._cached_mac == mac_address:
             return self._cached_secret
 
-        master = self._load_or_create_master_secret()
-        derived = self._hmac_base64(master.encode(), f"{mac_address}{_DEVICE_SUFFIX}".encode())
+        derived = self._derive_secret(mac_address, _DEVICE_SUFFIX)
         self._cached_mac = mac_address
         self._cached_secret = derived
         return derived
+
+    def ensure_claim_code(self, mac_address: str) -> str:
+        """Return the 6-character claim code derived from *mac_address*."""
+        derived = self._derive_secret(mac_address, _CLAIM_CODE_SUFFIX)
+        return derived[:6]
 
     def sign(self, payload: str, mac_address: str) -> str:
         """Return a base64-encoded HMAC-SHA256 signature over *payload*."""
@@ -78,6 +83,10 @@ class DeviceKeyManager:
     # ------------------------------------------------------------------
     # HMAC helpers
     # ------------------------------------------------------------------
+
+    def _derive_secret(self, mac_address: str, suffix: str) -> str:
+        master = self._load_or_create_master_secret()
+        return self._hmac_base64(master.encode(), f"{mac_address}{suffix}".encode())
 
     @staticmethod
     def _hmac_bytes(key: bytes, msg: bytes) -> bytes:

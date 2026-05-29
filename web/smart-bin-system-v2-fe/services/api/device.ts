@@ -2,16 +2,11 @@
 
 import { api } from "@/lib/api-client";
 import { getCache, setCache } from '@/lib/cache';
-import { DeviceDto, TelemetryParams, UpdateDeviceRequest } from "@/types/device";
+import { AddDeviceRequest, DeviceDto, TelemetryParams, UpdateDeviceRequest } from "@/types/device";
 
 export const deviceApi = {
     // Add device requires auth and uses auto-refresh
-    add: async (formData: {
-        mac: string;
-        longitude: number;
-        latitude: number;
-        name: string;
-    }) => {
+    add: async (formData: AddDeviceRequest) => {
         return api.post<DeviceDto>('/devices/claim', formData);
     },
 

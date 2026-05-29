@@ -275,7 +275,7 @@ class ScreenWelcome(QWidget):
 
         content.addWidget(self.instr_card)
 
-        # Activation prompt appears only when backend reports device not active yet (AVT3010).
+        # Activation prompt appears only when backend reports device not active yet (SMB3010).
         self.activation_hint = QLabel("Thiết bị chưa kích hoạt. Nhấn nút bên dưới để kích hoạt.")
         self.activation_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.activation_hint.setStyleSheet("""

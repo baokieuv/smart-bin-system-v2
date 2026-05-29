@@ -2,9 +2,32 @@
 
 import { useState } from "react";
 import * as XLSX from "xlsx";
+import { emitToast } from "@/lib/toast";
 import { devicesAdminApi } from "@/services/api/devices-admin";
 
-type DeviceImportItem = { mac: string; name?: string; groupCode?: string };
+type DeviceImportItem = { mac: string; claimCode: string };
+
+type ImportResultItem = { mac?: unknown; status?: unknown; message?: unknown };
+
+const isSuccessfulStatus = (status: unknown) => {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "success" || normalized === "ok" || normalized === "created" || normalized === "imported";
+};
+
+const extractImportResults = (data: unknown): ImportResultItem[] => {
+  if (Array.isArray(data)) {
+    return data as ImportResultItem[];
+  }
+
+  if (!data || typeof data !== "object") {
+    return [];
+  }
+
+  const payload = data as Record<string, unknown>;
+  const candidates = [payload.results, payload.items, payload.content, payload.data, payload.failed, payload.failedDevices];
+  const list = candidates.find(Array.isArray);
+  return Array.isArray(list) ? (list as ImportResultItem[]) : [];
+};
 
 export default function ImportDevicesPanel({ onImported }: { onImported?: () => void }) {
   const [fileName, setFileName] = useState<string | null>(null);
@@ -35,24 +58,27 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
         const first = rows[0] as Record<string, unknown>;
         const keys = Object.keys(first);
         const macKey = keys.find((k) => /mac|ma[cC]|mac_address|macaddress/.test(k.toLowerCase()));
-        const nameKey = keys.find((k) => /name|device|ten/.test(k.toLowerCase()));
-        const groupCodeKey = keys.find((k) => /groupcode|group_code|group|nhom|ma_nhom/.test(k.toLowerCase()));
+        const claimCodeKey = keys.find((k) => /claim[_\s-]?code|claimcode|activation[_\s-]?code|code[_\s-]?claim/.test(k.toLowerCase()));
 
         for (const r of rows as Record<string, unknown>[]) {
           const mac = macKey ? String((r as Record<string, unknown>)[macKey] ?? "").trim() : "";
-          const name = nameKey ? String((r as Record<string, unknown>)[nameKey] ?? "").trim() : undefined;
-          const groupCode = groupCodeKey ? String((r as Record<string, unknown>)[groupCodeKey] ?? "").trim() : undefined;
-          if (mac) items.push({ mac, name, groupCode: groupCode || undefined });
+          const claimCode = claimCodeKey ? String((r as Record<string, unknown>)[claimCodeKey] ?? "").trim() : "";
+          if (mac && claimCode) items.push({ mac, claimCode });
         }
       } else {
-        // Rows are arrays, treat as [mac, name, groupCode]
+        // Rows are arrays, treat as [mac, claimCode]
         for (const r of rows as unknown[]) {
           const arr = Array.isArray(r) ? (r as unknown[]) : Object.values(r as Record<string, unknown>);
           const mac = String(arr[0] ?? "").trim();
-          const name = String(arr[1] ?? "").trim() || undefined;
-          const groupCode = String(arr[2] ?? "").trim() || undefined;
-          if (mac) items.push({ mac, name, groupCode });
+          const claimCode = String(arr[1] ?? "").trim();
+          if (mac && claimCode) items.push({ mac, claimCode });
         }
+      }
+
+      if (items.length === 0) {
+        setError("Không đọc được dữ liệu hợp lệ. File cần 2 cột: MAC và Claim Code");
+        setPreview([]);
+        return;
       }
 
       setPreview(items.slice(0, 1000));
@@ -72,18 +98,36 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
     if (preview.length === 0) return setError("No devices to import");
     setLoading(true);
     try {
-      await devicesAdminApi.importDevices({
+      const response = await devicesAdminApi.importDevices({
         devices: preview.map((p) => ({
           mac: p.mac,
-          name: p.name,
-          groupCode: p.groupCode,
+          claimCode: p.claimCode,
         })),
       });
+
+      const results = extractImportResults(response.data);
+      const failed = results.filter((item) => !isSuccessfulStatus(item.status));
+      if (failed.length > 0) {
+        const failedMacs = failed
+          .map((item) => String(item.mac ?? "").trim())
+          .filter(Boolean);
+        const previewMacs = failedMacs.slice(0, 10).join(", ");
+        const suffix = failedMacs.length > 10 ? `, ... (+${failedMacs.length - 10})` : "";
+        const detail = previewMacs ? `: ${previewMacs}${suffix}` : "";
+        emitToast(`Import xong nhưng có ${failed.length} MAC thất bại${detail}`, "error");
+        setError(`Có ${failed.length} MAC import thất bại`);
+      } else {
+        emitToast(`Import thành công ${preview.length} thiết bị`, "success");
+        setError(null);
+      }
+
       setPreview([]);
       setFileName(null);
       if (onImported) onImported();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      emitToast(message, "error");
     } finally {
       setLoading(false);
     }
@@ -111,16 +155,14 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
               <thead>
                 <tr className="text-left text-slate-600">
                   <th className="py-1">MAC</th>
-                  <th className="py-1">Name</th>
-                  <th className="py-1">Group Code</th>
+                  <th className="py-1">Claim Code</th>
                 </tr>
               </thead>
               <tbody>
                 {preview.slice(0, 200).map((p, idx) => (
                   <tr key={idx} className="border-t border-slate-100">
                     <td className="py-1 font-medium">{p.mac}</td>
-                    <td className="py-1 text-slate-600">{p.name ?? "-"}</td>
-                    <td className="py-1 text-slate-600">{p.groupCode ?? "-"}</td>
+                    <td className="py-1 text-slate-600">{p.claimCode}</td>
                   </tr>
                 ))}
               </tbody>

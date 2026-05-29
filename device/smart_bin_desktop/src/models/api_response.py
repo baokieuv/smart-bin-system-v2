@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Generic, TypeVar, Optional, Type, Any
+from typing import Generic, TypeVar, Optional, Type
 
 T = TypeVar('T') 
 
@@ -15,14 +15,15 @@ class ApiResponseFormat(Generic[T]):
 
     @classmethod
     def from_dict(cls, data: dict, details_class: Type[T] = None) -> 'ApiResponseFormat[T]':
+        """Create an ApiResponseFormat instance from a dictionary payload."""
         # Convert nested "data" to typed DTO if parser class exists.
         details_data = data.get("data")
-        
+
         parsed_details = None
         if details_class and details_data:
-            parsed_details = details_class.from_dict(details_data) 
+            parsed_details = details_class.from_dict(details_data)
         else:
-            parsed_details = details_data 
+            parsed_details = details_data
 
         return cls(
             trace_id=data.get("traceId"),
@@ -32,3 +33,4 @@ class ApiResponseFormat(Generic[T]):
             message=data.get("message", ""),
             data=parsed_details
         )
+        

@@ -16,6 +16,14 @@ export type DeviceDto = {
 
 export type DeviceAttributes = Record<string, unknown>;
 
+export type AddDeviceRequest = {
+  mac: string;
+  longitude: number;
+  latitude: number;
+  name: string;
+  claimCode: string;
+};
+
 export type TelemetryPoint = {
   ts: number;
   value: string;

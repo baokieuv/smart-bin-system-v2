@@ -2,3 +2,10 @@
 /smart_bin_desktop/assets/detections
 /trash_classification
 /hand_detection
+
+__pycache__/
+*.py[cod]
+
+/smart_bin_desktop/assets/
+/smart_bin_desktop/data/
+/smart_bin_desktop/key/

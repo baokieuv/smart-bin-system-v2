@@ -18,7 +18,9 @@ type DashboardOverlaysProps = {
   editDeviceLongitude: string;
   editLocation: LocationValue | null;
   macAddress: string;
+  claimCode: string;
   isMacValid: boolean;
+  isClaimCodeValid: boolean;
   addDeviceLatitude: string;
   addDeviceLongitude: string;
   addLocation: LocationValue | null;
@@ -37,6 +39,7 @@ type DashboardOverlaysProps = {
   onSaveDeviceChanges: () => void;
   onCloseAddPopup: () => void;
   onMacAddressChange: (value: string) => void;
+  onClaimCodeChange: (value: string) => void;
   onAddLatitudeChange: (value: string) => void;
   onAddLongitudeChange: (value: string) => void;
   onAddLocationChange: (location: LocationValue) => void;
@@ -59,7 +62,9 @@ export default function DashboardOverlays({
   editDeviceLongitude,
   editLocation,
   macAddress,
+  claimCode,
   isMacValid,
+  isClaimCodeValid,
   addDeviceLatitude,
   addDeviceLongitude,
   addLocation,
@@ -78,6 +83,7 @@ export default function DashboardOverlays({
   onSaveDeviceChanges,
   onCloseAddPopup,
   onMacAddressChange,
+  onClaimCodeChange,
   onAddLatitudeChange,
   onAddLongitudeChange,
   onAddLocationChange,
@@ -201,6 +207,26 @@ export default function DashboardOverlays({
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Step 2</p>
+                <label htmlFor="dashboard-claim-code" className="mb-1 mt-2 block text-sm font-semibold text-slate-700">
+                  Claim Code
+                </label>
+                <Input
+                  id="dashboard-claim-code"
+                  type="text"
+                  value={claimCode}
+                  onChange={(event) => onClaimCodeChange(event.target.value)}
+                  placeholder="ABC123"
+                  maxLength={6}
+                  className={claimCode && !isClaimCodeValid ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/25' : ''}
+                />
+                {claimCode && !isClaimCodeValid && (
+                  <p className="mt-1 text-xs text-rose-600">Claim code must be exactly 6 characters.</p>
+                )}
+                <p className="mt-1 text-xs text-slate-500">Enter the 6-character code provided for this device.</p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Step 3</p>
                 <p className="mb-2 mt-2 text-sm font-semibold text-slate-700">Pick Device Location</p>
                 <LocationPickerMap
                   className="h-52 w-full rounded-xl border border-slate-200"

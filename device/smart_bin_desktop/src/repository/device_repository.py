@@ -22,7 +22,7 @@ class DeviceClient:
 
     All outbound requests are signed with a per-device HMAC key derived from
     the device's MAC address.  The ``_post_signed_request`` helper handles
-    signing, HTTP dispatch, and transparent key-refresh on AVT0012 errors.
+    signing, HTTP dispatch, and transparent key-refresh on SMB0012 errors.
     """
 
     def __init__(
@@ -48,7 +48,11 @@ class DeviceClient:
         # mac_num = hex(uuid.getnode()).replace('0x', '').zfill(12).upper()
         # return ':'.join(mac_num[i: i + 2] for i in range(0, 11, 2))
        
-        return "F0:E7:63:51:1C:10"
+        return "D3:AD:C7:15:55:42"
+
+    def get_claim_code(self) -> str:
+        """Return the short claim code used by the device-link screen."""
+        return self.key_manager.ensure_claim_code(self.get_mac_address())
 
     # ------------------------------------------------------------------
     # Request signing helpers
@@ -91,7 +95,7 @@ class DeviceClient:
         metadata_header: str | None = None,
         allow_key_refresh: bool = True,
     ) -> tuple[bool, HttpResponse | str]:
-        """Sign and POST to *path*; transparently refresh key on AVT0012."""
+        """Sign and POST to *path*; transparently refresh key on SMB0012."""
         ok, payload_str, sig_or_err = self._build_signed_payload(extra_fields)
         if not ok:
             return False, sig_or_err
@@ -110,8 +114,8 @@ class DeviceClient:
             self.logger.warning("%s network error: %s", path, exc)
             return False, f"Network error: {exc}"
 
-        # Transparent key refresh on AVT0012 (stale signature).
-        if allow_key_refresh and self._is_avt0012_response(response):
+        # Transparent key refresh on SMB0012 (stale signature).
+        if allow_key_refresh and self._is_SMB0012_response(response):
             activation_ok, activation_result = self.activate_device()
             if not activation_ok:
                 return False, activation_result
@@ -132,11 +136,11 @@ class DeviceClient:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _is_avt0012_response(response: HttpResponse) -> bool:
+    def _is_SMB0012_response(response: HttpResponse) -> bool:
         if response.status_code != 400:
             return False
         try:
-            return str(response.json().get("code") or "").upper() == "AVT0012"
+            return str(response.json().get("code") or "").upper() == "SMB0012"
         except ValueError:
             return False
 
@@ -263,7 +267,7 @@ class DeviceClient:
         try:
             if not response.ok:
                 error = self._parse_error_response(response)
-                if isinstance(error, dict) and str(error.get("code") or "").upper() == "AVT3009":
+                if isinstance(error, dict) and str(error.get("code") or "").upper() == "SMB3009":
                     return True, "Device already activated"
                 return False, error
             return self._parse_api_response(response.json(), DeviceDto)

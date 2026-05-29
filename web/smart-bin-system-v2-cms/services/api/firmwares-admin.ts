@@ -34,7 +34,7 @@ export const firmwaresAdminApi = {
             const response = JSON.parse(xhr.responseText);
             console.log(`[Upload] Response:`, response);
             resolve(response);
-          } catch (e) {
+          } catch {
             reject(new Error("Failed to parse upload response"));
           }
         } else {

@@ -30,7 +30,7 @@ export default function DeviceGroupsPage() {
     let parsedSpecs: Record<string, unknown>;
     try {
       parsedSpecs = JSON.parse(form.sharedSpecsJson || "{}");
-    } catch (e) {
+    } catch {
       setMessage("Invalid JSON for shared specs");
       return;
     }

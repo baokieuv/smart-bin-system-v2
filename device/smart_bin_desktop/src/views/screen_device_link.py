@@ -6,7 +6,7 @@ import qrcode
 
 
 class ScreenDeviceLink(QWidget):
-    """Device pairing screen that displays MAC address and QR payload."""
+    """Device pairing screen that displays MAC address, claim code, and QR payload."""
 
     back_requested = pyqtSignal()
 
@@ -211,6 +211,41 @@ class ScreenDeviceLink(QWidget):
         """)
         mac_box_layout.addWidget(self.mac_label)
 
+        # Claim code display box
+        claim_box = QWidget()
+        claim_box.setStyleSheet("""
+            QWidget {
+                background: #eff6ff;
+                border-radius: 14px;
+                border: 1px solid #dbeafe;
+            }
+        """)
+        claim_box_layout = QVBoxLayout(claim_box)
+        claim_box_layout.setContentsMargins(16, 12, 16, 12)
+        claim_box_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        claim_caption = QLabel("Claim code")
+        claim_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        claim_caption.setStyleSheet("""
+            font-size: 12px;
+            font-weight: 700;
+            color: #4a6590;
+            background: transparent;
+            letter-spacing: 0.3px;
+        """)
+        self.claim_label = QLabel("------")
+        self.claim_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.claim_label.setStyleSheet("""
+            font-size: 26px;
+            font-weight: 800;
+            color: #1d4ed8;
+            background: transparent;
+            letter-spacing: 3px;
+            font-family: 'Courier New', monospace;
+        """)
+        claim_box_layout.addWidget(claim_caption)
+        claim_box_layout.addWidget(self.claim_label)
+
         # Info items: short letter icons in small pill badges for a native look.
         def info_row(icon, label, value_style=""):
             row = QWidget()
@@ -240,6 +275,7 @@ class ScreenDeviceLink(QWidget):
 
         info_layout.addLayout(mac_title_row)
         info_layout.addWidget(mac_box)
+        info_layout.addWidget(claim_box)
         info_layout.addWidget(info_row("~", "Kết nối qua Bluetooth / Wi-Fi"))
         info_layout.addWidget(info_row("#", "Mã hóa TLS bảo mật"))
         info_layout.addWidget(info_row("i", "Nội dung QR = địa chỉ MAC"))
@@ -258,10 +294,11 @@ class ScreenDeviceLink(QWidget):
         gradient.setColorAt(1.0, QColor("#f5f0ff"))
         painter.fillRect(self.rect(), gradient)
 
-    def update_mac_and_qr(self, mac_address: str):
-        """Refresh MAC label and regenerate QR image from provided address."""
+    def update_mac_and_qr(self, mac_address: str, claim_code: str):
+        """Refresh MAC label, claim code, and regenerate QR image from provided address."""
         # QR content is exactly MAC so mobile app can bind this desktop device.
         self.mac_label.setText(mac_address)
+        self.claim_label.setText(claim_code)
         pixmap = self._build_qr_pixmap(mac_address)
         self.qr_label.setPixmap(pixmap)
 
