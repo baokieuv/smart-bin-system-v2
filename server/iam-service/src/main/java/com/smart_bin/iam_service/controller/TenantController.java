@@ -7,7 +7,6 @@ import com.smart_bin.iam_service.common.SuccessCode;
 import com.smart_bin.iam_service.dto.auth.request.CreateTenantRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateTenantStatusRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateTenantUserStatusRequest;
-import com.smart_bin.iam_service.dto.user.request.TenantUserMapRequest;
 import com.smart_bin.iam_service.serivce.TenantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

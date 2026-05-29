@@ -4,23 +4,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.common.EmailType;
-import com.smart_bin.core.common.SyncTenantUserType;
 import com.smart_bin.core.exception.ApiException;
-import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.CreateTenantRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateTenantStatusRequest;
 import com.smart_bin.iam_service.dto.auth.response.TenantDto;
 import com.smart_bin.iam_service.dto.user.response.UserDto;
 import com.smart_bin.iam_service.entity.Tenant;
-import com.smart_bin.iam_service.entity.TenantUserControl;
 import com.smart_bin.iam_service.entity.User;
 import com.smart_bin.iam_service.exception.AuthErrorCode;
 import com.smart_bin.iam_service.exception.UserErrorCode;
 import com.smart_bin.iam_service.mapper.TenantMapper;
 import com.smart_bin.iam_service.mapper.UserMapper;
 import com.smart_bin.iam_service.repository.TenantRepository;
-import com.smart_bin.iam_service.repository.TenantUserControlRepository;
 import com.smart_bin.iam_service.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +28,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -42,7 +37,6 @@ public class TenantService {
 
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
-    private final TenantUserControlRepository tenantUserControlRepository;
     private final KeycloakService keycloakService;
     private final TenantMapper tenantMapper;
     private final UserMapper userMapper;
@@ -121,16 +115,12 @@ public class TenantService {
         int pageSize = (size != null && size > 0) ? size.intValue() : 10;
         Pageable pageable = PageRequest.of(pageIndex, pageSize);
 
-        Page<UserDto> userPage;
-
         if (isSuperAdmin){
-            userPage = userRepository.findAll(pageable).map(userMapper::toDto);
+            return userRepository.findAll(pageable).map(userMapper::toDto);
         } else {
-            userPage = tenantUserControlRepository.findUsersByTenantId(tenant.getId(), pageable)
+            return userRepository.findByTenantId(tenant.getId().toString(), pageable)
                     .map(userMapper::toDto);
         }
-
-        return userPage;
     }
 
     @Transactional
@@ -138,12 +128,32 @@ public class TenantService {
         Tenant tenant = tenantRepository.findByKeycloakId(tenantKeycloakId)
                 .orElseThrow(() -> new ApiException(UserErrorCode.INVALID_TENANT));
 
-        TenantUserControl controlRecord = tenantUserControlRepository
-                .findByTenantIdAndUserId(tenant.getId(), UUID.fromString(targetUserId))
-                .orElseThrow(() -> new ApiException(AuthErrorCode.USER_NOT_IN_TENANT));
+        User targetUser = userRepository.findByKeycloakId(targetUserId)
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
 
-        controlRecord.setState(UserState.valueOf(newStatus)); // Update State
-        tenantUserControlRepository.save(controlRecord);
+        if (!targetUser.getTenantId().equals(tenant.getKeycloakId())) {
+            throw new ApiException(AuthErrorCode.USER_NOT_IN_TENANT, "User không thuộc quyền quản lý của Tenant này");
+        }
+
+        UserState newState = UserState.valueOf(newStatus);
+
+        if (targetUser.getState() != newState) {
+            if (newState == UserState.BLOCKED || newState == UserState.DELETED) {
+                keycloakService.disableUser(targetUser.getKeycloakId());
+            } else if (newState == UserState.ACTIVE) {
+                keycloakService.enableUser(targetUser.getKeycloakId());
+            }
+
+            if (newState == UserState.DELETED) {
+                targetUser.setActive(false);
+            } else if (newState == UserState.ACTIVE) {
+                targetUser.setActive(true);
+            }
+
+            targetUser.setState(newState);
+            userRepository.save(targetUser);
+            keycloakService.updateUserAttribute(targetUser.getKeycloakId(), "user_state", newState.name());
+        }
 
         return "Cập nhật trạng thái User nội bộ Tenant thành công";
     }
