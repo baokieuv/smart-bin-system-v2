@@ -9,5 +9,4 @@ import java.util.UUID;
 public interface TenantRepository extends JpaRepository<Tenant, UUID> {
     Optional<Tenant> findByEmail(String email);
     Optional<Tenant> findByKeycloakId(String keycloakId);
-    Optional<Tenant> findByProvisionSecret(String provisionSecret);
 }

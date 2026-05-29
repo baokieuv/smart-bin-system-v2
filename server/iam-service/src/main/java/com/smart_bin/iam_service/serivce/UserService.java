@@ -12,6 +12,7 @@ import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.ResendVerificationRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateUserStateRequest;
 import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
+import com.smart_bin.iam_service.dto.user.request.UpdateUserByTenantRequest;
 import com.smart_bin.iam_service.dto.user.request.UpdateUserRequest;
 import com.smart_bin.iam_service.dto.user.response.UserDto;
 import com.smart_bin.iam_service.entity.Tenant;
@@ -55,43 +56,26 @@ public class UserService {
     @Value("${app.admin.root-email}")
     private String rootEmail;
 
+    @Value("${app.tenant.default-email}")
+    private String defaultTenantEmail;
+
     private static final SecureRandom random = new SecureRandom();
 
     @Transactional
-    public UserDto createUser(CreateUserRequest request) {
-        User user = userRepository.findByEmail(request.email()).orElse(null);
+    public UserDto createUser(CreateUserRequest request, String tenantId, boolean isTenant) {
+        // 1. Khởi tạo/tái sử dụng thực thể User & Đăng ký trên Keycloak
+        User user = prepareUserEntity(request);
 
-        if (user != null) {
-            if (user.isActive()) {
-                throw new ApiException(UserErrorCode.USER_ALREADY_EXISTED);
-            }
-            try {
-                keycloakService.deleteUser(user.getKeycloakId());
-            } catch (Exception ignored) {
-                log.warn("Keycloak user not found for deletion during recreation: {}", user.getKeycloakId());
-            }
+        // 2. Xác định và gán Tenant ID tương ứng
+        String assignedTenantId = assignTenant(user, tenantId, isTenant);
 
-            String newKeycloakId = keycloakService.createUser(request);
-            user.setActive(true);
-            user.setKeycloakId(newKeycloakId);
-            user.setName(request.name());
-        } else {
-            String keycloakUserId = keycloakService.createUser(request);
-            user = mapper.toEntity(request);
-            user.setKeycloakId(keycloakUserId);
-        }
-
-        user.setState(UserState.PENDING);
-        user.setEmailVerified(false);
-        user.setActionToken(UUID.randomUUID().toString());
-        user.setActionTokenExpiry(System.currentTimeMillis() + Constants.VERIFICATION_TOKEN_EXPIRY);
-        user.setTokenType(TokenType.VERIFY_EMAIL);
-        user.setRole(UserRole.USER);
+        // 3. Thiết lập trạng thái hoạt động & Token xác thực email
+        configureUserStatus(user, isTenant);
 
         User savedUser = userRepository.save(user);
 
-        sendEmailToUser(savedUser.getEmail(), savedUser.getName(), savedUser.getActionToken(), EmailType.VERIFICATION);
-        keycloakService.updateUserAttribute(user.getKeycloakId(), "user_state", UserState.PENDING.name());
+        // 4. Đồng bộ thuộc tính lên Keycloak và gửi mail thông báo nếu cần
+        syncKeycloakAndNotify(savedUser, assignedTenantId, isTenant);
 
         return mapper.toDto(savedUser);
     }
@@ -214,10 +198,6 @@ public class UserService {
     }
 
     @Transactional
-    @Caching(put = {
-            @CachePut(value = "usersByKcId", key = "#keycloakId"),
-            @CachePut(value = "users", key = "#result.id.toString()")
-    })
     public Object updateUser(String keycloakId, UpdateUserRequest request) {
         if (request.avatarUrl() != null && !request.avatarUrl().isBlank()) {
             if (!request.avatarUrl().startsWith("https://s3.kvbhust.id.vn")) {
@@ -233,12 +213,6 @@ public class UserService {
             User savedUser = userRepository.save(user);
 
             keycloakService.updateUserInfo(keycloakId, savedUser.getName());
-
-            // Xóa cache (Thay vì dùng @CachePut vì trả về Object dễ gây nhầm lẫn Cache Type)
-            var cache = cacheManager.getCache("usersByKcId");
-            if (cache != null) cache.evict(keycloakId);
-            var cacheDb = cacheManager.getCache("users");
-            if (cacheDb != null) cacheDb.evict(savedUser.getId().toString());
 
             return mapper.toDto(savedUser);
         }
@@ -257,6 +231,63 @@ public class UserService {
         }
 
         throw new ApiException(UserErrorCode.USER_NOT_FOUND, "Không tìm thấy thông tin tài khoản để cập nhật.");
+    }
+
+    @Transactional
+    public UserDto updateUserByTenant(String targetUserId, String tenantKeycloakId, UpdateUserByTenantRequest request) {
+        User targetUser = userRepository.findByIdAndActiveTrue(parseUUID(targetUserId))
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
+
+        if (!targetUser.getTenantId().equals(tenantKeycloakId)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không có quyền cập nhật người dùng của tổ chức khác.");
+        }
+
+        if (targetUser.getEmail().equalsIgnoreCase(rootEmail)) {
+            throw new ApiException(AuthErrorCode.CANNOT_MODIFY_ROOT_ADMIN);
+        }
+
+        boolean needSyncKeycloakInfo = false;
+        boolean needSyncKeycloakState = false;
+
+        if (request.name() != null && !request.name().isBlank()) {
+            targetUser.setName(request.name().trim());
+            needSyncKeycloakInfo = true;
+        }
+
+        if (request.avatarUrl() != null && !request.avatarUrl().isBlank()) {
+            if (!request.avatarUrl().startsWith("https://s3.kvbhust.id.vn")) {
+                throw new ApiException(UserErrorCode.INVALID_AVATAR_URL);
+            }
+            targetUser.setAvatarUrl(request.avatarUrl());
+        }
+
+        if (request.state() != null && targetUser.getState() != request.state()) {
+            UserState newState = request.state();
+
+            if (newState == UserState.BLOCKED || newState == UserState.DELETED) {
+                keycloakService.disableUser(targetUser.getKeycloakId());
+            } else if (newState == UserState.ACTIVE) {
+                keycloakService.enableUser(targetUser.getKeycloakId());
+            }
+
+            if (newState == UserState.DELETED) {
+                targetUser.setActive(false);
+            }
+
+            targetUser.setState(newState);
+            needSyncKeycloakState = true;
+        }
+
+        User savedUser = userRepository.save(targetUser);
+
+        if (needSyncKeycloakInfo) {
+            keycloakService.updateUserInfo(targetUser.getKeycloakId(), targetUser.getName());
+        }
+        if (needSyncKeycloakState) {
+            keycloakService.updateUserAttribute(targetUser.getKeycloakId(), "user_state", targetUser.getState().name());
+        }
+
+        return mapper.toDto(savedUser);
     }
 
     @Transactional
@@ -337,6 +368,70 @@ public class UserService {
         return password.toString();
     }
 
+    private User prepareUserEntity(CreateUserRequest request) {
+        User user = userRepository.findByEmail(request.email()).orElse(null);
+
+        if (user != null) {
+            if (user.isActive()) {
+                throw new ApiException(UserErrorCode.USER_ALREADY_EXISTED);
+            }
+            try {
+                keycloakService.deleteUser(user.getKeycloakId());
+            } catch (Exception ignored) {
+                log.warn("Keycloak user not found for deletion during recreation: {}", user.getKeycloakId());
+            }
+            user.setActive(true);
+            user.setName(request.name());
+        } else {
+            user = mapper.toEntity(request);
+        }
+
+        user.setKeycloakId(keycloakService.createUser(request));
+        user.setRole(UserRole.USER);
+        return user;
+    }
+
+    private String assignTenant(User user, String tenantId, boolean isTenant) {
+        if (isTenant && tenantId != null) {
+            user.setTenantId(tenantId);
+            return tenantId;
+        }
+
+        Tenant defaultTenant = tenantRepository.findByEmail(defaultTenantEmail)
+                .orElseThrow(() -> new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Hệ thống chưa cấu hình Default Tenant"));
+
+        String assignedId = defaultTenant.getKeycloakId();
+        user.setTenantId(assignedId);
+        return assignedId;
+    }
+
+    private void configureUserStatus(User user, boolean isTenant) {
+        if (isTenant) {
+            user.setState(UserState.ACTIVE);
+            user.setEmailVerified(true);
+            user.setActionToken(null);
+            user.setActionTokenExpiry(null);
+            user.setTokenType(null);
+        } else {
+            user.setState(UserState.PENDING);
+            user.setEmailVerified(false);
+            user.setActionToken(UUID.randomUUID().toString());
+            user.setActionTokenExpiry(System.currentTimeMillis() + Constants.VERIFICATION_TOKEN_EXPIRY);
+            user.setTokenType(TokenType.VERIFY_EMAIL);
+        }
+    }
+
+    private void syncKeycloakAndNotify(User user, String assignedTenantId, boolean isTenant) {
+        keycloakService.updateUserAttribute(user.getKeycloakId(), "user_state", user.getState().name());
+
+        if (assignedTenantId != null) {
+            keycloakService.updateUserAttribute(user.getKeycloakId(), "tenant_id", assignedTenantId);
+        }
+
+        if (!isTenant) {
+            sendEmailToUser(user.getEmail(), user.getName(), user.getActionToken(), EmailType.VERIFICATION);
+        }
+    }
 
     private UUID parseUUID(String id) {
         try {

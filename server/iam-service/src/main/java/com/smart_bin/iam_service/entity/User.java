@@ -13,6 +13,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "users")
+@Inheritance(strategy = InheritanceType.JOINED)
 @Getter
 @Setter
 public class User extends BaseEntity {
@@ -22,6 +23,9 @@ public class User extends BaseEntity {
 
     @Column(nullable = false)
     private String keycloakId; // Keycloak user ID
+
+    @Column(nullable = false)
+    private String tenantId;
 
     @Column(unique = true, nullable = false)
     private String email;

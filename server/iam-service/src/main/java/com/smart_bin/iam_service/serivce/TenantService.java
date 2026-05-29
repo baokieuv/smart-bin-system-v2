@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.common.EmailType;
+import com.smart_bin.core.common.SyncTenantUserType;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.common.UserState;
@@ -31,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -68,9 +70,6 @@ public class TenantService {
         Tenant tenant = tenantMapper.toEntity(request);
         tenant.setKeycloakId(keycloakId);
         tenant.setState(UserState.ACTIVE);
-
-        String secretKey = UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        tenant.setProvisionSecret(secretKey);
 
         Tenant savedTenant = tenantRepository.save(tenant);
 
@@ -147,41 +146,6 @@ public class TenantService {
         tenantUserControlRepository.save(controlRecord);
 
         return "Cập nhật trạng thái User nội bộ Tenant thành công";
-    }
-
-    public String verifyTenantSecret(String internalSecret, String secret) {
-        if (!appInternalSecret.equals(internalSecret)) {
-            throw new ApiException(AuthErrorCode.INVALID_INTERNAL_SECRET);
-        }
-
-        Tenant tenant = tenantRepository.findByProvisionSecret(secret)
-                .orElseThrow(() -> new ApiException(AuthErrorCode.INVALID_PROVISION_SECRET));
-
-        return tenant.getKeycloakId();
-    }
-
-    public String mappingTenantAndUser(String tenantId, String userId, String internalSecret) {
-        if (!appInternalSecret.equals(internalSecret)) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Internal secret không hợp lệ");
-        }
-
-        Tenant tenant = tenantRepository.findByKeycloakId(tenantId)
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "Tenant không tồn tại"));
-
-        User user = userRepository.findById(UUID.fromString(userId))
-                .orElseThrow(() -> new ApiException(CoreErrorCode.BAD_REQUEST, "User không tồn tại"));
-
-        if (tenantUserControlRepository.existsByTenantIdAndUserId(tenant.getId(), user.getId())) {
-            throw new ApiException(UserErrorCode.USER_ALREADY_MAPPED_TO_TENANT);
-        }
-
-        TenantUserControl controlRecord = new TenantUserControl();
-        controlRecord.setTenantId(tenant.getId());
-        controlRecord.setUserId(user.getId());
-        controlRecord.setState(UserState.ACTIVE);
-        tenantUserControlRepository.save(controlRecord);
-
-        return "Mapping User vào Tenant thành công";
     }
 
     private void sendEmailToTenant(Tenant tenant, String initialPassword, EmailType emailType) {

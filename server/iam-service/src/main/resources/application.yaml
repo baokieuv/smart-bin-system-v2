@@ -84,10 +84,13 @@ app:
   kafka:
     topics:
       send-email: "send-email-topic"
-
+      sync-user-tenant: "sync-user-tenant-topic"
   admin:
     root-email: ${APP_ROOT_EMAIL:kieubao2k4@gmail.com}
     root-password: ${APP_ROOT_PASS:12345678}
+  tenant:
+    default-email: default_tenant@smartbin.com
+    default-password: ${APP_ROOT_PASS:12345678}
 
 # 7. GOOGLE RECAPTCHA (Bảo vệ API Login/Register khỏi bị spam)
 google:

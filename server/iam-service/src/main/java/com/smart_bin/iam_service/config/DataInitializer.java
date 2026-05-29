@@ -27,9 +27,16 @@ public class DataInitializer implements CommandLineRunner {
     @Value("${app.admin.root-password}")
     private String rootPassword;
 
+    @Value("${app.tenant.default-email}")
+    private String defaultTenantEmail;
+
+    @Value("${app.tenant.default-password}")
+    private String defaultTenantPassword;
+
     @Override
     public void run(String... args) throws Exception {
         initSuperAdmin();
+        initDefaultTenant();
     }
 
     private void initSuperAdmin() {
@@ -48,11 +55,6 @@ public class DataInitializer implements CommandLineRunner {
                 rootAdmin.setRole(UserRole.SUPER_ADMIN);
                 rootAdmin.setActive(true);
 
-                // Gen Secret Key mặc định cho Root Admin
-                String secretKey = UUID.randomUUID().toString().replace("-", "") +
-                        UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-                rootAdmin.setProvisionSecret(secretKey);
-
                 tenantRepository.save(rootAdmin);
                 log.info("Đã tạo thành công tài khoản Super Admin mặc định trong bảng Tenant: {}", rootEmail);
 
@@ -61,6 +63,31 @@ public class DataInitializer implements CommandLineRunner {
             }
         } else {
             log.info("Tài khoản Super Admin đã tồn tại. Bỏ qua bước khởi tạo.");
+        }
+    }
+
+    private void initDefaultTenant() {
+        if (tenantRepository.findByEmail(defaultTenantEmail).isEmpty()) {
+            log.info("Không tìm thấy Default Tenant. Tiến hành khởi tạo...");
+            try {
+                String keycloakId = keycloakService.createTenantAdminAccount(defaultTenantEmail, defaultTenantPassword, "Default Tenant");
+
+                Tenant defaultTenant = new Tenant();
+                defaultTenant.setKeycloakId(keycloakId);
+                defaultTenant.setEmail(defaultTenantEmail);
+                defaultTenant.setName("Default Tenant");
+                defaultTenant.setState(UserState.ACTIVE);
+                defaultTenant.setRole(UserRole.ADMIN);
+                defaultTenant.setActive(true);
+
+                tenantRepository.save(defaultTenant);
+                log.info("Đã tạo thành công Default Tenant: {}", defaultTenantEmail);
+
+            } catch (Exception e) {
+                log.error("Lỗi khi khởi tạo Default Tenant: {}", e.getMessage(), e);
+            }
+        } else {
+            log.info("Default Tenant đã tồn tại. Bỏ qua bước khởi tạo.");
         }
     }
 }
