@@ -96,13 +96,13 @@ public class TenantController {
 //        return responseFactory.response(SuccessCode.OK, response);
 //    }
 
-//    @PostMapping("/map-user")
-//    public ResponseEntity<ApiResponseFormat<Object>> mapTenantToUser(
-//            @RequestHeader("x-internal-secret") String internalSecret,
-//            @RequestParam("tenantId") String tenantId,
-//            @RequestParam("userId") String userId
-//    ) {
-//        var response = service.mappingTenantAndUser(tenantId, userId, internalSecret);
-//        return responseFactory.response(SuccessCode.OK, response);
-//    }
+    @PostMapping("/verify-user")
+    public ResponseEntity<ApiResponseFormat<Object>> mapTenantToUser(
+            @RequestHeader("x-internal-secret") String internalSecret,
+            @RequestParam("tenantId") String tenantId,
+            @RequestParam("userId") String userId
+    ) {
+        var response = service.verifyUserInTenant(tenantId, userId, internalSecret);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
 }

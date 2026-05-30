@@ -1,6 +1,6 @@
 import { api } from "@/lib/api-client";
 import type { PagedPayload } from "@/types/core";
-import type { DeviceAdminConfigDto, DeviceDto } from "@/types/device";
+import type { DeviceAdminConfigDto, DeviceDto, DeviceOperationResult } from "@/types/device";
 
 export type DeviceImportRequestItem = {
   mac: string;
@@ -18,6 +18,10 @@ export const devicesAdminApi = {
     api.get<PagedPayload<DeviceDto>>("/devices/admin", params, { cacheTTL: 30000 }),
   getDeviceConfig: async (deviceId: string) => api.get<DeviceAdminConfigDto>(`/configs/devices/${deviceId}`),
   importDevices: async (payload: { devices: DeviceImportRequestItem[] }) => api.post<ImportDeviceResponseItem[]>("/devices/import", payload),
+  assignDevicesToGroup: async (payload: { groupId: string; macAddresses: string[] }) =>
+    api.post<string[]>("/devices/assign-group", payload),
+  assignDevicesToUser: async (payload: { userId: string; macAddresses: string[] }) =>
+    api.post<DeviceOperationResult[]>("/devices/assign-user", payload),
   updateAdminConfig: async (
     deviceId: string,
     payload: { targetBinFirmwareId?: string; targetDesktopFirmwareId?: string }

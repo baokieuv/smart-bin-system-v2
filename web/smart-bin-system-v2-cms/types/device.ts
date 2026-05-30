@@ -25,3 +25,9 @@ export interface DeviceAdminConfigDto {
   targetBinVersion?: string | null;
   targetDesktopVersion?: string | null;
 }
+
+export interface DeviceOperationResult {
+  mac: string;
+  status: boolean;
+  message: string;
+}

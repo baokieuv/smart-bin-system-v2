@@ -118,7 +118,7 @@ public class TenantService {
         if (isSuperAdmin){
             return userRepository.findAll(pageable).map(userMapper::toDto);
         } else {
-            return userRepository.findByTenantId(tenant.getId().toString(), pageable)
+            return userRepository.findByTenantId(tenant.getKeycloakId(), pageable)
                     .map(userMapper::toDto);
         }
     }
@@ -158,6 +158,19 @@ public class TenantService {
         return "Cập nhật trạng thái User nội bộ Tenant thành công";
     }
 
+    public boolean verifyUserInTenant(String tenantId, String userId, String internalSecret) {
+        if (!appInternalSecret.equals(internalSecret)) {
+            throw new ApiException(AuthErrorCode.FORBIDDEN_ACCESS, "Invalid internal secret");
+        }
+
+        Tenant tenant = tenantRepository.findByKeycloakId(tenantId)
+                .orElseThrow(() -> new ApiException(UserErrorCode.TENANT_NOT_FOUND));
+
+        User user = userRepository.findByKeycloakId(userId)
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND));
+
+        return user.getTenantId().equals(tenant.getKeycloakId());
+    }
     private void sendEmailToTenant(Tenant tenant, String initialPassword, EmailType emailType) {
         ObjectNode emailData = objectMapper.createObjectNode();
         emailData.put("email", tenant.getEmail());

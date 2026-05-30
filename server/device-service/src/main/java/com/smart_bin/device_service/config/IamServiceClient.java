@@ -16,8 +16,8 @@ public interface IamServiceClient {
             @RequestParam("secret") String secret
     );
 
-    @PostMapping("/api/v1/tenants/map-user")
-    void mapTenantToUser(
+    @PostMapping("/api/v1/tenants/verify-user")
+    JsonNode verifyUserInTenant(
             @RequestHeader("x-internal-secret") String internalSecret,
             @RequestParam("tenantId") String tenantId,
             @RequestParam("userId") String userId

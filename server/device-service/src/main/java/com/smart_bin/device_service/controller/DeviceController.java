@@ -115,6 +115,28 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
+    @PostMapping("/assign-group")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN)")
+    public ResponseEntity<ApiResponseFormat<Object>> assignDevicesToGroup(
+            @Valid @RequestBody AssignDevicesToGroupRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String tenantId = jwt.getSubject();
+        var response = deviceService.assignDevicesToGroup(request, tenantId);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping("/assign-user")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN)")
+    public ResponseEntity<ApiResponseFormat<Object>> assignDevicesToUser(
+            @Valid @RequestBody AssignDeviceToUserRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ){
+        String tenantId = jwt.getSubject();
+        var response = deviceService.assignDevicesToUser(request, tenantId);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
     @DeleteMapping("/{deviceId}")
     public ResponseEntity<ApiResponseFormat<Object>> deleteDevice(
             @AuthenticationPrincipal Jwt jwt,

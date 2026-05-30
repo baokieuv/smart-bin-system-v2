@@ -7,16 +7,15 @@ import com.smart_bin.core.common.SyncTenantUserType;
 import com.smart_bin.core.dto.NotificationEventDto;
 import com.smart_bin.core.dto.PageResponseDto;
 import com.smart_bin.core.exception.ApiException;
+import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.DetectionFeedback;
 import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.common.DeviceStatus;
 import com.smart_bin.device_service.common.WasteType;
+import com.smart_bin.device_service.config.IamServiceClient;
 import com.smart_bin.device_service.config.MediaServiceClient;
 import com.smart_bin.device_service.dto.request.*;
-import com.smart_bin.device_service.dto.response.DetectionResultDto;
-import com.smart_bin.device_service.dto.response.DeviceDto;
-import com.smart_bin.device_service.dto.response.DeviceProvisionResponse;
-import com.smart_bin.device_service.dto.response.ImportDeviceResponse;
+import com.smart_bin.device_service.dto.response.*;
 import com.smart_bin.device_service.entity.*;
 import com.smart_bin.device_service.exception.DeviceErrorCode;
 import com.smart_bin.device_service.mapper.DeviceMapper;
@@ -41,6 +40,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -53,6 +53,7 @@ public class DeviceService {
     private final RedisTemplate<String, String> redisTemplate;
     private final ObjectMapper objectMapper;
     private final MediaServiceClient mediaServiceClient;
+    private final IamServiceClient iamServiceClient;
     private final KafkaService kafkaService;
     private final DeviceSecurityService securityService;
     private final DeviceProfileRepository profileRepository;
@@ -123,7 +124,7 @@ public class DeviceService {
         Optional<Device> deviceOpt = repository.findByMac(request.mac());
 
         return deviceOpt.map(device -> claimExistingDevice(device, request, userId))
-                .orElseGet(() -> cacheClaimRequestForFutureProvision(request, userId));
+                .orElseGet(() -> createPendingDeviceForFutureProvision(request, userId));
     }
 
 //    @Cacheable(value = "device_list", key = "#keycloakId + ':' + #page + ':' + #size")
@@ -220,10 +221,6 @@ public class DeviceService {
     }
 
     @Transactional
-    @Caching(
-            put = { @CachePut(value = "device_detail", key = "#tenantId + ':' + #id") },
-            evict = { @CacheEvict(value = "device_list", allEntries = true) }
-    )
     public DeviceDto updateDeviceByTenant(String id, UpdateDeviceTenantRequest request, String tenantId) {
         Device device = getDeviceAndVerifyTenantOwnership(id, tenantId);
 
@@ -244,11 +241,80 @@ public class DeviceService {
         return mapper.toDto(device);
     }
 
+    public List<String> assignDevicesToGroup(AssignDevicesToGroupRequest request, String tenantId){
+        DeviceGroup group = groupRepository.findByIdAndTenantIdAndActiveTrue(parseUUID(request.groupId()), tenantId)
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_GROUP_NOT_FOUND));
+
+        List<Device> devicesToUpdate = repository.findByMacInAndActiveTrue(request.macAddresses()).stream()
+                .filter(device -> tenantId.equals(device.getTenantId()))
+                .collect(Collectors.toList());
+
+        for (Device device : devicesToUpdate) {
+            device.setDeviceGroup(group);
+        }
+        repository.saveAll(devicesToUpdate);
+
+        return devicesToUpdate.stream()
+                .map(Device::getMac)
+                .collect(Collectors.toList());
+    }
+
+    public List<DeviceOperationResult> assignDevicesToUser(AssignDeviceToUserRequest request, String tenantId){
+        try{
+            var response = iamServiceClient.verifyUserInTenant(internalSecret, request.userId(), tenantId);
+            if (response == null || !response.get("data").asBoolean()) {
+                throw new ApiException(DeviceErrorCode.USER_NOT_FOUND_IN_TENANT);
+            }
+        }catch (Exception e){
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR);
+        }
+
+        List<DeviceOperationResult> results = new ArrayList<>();
+        List<Device> validDevicesToSave = new ArrayList<>();
+
+        List<Device> foundDevices = repository.findByMacInAndActiveTrue(request.macAddresses());
+
+        Map<String, Device> deviceMap = foundDevices.stream()
+                .collect(Collectors.toMap(Device::getMac, d -> d));
+
+        for (String mac : request.macAddresses()) {
+            Device device = deviceMap.get(mac);
+
+            // Trường hợp 1: Thiết bị hoàn toàn không tồn tại trong DB
+            if (device == null) {
+                results.add(new DeviceOperationResult(mac, false, "Thiết bị không tồn tại hoặc đã bị vô hiệu hóa."));
+                continue;
+            }
+
+            // Trường hợp 2: Vi phạm quyền sở hữu (Data Isolation)
+            if (device.getTenantId() == null || !device.getTenantId().equals(tenantId)) {
+                results.add(new DeviceOperationResult(mac, false, "Thiết bị không thuộc quyền sở hữu của tổ chức bạn."));
+                continue;
+            }
+
+            // Trường hợp 3: Thiết bị đã được gán sẵn cho chính User này rồi (Tránh update thừa)
+            if (request.userId().equals(device.getUserId())) {
+                results.add(new DeviceOperationResult(mac, true, "Thiết bị đã được gán cho người dùng này từ trước."));
+                continue;
+            }
+
+            // HỢP LỆ -> Tiến hành gán User
+            device.setUserId(request.userId());
+            device.setState(DeviceState.ACTIVE);
+            device.setClaimedAt(System.currentTimeMillis());
+
+            validDevicesToSave.add(device);
+            results.add(new DeviceOperationResult(mac, true, "Gán thiết bị thành công."));
+        }
+        if (!validDevicesToSave.isEmpty()) {
+            repository.saveAll(validDevicesToSave);
+        }
+
+        return results;
+    }
+
+
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(value = "device_detail", key = "#keycloakId + ':' + #id"),
-            @CacheEvict(value = "device_list", allEntries = true)
-    })
     public void deleteDevice(String id, String keycloakId){
         Device device = getDeviceAndVerifyUserOwnership(id, keycloakId);
 
@@ -306,7 +372,9 @@ public class DeviceService {
 
         device.setPublicKey(deviceSecret);
 
-        processCachedClaimData(device, request.mac());
+        if (device.getUserId() != null && device.getClaimedAt() == null) {
+            device.setClaimedAt(System.currentTimeMillis());
+        }
 
         syncWithThingsBoard(device, request.mac());
 
@@ -390,27 +458,6 @@ public class DeviceService {
         device.setStatus(DeviceStatus.OFFLINE);
         device.setDeviceProfile(profile);
         return device;
-    }
-
-    private void processCachedClaimData(Device device, String mac) {
-        String cacheKey = CLAIM_CACHE_PREFIX + mac;
-        String cachedDataStr = redisTemplate.opsForValue().get(cacheKey);
-
-        if (cachedDataStr != null && device.getUserId() == null) {
-            try {
-                JsonNode cachedData = objectMapper.readTree(cachedDataStr);
-                if (cachedData.has("userId")) device.setUserId(cachedData.get("userId").asString());
-                if (cachedData.has("name")) device.setName(cachedData.get("name").asString());
-                if (cachedData.has("latitude")) device.setLatitude(cachedData.get("latitude").asDouble());
-                if (cachedData.has("longitude")) device.setLongitude(cachedData.get("longitude").asDouble());
-
-                device.setClaimedAt(System.currentTimeMillis());
-                redisTemplate.delete(cacheKey);
-                log.info("Auto-mapped User {} và tọa độ cho thiết bị MAC {}", device.getUserId(), mac);
-            } catch (Exception e) {
-                log.error("Lỗi khi đọc cache claim data: ", e);
-            }
-        }
     }
 
     private void syncWithThingsBoard(Device device, String mac) {
@@ -546,16 +593,25 @@ public class DeviceService {
         return "Đã liên kết thiết bị thành công!";
     }
 
-    private String cacheClaimRequestForFutureProvision(ClaimDeviceRequest request, String userId) {
-        String cacheKey = CLAIM_CACHE_PREFIX + request.mac();
+    private String createPendingDeviceForFutureProvision(ClaimDeviceRequest request, String userId) {
         try {
-            Map<String, Object> cacheData = new HashMap<>();
-            cacheData.put("userId", userId);
-            if (StringUtils.hasText(request.name())) cacheData.put("name", request.name());
-            if (request.latitude() != null) cacheData.put("latitude", request.latitude());
-            if (request.longitude() != null) cacheData.put("longitude", request.longitude());
+            Device device = new Device();
+            device.setMac(request.mac());
+            device.setUserId(userId);
+            device.setState(DeviceState.PENDING); // Đặt trạng thái chờ
+            device.setStatus(DeviceStatus.OFFLINE);
 
-            redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(cacheData), 7, TimeUnit.DAYS);
+            if (StringUtils.hasText(request.name())) {
+                device.setName(request.name());
+            }
+            if (request.latitude() != null) {
+                device.setLatitude(request.latitude());
+            }
+            if (request.longitude() != null) {
+                device.setLongitude(request.longitude());
+            }
+
+            repository.save(device);
             return "Đã ghi nhận yêu cầu. Thiết bị sẽ liên kết khi cắm điện.";
         } catch (Exception e) {
             throw new ApiException(DeviceErrorCode.DEVICE_CLAIM_CACHE_ERROR);

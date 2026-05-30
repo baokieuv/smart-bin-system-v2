@@ -4,6 +4,13 @@ export interface LoginRequest {
   captcha: string;
 }
 
+export interface CreateUserRequest {
+  email: string;
+  password: string;
+  name: string;
+  captcha: string;
+}
+
 export interface AdminSessionUser {
   id: string;
   email: string;

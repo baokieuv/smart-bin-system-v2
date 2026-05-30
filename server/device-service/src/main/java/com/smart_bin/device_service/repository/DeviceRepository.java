@@ -41,5 +41,7 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
 
     boolean existsByDeviceProfile_IdAndActiveTrue(UUID profileId);
 
+    List<Device> findByMacInAndActiveTrue(List<String> macs);
+
     long countByUserIdAndTenantId(String userId, String tenantId);
 }

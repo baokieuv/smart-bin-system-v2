@@ -51,7 +51,8 @@ public enum DeviceErrorCode implements ApiResponseCode {
     DEVICE_ALREADY_CLAIMED(false, "SMB3026", "error.device_already_claimed", HttpStatus.CONFLICT),
     DEVICE_CLAIM_CACHE_ERROR(false, "SMB3027", "error.device_claim_cache_error", HttpStatus.INTERNAL_SERVER_ERROR),
     WEBHOOK_TIMEOUT(false, "SMB3028", "error.webhook_timeout", HttpStatus.REQUEST_TIMEOUT),
-    INVALID_WEBHOOK_SIGNATURE(false, "SMB3029", "error.invalid_webhook_signature", HttpStatus.UNAUTHORIZED);
+    INVALID_WEBHOOK_SIGNATURE(false, "SMB3029", "error.invalid_webhook_signature", HttpStatus.UNAUTHORIZED),
+    USER_NOT_FOUND_IN_TENANT(false, "SMB3030", "error.user_not_found_in_tenant", HttpStatus.NOT_FOUND);
 
     private final boolean success;
     private final String code;

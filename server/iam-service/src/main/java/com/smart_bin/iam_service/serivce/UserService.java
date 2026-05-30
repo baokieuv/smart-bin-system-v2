@@ -96,6 +96,10 @@ public class UserService {
             return;
         }
 
+        Tenant defaultTenant = tenantRepository.findByEmail(defaultTenantEmail)
+                .orElseThrow(() -> new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Hệ thống chưa cấu hình Default Tenant"));
+
+
         // Lần đầu đăng nhập bằng Google
         User newUser = new User();
         newUser.setKeycloakId(keycloakId);
@@ -103,6 +107,7 @@ public class UserService {
         newUser.setName(name);
         newUser.setAvatarUrl(avatarUrl);
         newUser.setEmailVerified(true);
+        newUser.setTenantId(defaultTenant.getKeycloakId());
         newUser.setState(UserState.ACTIVE);
         newUser.setActive(true);
         newUser.setRole(UserRole.USER);
@@ -412,6 +417,8 @@ public class UserService {
             user.setActionToken(null);
             user.setActionTokenExpiry(null);
             user.setTokenType(null);
+
+            keycloakService.enableUser(user.getKeycloakId());
         } else {
             user.setState(UserState.PENDING);
             user.setEmailVerified(false);

@@ -7,8 +7,10 @@ import { getCmsAccessRole } from "@/lib/auth-session";
 import { devicesAdminApi } from "@/services/api/devices-admin";
 import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
 import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
+import { usersAdminApi } from "@/services/api/users-admin";
 import type { DeviceDto } from "@/types/device";
 import type { FirmwareDto } from "@/types/firmware";
+import type { UserDto } from "@/types/user";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 const firmwareLabel = (firmware: FirmwareDto) => {
@@ -30,14 +32,17 @@ const getLatestFirmware = (firmwares: FirmwareDto[], type: "ESP32" | "RASPBERRY_
 export default function DevicesPage() {
   const [devices, setDevices] = useState<DeviceDto[]>([]);
   const [firmwares, setFirmwares] = useState<FirmwareDto[]>([]);
+  const [users, setUsers] = useState<UserDto[]>([]);
   const [role, setRole] = useState<"super_admin" | "admin" | null>(null);
   const [form, setForm] = useState({ mac: "", claimCode: "" });
   const [deviceGroups, setDeviceGroups] = useState<{ id: string; code: string; name: string }[]>([]);
   const [message, setMessage] = useState("");
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
-  const [bulkGroupCode, setBulkGroupCode] = useState("");
-  const [bulkMessage, setBulkMessage] = useState("");
-  const [bulkLoading, setBulkLoading] = useState(false);
+  const [assignMode, setAssignMode] = useState<"group" | "user">("group");
+  const [assignGroupId, setAssignGroupId] = useState("");
+  const [assignUserId, setAssignUserId] = useState("");
+  const [assignMessage, setAssignMessage] = useState("");
+  const [assignLoading, setAssignLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
@@ -62,13 +67,24 @@ export default function DevicesPage() {
     [sortedFirmwares]
   );
 
+  const sortedUsers = useMemo(
+    () =>
+      [...users].sort(
+        (left, right) =>
+          Number(right.state === "ACTIVE") - Number(left.state === "ACTIVE") ||
+          left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) ||
+          left.email.localeCompare(right.email, undefined, { sensitivity: "base" })
+      ),
+    [users]
+  );
+
   const isConfigDirty =
     Boolean(selectedDeviceId) &&
     Boolean(configForm?.targetBinFirmwareId || configForm?.targetDesktopFirmwareId) &&
     (configForm?.targetBinFirmwareId !== configInitial?.targetBinFirmwareId ||
       configForm?.targetDesktopFirmwareId !== configInitial?.targetDesktopFirmwareId);
 
-  const canAssignGroups = role !== "super_admin";
+  const canAssignDevices = role !== "super_admin";
   const canConfigureFirmware = role !== "admin";
 
   const loadRole = () => {
@@ -129,6 +145,14 @@ export default function DevicesPage() {
         // ignore
       }
     })();
+    void (async () => {
+      try {
+        const response = await usersAdminApi.getUsers({ page: 1, size: 200 });
+        setUsers(unwrapListPayload(response.data));
+      } catch {
+        // ignore
+      }
+    })();
   }, []);
 
   const toggleDeviceSelection = (deviceId: string) => {
@@ -137,33 +161,66 @@ export default function DevicesPage() {
     );
   };
 
-  const assignSelectedDeviceGroups = async (event: FormEvent) => {
+  const selectAllVisibleDevices = () => {
+    setSelectedDeviceIds(devices.map((device) => device.id));
+  };
+
+  const assignSelectedDevices = async (event: FormEvent) => {
     event.preventDefault();
 
     if (!selectedDeviceIds.length) {
-      setBulkMessage("Select at least one device first");
+      setAssignMessage("Select at least one device first");
       return;
     }
 
-    setBulkLoading(true);
-    setBulkMessage("");
+    if (assignMode === "group" && !assignGroupId) {
+      setAssignMessage("Choose a device group first");
+      return;
+    }
+
+    if (assignMode === "user" && !assignUserId) {
+      setAssignMessage("Choose a user first");
+      return;
+    }
+
+    setAssignLoading(true);
+    setAssignMessage("");
 
     try {
-      await Promise.all(
-        selectedDeviceIds.map((deviceId) =>
-          devicesAdminApi.updateDevice(deviceId, {
-            groupCode: bulkGroupCode.trim() || undefined,
-          })
-        )
-      );
+      const selectedDevices = devices.filter((device) => selectedDeviceIds.includes(device.id));
 
-      setBulkMessage(`Updated ${selectedDeviceIds.length} device${selectedDeviceIds.length > 1 ? "s" : ""}`);
+      if (assignMode === "group") {
+        const response = await devicesAdminApi.assignDevicesToGroup({
+          groupId: assignGroupId,
+          macAddresses: selectedDevices.map((device) => device.mac),
+        });
+
+        const updatedCount = response.data?.length ?? selectedDevices.length;
+        setAssignMessage(`Assigned ${updatedCount} device${updatedCount !== 1 ? "s" : ""} to group`);
+      } else {
+        const response = await devicesAdminApi.assignDevicesToUser({
+          userId: assignUserId,
+          macAddresses: selectedDevices.map((device) => device.mac),
+        });
+
+        const results = response.data ?? [];
+        const successCount = results.filter((item) => item.status).length;
+        const failedCount = results.length - successCount;
+        setAssignMessage(
+          failedCount > 0
+            ? `Assigned ${successCount}/${results.length} devices to user. ${failedCount} device(s) need attention.`
+            : `Assigned ${successCount} device${successCount !== 1 ? "s" : ""} to user`
+        );
+      }
+
       setSelectedDeviceIds([]);
+      setAssignGroupId("");
+      setAssignUserId("");
       await load(page, size);
     } catch (error) {
-      setBulkMessage(error instanceof Error ? error.message : "Group assignment failed");
+      setAssignMessage(error instanceof Error ? error.message : "Assignment failed");
     } finally {
-      setBulkLoading(false);
+      setAssignLoading(false);
     }
   };
 
@@ -287,7 +344,7 @@ export default function DevicesPage() {
           <table className="w-full min-w-300 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                {canAssignGroups ? <th className="w-10 py-2 px-3 whitespace-nowrap">Select</th> : null}
+                  {canAssignDevices ? <th className="w-10 py-2 px-3 whitespace-nowrap">Select</th> : null}
                   <th className="py-2 px-3 whitespace-nowrap">Name</th>
                   <th className="py-2 px-3 whitespace-nowrap">MAC</th>
                   <th className="py-2 px-3 whitespace-nowrap">Group Code</th>
@@ -305,7 +362,7 @@ export default function DevicesPage() {
             <tbody>
               {devices.map((device) => (
                 <tr key={device.id} className={`border-b border-slate-200/70 ${selectedDeviceId === device.id ? "bg-sky-50/60" : ""}`}>
-                  {canAssignGroups ? (
+                  {canAssignDevices ? (
                     <td className="py-2 px-3 whitespace-nowrap">
                       <input
                         type="checkbox"
@@ -459,47 +516,116 @@ export default function DevicesPage() {
           </Panel>
         ) : null}
 
-        {canAssignGroups ? (
-          <Panel title="Assign Device Group" subtitle="Select one or many devices, then apply a group in bulk">
-            <form className="space-y-3" onSubmit={assignSelectedDeviceGroups}>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <p className="font-semibold text-foreground">Selected devices: {selectedDeviceIds.length}</p>
-                <p>Use this panel to assign the same device group to one or many devices at once.</p>
+        {canAssignDevices ? (
+          <Panel title="Assign Devices" subtitle="Pick devices once, then assign them to a group or a user in one step">
+            <form className="space-y-4" onSubmit={assignSelectedDevices}>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-foreground">Selected devices: {selectedDeviceIds.length}</p>
+                    <p>
+                      {selectedDeviceIds.length > 0
+                        ? `${selectedDeviceIds.length} device(s) are queued for assignment.`
+                        : "Select one or more devices from the table to start."}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllVisibleDevices}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                      disabled={devices.length === 0}
+                    >
+                      Select all on page
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDeviceIds([])}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                      disabled={selectedDeviceIds.length === 0}
+                    >
+                      Clear selection
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Device Group</label>
-                <select
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2"
-                  value={bulkGroupCode}
-                  onChange={(event) => setBulkGroupCode(event.target.value)}
+              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setAssignMode("group")}
+                  className={`rounded-xl px-4 py-3 text-left transition ${
+                    assignMode === "group"
+                      ? "border border-sky-300 bg-sky-50 text-sky-800"
+                      : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                  }`}
                 >
-                  <option value="">(no group)</option>
-                  {deviceGroups.map((group) => (
-                    <option key={group.id} value={group.code}>
-                      {group.code} - {group.name}
-                    </option>
-                  ))}
-                </select>
+                  <div className="text-sm font-semibold">Assign to group</div>
+                  <div className="mt-1 text-xs">Best when devices belong to the same operational area.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssignMode("user")}
+                  className={`rounded-xl px-4 py-3 text-left transition ${
+                    assignMode === "user"
+                      ? "border border-sky-300 bg-sky-50 text-sky-800"
+                      : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  <div className="text-sm font-semibold">Assign to user</div>
+                  <div className="mt-1 text-xs">Best when devices should be owned by a specific account.</div>
+                </button>
               </div>
+
+              {assignMode === "group" ? (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Target device group</label>
+                  <select
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2"
+                    value={assignGroupId}
+                    onChange={(event) => setAssignGroupId(event.target.value)}
+                  >
+                    <option value="">Choose a group</option>
+                    {deviceGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.code} - {group.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500">The selected devices will be reassigned to the chosen group immediately.</p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Target user</label>
+                  <select
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2"
+                    value={assignUserId}
+                    onChange={(event) => setAssignUserId(event.target.value)}
+                  >
+                    <option value="">Choose a user</option>
+                    {sortedUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name} - {user.email} {user.state !== "ACTIVE" ? `(${user.state})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500">Only active users should usually be used for ownership assignment.</p>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                   type="submit"
-                  disabled={bulkLoading || selectedDeviceIds.length === 0}
+                  disabled={assignLoading || selectedDeviceIds.length === 0 || (assignMode === "group" ? !assignGroupId : !assignUserId)}
                 >
-                  {bulkLoading ? "Applying..." : "Assign group to selected devices"}
+                  {assignLoading
+                    ? "Applying..."
+                    : assignMode === "group"
+                      ? "Assign selected devices to group"
+                      : "Assign selected devices to user"}
                 </button>
-                <button
-                  type="button"
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
-                  onClick={() => setSelectedDeviceIds([])}
-                  disabled={selectedDeviceIds.length === 0}
-                >
-                  Clear selection
-                </button>
-                {bulkMessage ? <p className="text-sm text-slate-600">{bulkMessage}</p> : null}
+                {assignMessage ? <p className="text-sm text-slate-600">{assignMessage}</p> : null}
               </div>
             </form>
           </Panel>
