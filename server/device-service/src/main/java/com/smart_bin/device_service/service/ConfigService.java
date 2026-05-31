@@ -197,8 +197,8 @@ public class ConfigService {
         }
 
         // 2. Cấp Tenant (Device Group): Đè lên cấu hình User nếu có thuộc tính trùng
-        if (device.getDeviceGroup() != null && device.getDeviceGroup().getMetadata() != null) {
-            finalConfig.putAll(device.getDeviceGroup().getMetadata());
+        if (device.getDeviceGroup() != null && device.getDeviceGroup().getSharedSpecs() != null) {
+            finalConfig.putAll(device.getDeviceGroup().getSharedSpecs());
         }
 
         // 3. Cấp Admin (Device Profile): Có quyền cao nhất, đè lên tất cả

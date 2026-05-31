@@ -39,6 +39,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -95,6 +96,7 @@ public class DeviceService {
                     results.add(new ImportDeviceResponse(mac, "SKIPPED", "Thiết bị đã nằm trong danh sách của bạn."));
                 } else {
                     device.setTenantId(tenantId);
+                    syncWithThingsBoard(device, mac);
                     repository.save(device);
                     results.add(new ImportDeviceResponse(mac, "SUCCESS", "Gán Tenant thành công cho thiết bị đã tồn tại."));
                 }
@@ -103,6 +105,7 @@ public class DeviceService {
                 shellDevice.setMac(mac);
                 shellDevice.setTenantId(tenantId);
                 shellDevice.setState(DeviceState.PENDING); // Trạng thái chờ kích hoạt
+                syncWithThingsBoard(shellDevice, mac);
                 repository.save(shellDevice);
 
                 results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));
@@ -245,6 +248,8 @@ public class DeviceService {
         DeviceGroup group = groupRepository.findByIdAndTenantIdAndActiveTrue(parseUUID(request.groupId()), tenantId)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_GROUP_NOT_FOUND));
 
+        String tbProfileId = group.getTbProfileId();
+
         List<Device> devicesToUpdate = repository.findByMacInAndActiveTrue(request.macAddresses()).stream()
                 .filter(device -> tenantId.equals(device.getTenantId()))
                 .collect(Collectors.toList());
@@ -254,6 +259,23 @@ public class DeviceService {
         }
         repository.saveAll(devicesToUpdate);
 
+        if (tbProfileId != null) {
+            List<CompletableFuture<Void>> futures = devicesToUpdate.stream()
+                    .filter(device -> device.getDeviceId() != null) // Chỉ gọi API với máy đã có tbDeviceId
+                    .map(device -> CompletableFuture.runAsync(() -> {
+                        try {
+                            thingsBoardService.assignProfileToDevice(device.getDeviceId(), tbProfileId);
+                            log.info("Đã gán thành công Profile cho device: {}", device.getMac());
+                        } catch (Exception e) {
+                            log.error("Lỗi khi gán profile cho thiết bị {} trên ThingsBoard", device.getMac(), e);
+                            // Cân nhắc ném exception hoặc lưu log để retry sau
+                        }
+                    }))
+                    .toList();
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        }
+
         return devicesToUpdate.stream()
                 .map(Device::getMac)
                 .collect(Collectors.toList());
@@ -261,7 +283,7 @@ public class DeviceService {
 
     public List<DeviceOperationResult> assignDevicesToUser(AssignDeviceToUserRequest request, String tenantId){
         try{
-            var response = iamServiceClient.verifyUserInTenant(internalSecret, request.userId(), tenantId);
+            var response = iamServiceClient.verifyUserInTenant(internalSecret, tenantId, request.userId());
             if (response == null || !response.get("data").asBoolean()) {
                 throw new ApiException(DeviceErrorCode.USER_NOT_FOUND_IN_TENANT);
             }

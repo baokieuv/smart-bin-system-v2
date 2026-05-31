@@ -3,7 +3,9 @@ package com.smart_bin.device_service.dto.request;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import tools.jackson.databind.JsonNode;
 
+import java.util.List;
 import java.util.Map;
 
 public record CreateDeviceGroupRequest(
@@ -16,5 +18,7 @@ public record CreateDeviceGroupRequest(
         @NotNull(message = "Thuộc tính không được để trống")
         Map<String, Object> sharedSpecs,
 
-        String description
+        String description,
+
+        List<AlarmRuleDto> alarmRules
 ) {}
