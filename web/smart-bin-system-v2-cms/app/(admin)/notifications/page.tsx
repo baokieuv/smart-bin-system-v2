@@ -9,6 +9,8 @@ import type { NotificationDto } from "@/types/notification";
 export default function NotificationsPage() {
   const [items, setItems] = useState<NotificationDto[]>([]);
   const [message, setMessage] = useState("");
+  const [markingId, setMarkingId] = useState<string | number | null>(null);
+  const [markAllLoading, setMarkAllLoading] = useState(false);
 
   const load = async () => {
     const response = await notificationsAdminApi.getNotifications({ page: 1, size: 100 });
@@ -20,15 +22,25 @@ export default function NotificationsPage() {
   }, []);
 
   const mark = async (id: string | number) => {
-    await notificationsAdminApi.markAsRead(id);
-    setMessage(`Notification ${id} marked as read`);
-    await load();
+    try {
+      setMarkingId(id);
+      await notificationsAdminApi.markAsRead(id);
+      setMessage(`Notification ${id} marked as read`);
+      await load();
+    } finally {
+      setMarkingId(null);
+    }
   };
 
   const markAll = async () => {
-    await notificationsAdminApi.readAll();
-    setMessage("All notifications marked as read");
-    await load();
+    try {
+      setMarkAllLoading(true);
+      await notificationsAdminApi.readAll();
+      setMessage("All notifications marked as read");
+      await load();
+    } finally {
+      setMarkAllLoading(false);
+    }
   };
 
   return (
@@ -39,9 +51,10 @@ export default function NotificationsPage() {
         <button
           type="button"
           onClick={() => void markAll()}
+          disabled={markAllLoading}
           className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white"
         >
-          Mark all as read
+          {markAllLoading ? "Marking..." : "Mark all as read"}
         </button>
       }
     >
@@ -59,9 +72,10 @@ export default function NotificationsPage() {
                 <button
                   type="button"
                   onClick={() => void mark(item.id)}
+                  disabled={markingId === item.id}
                   className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700"
                 >
-                  Mark read
+                  {markingId === item.id ? "Marking..." : "Mark read"}
                 </button>
               ) : (
                 <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Read</span>

@@ -155,7 +155,13 @@ class DetectionWorker(QThread):
             now = time.time()
             self._log_pipeline_state(now, hand_detected, have_motion, motion_pixels)
 
-            if hand_detected or have_motion:
+            # Start a new detection cycle only when the hand detector agrees
+            # with motion, or when motion continues after a cycle has already started.
+            if hand_detected and have_motion:
+                self._state.mark_motion(now)
+                continue
+
+            if self._state.trash_falling and have_motion:
                 self._state.mark_motion(now)
                 continue
 
@@ -234,9 +240,12 @@ class DetectionWorker(QThread):
     def stop(self) -> None:
         """Gracefully stop the thread and release the camera."""
         self._is_running = False
-        self.wait()
         if self.cap is not None:
             self.cap.release()
+            self.cap = None
+        self.requestInterruption()
+        if not self.wait(3000):
+            self.logger.warning("Detection worker did not stop within timeout")
         self.logger.info("Detection worker stopped and camera released")
 
     # ------------------------------------------------------------------

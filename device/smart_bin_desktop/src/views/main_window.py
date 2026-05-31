@@ -116,8 +116,12 @@ class MainWindow(QMainWindow):
     def show_wifi_config(self):
         """Open modal dialog for Wi-Fi setup."""
         self.logger.info("Open wifi config dialog")
+        self.viewmodel.worker.pause_detection()
         dialog = WifiConfigDialog(self)
-        dialog.exec()
+        try:
+            dialog.exec()
+        finally:
+            self.viewmodel.worker.resume_detection()
 
     def closeEvent(self, event):
         """Ensure background services are stopped before app exits."""

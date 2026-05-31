@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
+import Modal from "@/components/ui/modal";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { firmwareMappingsAdminApi } from "@/services/api/firmware-mappings-admin";
 import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
@@ -55,7 +56,10 @@ export default function FirmwareMappingsPage() {
 
   const [form, setForm] = useState({ metadataJson: "{}", targetFirmwareId: "", priority: "0" });
   const [editing, setEditing] = useState<FirmwareMappingDto | null>(null);
+  const [showEditorModal, setShowEditorModal] = useState(false);
   const [showJsonModal, setShowJsonModal] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -76,6 +80,7 @@ export default function FirmwareMappingsPage() {
   const createOrUpdate = async (e: FormEvent) => {
     e.preventDefault();
     setMessage("");
+    setSaveLoading(true);
     try {
       const metadata = JSON.parse(form.metadataJson || "{}");
       if (editing) {
@@ -98,79 +103,61 @@ export default function FirmwareMappingsPage() {
       }
       setForm({ metadataJson: "{}", targetFirmwareId: "", priority: "0" });
       setEditing(null);
+      setShowEditorModal(false);
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaveLoading(false);
     }
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ metadataJson: "{}", targetFirmwareId: "", priority: "0" });
+    setMessage("");
+    setShowEditorModal(true);
   };
 
   const startEdit = (m: FirmwareMappingDto) => {
     setEditing(m);
     setForm({ metadataJson: JSON.stringify(m.metadataCriteria ?? {}, null, 2), targetFirmwareId: m.targetFirmwareId, priority: String(m.priority ?? 0) });
+    setMessage("");
+    setShowEditorModal(true);
+  };
+
+  const closeEditorModal = () => {
+    setShowEditorModal(false);
+    setEditing(null);
+    setForm({ metadataJson: "{}", targetFirmwareId: "", priority: "0" });
   };
 
   const remove = async (id: string) => {
     if (!confirm("Delete this mapping?")) return;
     try {
+      setDeleteLoadingId(id);
       await firmwareMappingsAdminApi.deleteMapping(id);
       setMessage("Mapping deleted");
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleteLoadingId(null);
     }
   };
 
   return (
     <div className="space-y-4">
-      <Panel title="Firmware Mappings" subtitle="Map device metadata to target firmware">
-        <form className="grid gap-4 md:grid-cols-[1fr_200px_120px_auto]" onSubmit={createOrUpdate}>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Metadata criteria (JSON)</label>
-            <div className="mt-2 flex gap-2">
-              <input
-                className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
-                value={form.metadataJson}
-                onChange={(e) => setForm((c) => ({ ...c, metadataJson: e.target.value }))}
-                placeholder='{"model":"X100","hardware":"v2"}'
-              />
-              <button type="button" className="rounded-xl bg-slate-100 px-3" onClick={() => setShowJsonModal(true)}>
-                Edit
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Target firmware</label>
-            <select
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
-              value={form.targetFirmwareId}
-              onChange={(e) => setForm((c) => ({ ...c, targetFirmwareId: e.target.value }))}
-            >
-              <option value="">-- select firmware --</option>
-              {firmwares.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.version} ({f.type})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Priority</label>
-            <input className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5" value={form.priority} onChange={(e) => setForm((c) => ({ ...c, priority: e.target.value }))} />
-          </div>
-
-          <div className="flex items-end gap-2">
-            <button type="submit" className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white">
-              {editing ? "Update mapping" : "Create mapping"}
-            </button>
-            {editing ? (
-              <button type="button" className="rounded-xl px-4 py-2.5" onClick={() => { setEditing(null); setForm({ metadataJson: "{}", targetFirmwareId: "", priority: "0" }); }}>
-                Cancel
-              </button>
-            ) : null}
-          </div>
-        </form>
+      <Panel
+        title="Firmware Mappings"
+        subtitle="Map device metadata to target firmware"
+        action={
+          <button type="button" className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-3 py-2 text-xs font-semibold text-white" onClick={openCreate}>
+            Create mapping
+          </button>
+        }
+      >
+        <p className="text-sm text-slate-600">Create or update mappings from the popup editor to keep metadata JSON readable.</p>
       </Panel>
 
       <Panel title="Mappings List">
@@ -196,8 +183,8 @@ export default function FirmwareMappingsPage() {
                     <button className="mr-2 rounded-lg bg-slate-100 px-2 py-1" onClick={() => startEdit(m)}>
                       Edit
                     </button>
-                    <button className="rounded-lg bg-rose-50 px-2 py-1 text-rose-600" onClick={() => void remove(m.id)}>
-                      Delete
+                    <button className="rounded-lg bg-rose-50 px-2 py-1 text-rose-600" onClick={() => void remove(m.id)} disabled={deleteLoadingId === m.id}>
+                      {deleteLoadingId === m.id ? "Deleting..." : "Delete"}
                     </button>
                   </td>
                 </tr>
@@ -208,6 +195,61 @@ export default function FirmwareMappingsPage() {
       </Panel>
 
       {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+
+      {showEditorModal ? (
+        <Modal
+          title={editing ? "Update Firmware Mapping" : "Create Firmware Mapping"}
+          subtitle="Edit metadata criteria, target firmware, and priority"
+          onClose={closeEditorModal}
+        >
+          <form className="grid gap-4 md:grid-cols-[1fr_200px_120px]" onSubmit={createOrUpdate}>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Metadata criteria (JSON)</label>
+              <div className="mt-2 flex gap-2">
+                <input
+                  className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                  value={form.metadataJson}
+                  onChange={(e) => setForm((c) => ({ ...c, metadataJson: e.target.value }))}
+                  placeholder='{"model":"X100","hardware":"v2"}'
+                />
+                <button type="button" className="rounded-xl bg-slate-100 px-3" onClick={() => setShowJsonModal(true)}>
+                  Edit
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Target firmware</label>
+              <select
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
+                value={form.targetFirmwareId}
+                onChange={(e) => setForm((c) => ({ ...c, targetFirmwareId: e.target.value }))}
+              >
+                <option value="">-- select firmware --</option>
+                {firmwares.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.version} ({f.type})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Priority</label>
+              <input className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5" value={form.priority} onChange={(e) => setForm((c) => ({ ...c, priority: e.target.value }))} />
+            </div>
+
+            <div className="md:col-span-3 flex items-center gap-2 border-t border-slate-200 pt-4">
+              <button type="submit" disabled={saveLoading} className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                {saveLoading ? "Saving..." : editing ? "Update mapping" : "Create mapping"}
+              </button>
+              <button type="button" className="rounded-xl px-4 py-2.5" onClick={closeEditorModal}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
 
       {showJsonModal ? (
         <JsonModal

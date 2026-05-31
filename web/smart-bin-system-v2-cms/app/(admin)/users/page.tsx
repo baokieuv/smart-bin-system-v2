@@ -24,6 +24,7 @@ export default function UsersPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateUserForm);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   const load = async () => {
     const response = await usersAdminApi.getUsers({ page: 1, size: 100 });
@@ -40,11 +41,14 @@ export default function UsersPage() {
 
   const updateState = async (id: string, state: UserDto["state"]) => {
     try {
+      setUpdatingUserId(id);
       await usersAdminApi.updateUserState(id, state);
       setMessage(`User ${id} updated to ${state}`);
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Update failed");
+    } finally {
+      setUpdatingUserId(null);
     }
   };
 
@@ -150,6 +154,7 @@ export default function UsersPage() {
                         <select
                           className="rounded-lg border border-slate-200 bg-white px-2 py-1"
                           value={user.state}
+                          disabled={updatingUserId === user.id}
                           onChange={(event) => void updateState(user.id, event.target.value as UserDto["state"])}
                         >
                           {states.map((state) => (

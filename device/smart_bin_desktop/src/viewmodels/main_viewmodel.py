@@ -139,6 +139,7 @@ class MainViewModel(QObject):
 
     def shutdown(self) -> None:
         """Stop all timers, close serial, and join the worker thread."""
+        self.worker.pause_detection()
         for timer in (
             self.feedback_timer, self.thanks_timer, self.telemetry_timer,
             self.config_refresh_timer, self.app_version_timer,

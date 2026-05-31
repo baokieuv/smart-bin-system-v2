@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
+import Modal from "@/components/ui/modal";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { shopAdminApi } from "@/services/api/shop-admin";
 // Import panel removed: categories now added one-by-one via form
@@ -12,6 +13,9 @@ export default function CategoriesPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [message, setMessage] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
 
   const load = async () => {
     const response = await shopAdminApi.getCategories();
@@ -27,6 +31,7 @@ export default function CategoriesPage() {
   const createCategory = async (event: FormEvent) => {
     event.preventDefault();
     setMessage("");
+    setCreateLoading(true);
     try {
       await shopAdminApi.createCategory({ name, description, isActive: true });
       setName("");
@@ -35,16 +40,34 @@ export default function CategoriesPage() {
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Create failed");
+    } finally {
+      setCreateLoading(false);
     }
+  };
+
+  const openCreateCategory = () => {
+    setName("");
+    setDescription("");
+    setMessage("");
+    setShowCreateModal(true);
+  };
+
+  const closeCreateCategory = () => {
+    setShowCreateModal(false);
+    setName("");
+    setDescription("");
   };
 
   const remove = async (id: string) => {
     try {
+      setDeleteLoadingId(id);
       await shopAdminApi.deleteCategory(id);
       setMessage("Category deleted");
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Delete failed");
+    } finally {
+      setDeleteLoadingId(null);
     }
   };
 
@@ -73,9 +96,10 @@ export default function CategoriesPage() {
                     <button
                       type="button"
                       onClick={() => void remove(item.id)}
+                      disabled={deleteLoadingId === item.id}
                       className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
                     >
-                      Delete
+                      {deleteLoadingId === item.id ? "Deleting..." : "Delete"}
                     </button>
                   </td>
                 </tr>
@@ -86,8 +110,26 @@ export default function CategoriesPage() {
       </Panel>
 
       <div className="space-y-4">
-        <Panel title="New Category">
-          <form onSubmit={createCategory} className="space-y-3">
+        <Panel
+          title="Category Actions"
+          subtitle="Open the popup editor to create a new category"
+          action={
+            <button
+              type="button"
+              onClick={openCreateCategory}
+              className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white"
+            >
+              Create category
+            </button>
+          }
+        >
+          <p className="text-sm text-slate-600">Use the popup editor for adding categories so the form stays comfortable to edit.</p>
+        </Panel>
+      </div>
+
+      {showCreateModal ? (
+        <Modal title="Create Category" subtitle="Add a new shop category" onClose={closeCreateCategory}>
+          <form onSubmit={createCategory} className="space-y-4">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
               placeholder="Category name"
@@ -96,18 +138,23 @@ export default function CategoriesPage() {
               required
             />
             <textarea
-              className="h-28 w-full rounded-xl border border-slate-200 px-3 py-2"
+              className="h-40 w-full rounded-xl border border-slate-200 px-3 py-2"
               placeholder="Description"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
-            <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
-              Create category
-            </button>
-            {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+            <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
+              <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
+                {createLoading ? "Creating..." : "Create category"}
+              </button>
+              <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeCreateCategory}>
+                Cancel
+              </button>
+              {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+            </div>
           </form>
-        </Panel>
-      </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

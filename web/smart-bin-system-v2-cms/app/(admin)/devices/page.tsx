@@ -1,6 +1,7 @@
 "use client";
 
 import ImportDevicesPanel from "@/components/devices/import-devices";
+import Modal from "@/components/ui/modal";
 import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { getCmsAccessRole } from "@/lib/auth-session";
@@ -37,6 +38,8 @@ export default function DevicesPage() {
   const [form, setForm] = useState({ mac: "", claimCode: "" });
   const [deviceGroups, setDeviceGroups] = useState<{ id: string; code: string; name: string }[]>([]);
   const [message, setMessage] = useState("");
+  const [showQuickAddModal, setShowQuickAddModal] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
   const [assignMode, setAssignMode] = useState<"group" | "user">("group");
   const [assignGroupId, setAssignGroupId] = useState("");
@@ -52,6 +55,8 @@ export default function DevicesPage() {
   const [configInitial, setConfigInitial] = useState({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
   const [configMessage, setConfigMessage] = useState("");
   const [configLoading, setConfigLoading] = useState(false);
+  const [configFetchingId, setConfigFetchingId] = useState<string | null>(null);
+  const [showConfigModal, setShowConfigModal] = useState(false);
 
   const sortedFirmwares = useMemo(
     () =>
@@ -233,23 +238,40 @@ export default function DevicesPage() {
 
   const create = async (event: FormEvent) => {
     event.preventDefault();
+    setCreateLoading(true);
     try {
       await devicesAdminApi.importDevices({
         devices: [{ mac: form.mac, claimCode: form.claimCode }],
       });
       setForm({ mac: "", claimCode: "" });
       setMessage("Imported 1 device");
+      setShowQuickAddModal(false);
       await load(page, size);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Import failed");
+    } finally {
+      setCreateLoading(false);
     }
   };
 
+  const openQuickAddModal = () => {
+    setForm({ mac: "", claimCode: "" });
+    setMessage("");
+    setShowQuickAddModal(true);
+  };
+
+  const closeQuickAddModal = () => {
+    setShowQuickAddModal(false);
+    setForm({ mac: "", claimCode: "" });
+  };
+
   const openConfig = async (device: DeviceDto) => {
+    setConfigFetchingId(device.id);
     setSelectedDeviceId(device.id);
     setSelectedDevice(device);
     setConfigMessage("");
     setConfigLoading(true);
+    setShowConfigModal(true);
 
     try {
       const firmwareItems = firmwares.length > 0 ? firmwares : await loadFirmwares();
@@ -284,7 +306,18 @@ export default function DevicesPage() {
       setConfigMessage(error instanceof Error ? error.message : "Load config failed");
     } finally {
       setConfigLoading(false);
+      setConfigFetchingId(null);
     }
+  };
+
+  const closeConfigModal = () => {
+    if (configLoading) return;
+    setShowConfigModal(false);
+    setSelectedDeviceId("");
+    setSelectedDevice(null);
+    setConfigForm({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
+    setConfigInitial({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
+    setConfigMessage("");
   };
 
   const confirmConfig = async (event: FormEvent) => {
@@ -388,9 +421,10 @@ export default function DevicesPage() {
                       <button
                         type="button"
                         onClick={() => void openConfig(device)}
+                        disabled={configLoading || configFetchingId === device.id}
                         className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800"
                       >
-                        Configure
+                        {configFetchingId === device.id ? "Loading..." : "Configure"}
                       </button>
                     </td>
                   ) : null}
@@ -437,85 +471,6 @@ export default function DevicesPage() {
       </Panel>
 
       <div className="space-y-4">
-        {canConfigureFirmware ? (
-          <Panel title="Target Versions" subtitle="Select a device, then choose target firmware versions and confirm changes">
-            {selectedDevice ? (
-              <form onSubmit={confirmConfig} className="space-y-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                  <p className="font-semibold text-foreground">{selectedDevice.name}</p>
-                  <p>MAC: {selectedDevice.mac}</p>
-                  <p>Current Bin Target: {selectedDevice.targetBinVersion || "-"}</p>
-                  <p>Current Desktop Target: {selectedDevice.targetDesktopVersion || "-"}</p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-slate-700">Target Bin Firmware</label>
-                  <select
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                    value={configForm?.targetBinFirmwareId || ""}
-                    onChange={(event) => {
-                      const newId = event.target.value;
-                      console.log(`[Select] Bin firmware changed to: ${newId}`);
-                      setConfigForm((current) => ({ ...current, targetBinFirmwareId: newId }));
-                    }}
-                    disabled={binFirmwares.length === 0}
-                  >
-                    <option value="">{binFirmwares.length > 0 ? "Select target bin firmware" : "No bin firmware available"}</option>
-                    {binFirmwares.map((firmware) => (
-                      <option key={firmware.id} value={firmware.id}>
-                        {firmwareLabel(firmware)}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-slate-500">
-                    Current saved version: {selectedDevice?.targetBinVersion || "-"}
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-slate-700">Target Desktop Firmware</label>
-                  <select
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                    value={configForm?.targetDesktopFirmwareId || ""}
-                    onChange={(event) => {
-                      const newId = event.target.value;
-                      console.log(`[Select] Desktop firmware changed to: ${newId}`);
-                      setConfigForm((current) => ({ ...current, targetDesktopFirmwareId: newId }));
-                    }}
-                    disabled={desktopFirmwares.length === 0}
-                  >
-                    <option value="">
-                      {desktopFirmwares.length > 0 ? "Select target desktop firmware" : "No desktop firmware available"}
-                    </option>
-                    {desktopFirmwares.map((firmware) => (
-                      <option key={firmware.id} value={firmware.id}>
-                        {firmwareLabel(firmware)}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-slate-500">
-                    Current saved version: {selectedDevice?.targetDesktopVersion || "-"}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                    type="submit"
-                    disabled={!isConfigDirty || configLoading}
-                    onClick={() => console.log(`[Button] isConfigDirty=${isConfigDirty}, configLoading=${configLoading}, configForm=${JSON.stringify(configForm)}, configInitial=${JSON.stringify(configInitial)}`)}
-                  >
-                    {configLoading ? "Saving..." : "Confirm change"}
-                  </button>
-                  {configMessage ? <p className="text-sm text-slate-600">{configMessage}</p> : null}
-                </div>
-              </form>
-            ) : (
-              <p className="text-sm text-slate-600">Click Configure on a device to edit target versions.</p>
-            )}
-          </Panel>
-        ) : null}
-
         {canAssignDevices ? (
           <Panel title="Assign Devices" subtitle="Pick devices once, then assign them to a group or a user in one step">
             <form className="space-y-4" onSubmit={assignSelectedDevices}>
@@ -604,7 +559,7 @@ export default function DevicesPage() {
                   >
                     <option value="">Choose a user</option>
                     {sortedUsers.map((user) => (
-                      <option key={user.id} value={user.id}>
+                      <option key={user.id} value={user.keycloakId}>
                         {user.name} - {user.email} {user.state !== "ACTIVE" ? `(${user.state})` : ""}
                       </option>
                     ))}
@@ -635,8 +590,98 @@ export default function DevicesPage() {
           <ImportDevicesPanel onImported={() => void load(page, size)} />
         </Panel>
 
-        <Panel title="Quick Add (uses import API)">
-          <form onSubmit={create} className="space-y-3">
+        <Panel
+          title="Quick Add (uses import API)"
+          subtitle="Open the popup editor to add a single device"
+          action={
+            <button type="button" onClick={openQuickAddModal} className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white">
+              Add device
+            </button>
+          }
+        >
+          <p className="text-sm text-slate-600">Use the popup editor when you need to add one device quickly.</p>
+        </Panel>
+      </div>
+
+      {showConfigModal ? (
+        <Modal title="Target Versions" subtitle="Select a device, then choose target firmware versions and confirm changes" onClose={closeConfigModal} widthClassName="w-[min(1100px,98vw)]">
+          {selectedDevice ? (
+            <form onSubmit={confirmConfig} className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <p className="font-semibold text-foreground">{selectedDevice.name}</p>
+                <p>MAC: {selectedDevice.mac}</p>
+                <p>Current Bin Target: {selectedDevice.targetBinVersion || "-"}</p>
+                <p>Current Desktop Target: {selectedDevice.targetDesktopVersion || "-"}</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-700">Target Bin Firmware</label>
+                <select
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                  value={configForm?.targetBinFirmwareId || ""}
+                  onChange={(event) => {
+                    const newId = event.target.value;
+                    console.log(`[Select] Bin firmware changed to: ${newId}`);
+                    setConfigForm((current) => ({ ...current, targetBinFirmwareId: newId }));
+                  }}
+                  disabled={binFirmwares.length === 0}
+                >
+                  <option value="">{binFirmwares.length > 0 ? "Select target bin firmware" : "No bin firmware available"}</option>
+                  {binFirmwares.map((firmware) => (
+                    <option key={firmware.id} value={firmware.id}>
+                      {firmwareLabel(firmware)}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500">Current saved version: {selectedDevice?.targetBinVersion || "-"}</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-700">Target Desktop Firmware</label>
+                <select
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
+                  value={configForm?.targetDesktopFirmwareId || ""}
+                  onChange={(event) => {
+                    const newId = event.target.value;
+                    console.log(`[Select] Desktop firmware changed to: ${newId}`);
+                    setConfigForm((current) => ({ ...current, targetDesktopFirmwareId: newId }));
+                  }}
+                  disabled={desktopFirmwares.length === 0}
+                >
+                  <option value="">{desktopFirmwares.length > 0 ? "Select target desktop firmware" : "No desktop firmware available"}</option>
+                  {desktopFirmwares.map((firmware) => (
+                    <option key={firmware.id} value={firmware.id}>
+                      {firmwareLabel(firmware)}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500">Current saved version: {selectedDevice?.targetDesktopVersion || "-"}</p>
+              </div>
+
+              <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
+                <button
+                  className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  type="submit"
+                  disabled={!isConfigDirty || configLoading}
+                  onClick={() => console.log(`[Button] isConfigDirty=${isConfigDirty}, configLoading=${configLoading}, configForm=${JSON.stringify(configForm)}, configInitial=${JSON.stringify(configInitial)}`)}
+                >
+                  {configLoading ? "Saving..." : "Confirm change"}
+                </button>
+                <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeConfigModal}>
+                  Cancel
+                </button>
+                {configMessage ? <p className="text-sm text-slate-600">{configMessage}</p> : null}
+              </div>
+            </form>
+          ) : (
+            <p className="text-sm text-slate-600">Click Configure on a device to edit target versions.</p>
+          )}
+        </Modal>
+      ) : null}
+
+      {showQuickAddModal ? (
+        <Modal title="Quick Add Device" subtitle="Add one device via import API" onClose={closeQuickAddModal}>
+          <form onSubmit={create} className="space-y-4">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
               placeholder="MAC address"
@@ -651,15 +696,20 @@ export default function DevicesPage() {
               onChange={(event) => setForm((v) => ({ ...v, claimCode: event.target.value }))}
               required
             />
-            <div className="flex items-center gap-2">
-              <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
-                Add 1 device via import
+            <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
+              <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" type="submit" disabled={createLoading}>
+                {createLoading ? "Adding..." : "Add 1 device via import"}
+              </button>
+              <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeQuickAddModal}>
+                Cancel
               </button>
               {message ? <p className="text-sm text-slate-600">{message}</p> : null}
             </div>
           </form>
-        </Panel>
-      </div>
+        </Modal>
+      ) : null}
+
+      {!showQuickAddModal && !showConfigModal && message ? <p className="text-sm text-slate-600">{message}</p> : null}
     </div>
   );
 }

@@ -361,6 +361,13 @@ class MainViewModelRuntime:
         vm = self.vm
         try:
             success, fill_levels = vm.actuator_client.request_fill_levels()
+            success = True
+            fill_levels = {
+                "bin1": 90,
+                "bin2": 100,
+                "bin3": 90,
+                "bin4": 100
+            }
             if success and fill_levels:
                 vm.latest_fill_levels = fill_levels
                 vm.logger.debug("Fill levels updated: %s", fill_levels)

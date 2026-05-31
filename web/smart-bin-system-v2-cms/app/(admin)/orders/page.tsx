@@ -11,6 +11,7 @@ const statuses = ["PENDING", "CONFIRMED", "SHIPPING", "DELIVERED", "CANCELLED"];
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderDto[]>([]);
   const [message, setMessage] = useState("");
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
 
   const load = async () => {
     const response = await shopAdminApi.getOrders({ page: 1, size: 100 });
@@ -25,11 +26,14 @@ export default function OrdersPage() {
 
   const updateStatus = async (id: string, status: string) => {
     try {
+      setUpdatingOrderId(id);
       await shopAdminApi.updateOrderStatus(id, status);
       setMessage(`Order ${id} updated to ${status}`);
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Update failed");
+    } finally {
+      setUpdatingOrderId(null);
     }
   };
 
@@ -59,6 +63,7 @@ export default function OrdersPage() {
                   <select
                     className="rounded-lg border border-slate-200 bg-white px-2 py-1"
                     value={order.status || "PENDING"}
+                    disabled={updatingOrderId === order.id}
                     onChange={(event) => void updateStatus(order.id, event.target.value)}
                   >
                     {statuses.map((status) => (

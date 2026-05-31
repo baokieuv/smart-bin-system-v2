@@ -191,7 +191,7 @@ class Esp32OtaConfig:
 @dataclass(frozen=True)
 class BackendConfig:
     tenant_secret: str = _env_str("SMART_BIN_TENANT_SECRET", "08290f771ce747c487dff9f1707212037cfcc90721f84a29")
-    profile_code: str = _env_str("SMART_BIN_PROFILE_CODE", "SMART_BIN_60l")
+    profile_code: str = _env_str("SMART_BIN_PROFILE_CODE", "SMART_BIN_60L")
     activate_retry_max_delay_seconds: int = _env_int("SMART_BIN_ACTIVATE_RETRY_MAX_DELAY_SECONDS", 60)
 
 
