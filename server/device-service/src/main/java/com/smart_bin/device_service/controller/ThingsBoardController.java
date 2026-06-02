@@ -29,7 +29,7 @@ public class ThingsBoardController {
 
     @PostMapping("/alarms")
     public ResponseEntity<ApiResponseFormat<Object>> handleThingsBoardAlarm(
-            @RequestHeader("signature") String signature,
+            @RequestHeader(value = "signature", required = false) String signature,
             @RequestBody String payload
     ){
         var response = service.processDeviceAlarm(signature, payload);

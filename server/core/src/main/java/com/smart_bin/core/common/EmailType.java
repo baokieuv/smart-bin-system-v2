@@ -9,7 +9,8 @@ public enum EmailType {
     VERIFICATION(0),
     WELCOME(1),
     RESET_PASSWORD(2),
-    WELCOME_TENANT(3);
+    WELCOME_TENANT(3),
+    ALARM_TRIGGERED(4);
 
     private final int value;
 

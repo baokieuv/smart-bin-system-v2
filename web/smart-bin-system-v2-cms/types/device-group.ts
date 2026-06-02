@@ -5,6 +5,8 @@ export interface AlarmRuleDto {
   operator: string;
   threshold: number;
   severity: string;
+  clearOperator: string;
+  clearThreshold: number;
 }
 
 export interface CreateDeviceGroupRequest {

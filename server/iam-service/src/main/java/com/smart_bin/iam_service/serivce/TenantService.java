@@ -8,7 +8,7 @@ import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.CreateTenantRequest;
 import com.smart_bin.iam_service.dto.auth.request.UpdateTenantStatusRequest;
-import com.smart_bin.iam_service.dto.auth.response.TenantDto;
+import com.smart_bin.iam_service.dto.user.response.TenantDto;
 import com.smart_bin.iam_service.dto.user.response.UserDto;
 import com.smart_bin.iam_service.entity.Tenant;
 import com.smart_bin.iam_service.entity.User;

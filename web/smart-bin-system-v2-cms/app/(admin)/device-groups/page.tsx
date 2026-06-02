@@ -25,6 +25,8 @@ type AlarmRuleFormValue = {
   operator: string;
   threshold: string;
   severity: string;
+  clearOperator: string;
+  clearThreshold: string;
 };
 
 type DeviceGroupFormState = {
@@ -40,6 +42,8 @@ const createEmptyAlarmRule = (): AlarmRuleFormValue => ({
   operator: "EQUAL",
   threshold: "",
   severity: "WARNING",
+  clearOperator: "LESS",
+  clearThreshold: "",
 });
 
 const createBlankForm = (): DeviceGroupFormState => ({
@@ -52,7 +56,13 @@ const createBlankForm = (): DeviceGroupFormState => ({
 
 const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[]) => {
   const activeRows = alarmRules.filter(
-    (rule) => rule.alarmType.trim() || rule.operator.trim() || rule.threshold.trim() || rule.severity.trim(),
+    (rule) =>
+      rule.alarmType.trim() ||
+      rule.operator.trim() ||
+      rule.threshold.trim() ||
+      rule.severity.trim() ||
+      rule.clearOperator.trim() ||
+      rule.clearThreshold.trim(),
   );
 
   if (!activeRows.length) {
@@ -62,7 +72,14 @@ const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[]) => {
   const normalized: AlarmRuleDto[] = [];
 
   for (const rule of activeRows) {
-    if (!rule.alarmType.trim() || !rule.operator.trim() || !rule.threshold.trim() || !rule.severity.trim()) {
+    if (
+      !rule.alarmType.trim() ||
+      !rule.operator.trim() ||
+      !rule.threshold.trim() ||
+      !rule.severity.trim() ||
+      !rule.clearOperator.trim() ||
+      !rule.clearThreshold.trim()
+    ) {
       return { error: "Please complete every alarm rule row or remove the empty row" } as const;
     }
 
@@ -71,11 +88,18 @@ const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[]) => {
       return { error: `Invalid threshold for alarm ${rule.alarmType || "rule"}` } as const;
     }
 
+    const clearThreshold = Number(rule.clearThreshold);
+    if (!Number.isFinite(clearThreshold)) {
+      return { error: `Invalid clear threshold for alarm ${rule.alarmType || "rule"}` } as const;
+    }
+
     normalized.push({
       alarmType: rule.alarmType.trim(),
       operator: rule.operator.trim(),
       threshold,
       severity: rule.severity.trim(),
+      clearOperator: rule.clearOperator.trim(),
+      clearThreshold,
     });
   }
 
@@ -186,6 +210,8 @@ export default function DeviceGroupsPage() {
             operator: rule.operator,
             threshold: String(rule.threshold),
             severity: rule.severity,
+                clearOperator: rule.clearOperator,
+                clearThreshold: String(rule.clearThreshold),
           }))
         : [],
     });
@@ -400,7 +426,7 @@ export default function DeviceGroupsPage() {
                           </button>
                         </div>
 
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                           <label className="block">
                             <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">alarmType</span>
                             <input
@@ -450,6 +476,32 @@ export default function DeviceGroupsPage() {
                                 </option>
                               ))}
                             </select>
+                          </label>
+
+                          <label className="block">
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">clearOperator</span>
+                            <select
+                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                              value={rule.clearOperator}
+                              onChange={(event) => updateAlarmRule(index, "clearOperator", event.target.value)}
+                            >
+                              {alarmOperators.map((operator) => (
+                                <option key={operator} value={operator}>
+                                  {operator}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block">
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">clearThreshold</span>
+                            <input
+                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                              value={rule.clearThreshold}
+                              onChange={(event) => updateAlarmRule(index, "clearThreshold", event.target.value)}
+                              placeholder="60"
+                              inputMode="decimal"
+                            />
                           </label>
                         </div>
                       </div>

@@ -14,7 +14,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(ipWhitelistInterceptor)
-                .addPathPatterns("/api/v1/things-board/**");
+//        registry.addInterceptor(ipWhitelistInterceptor)
+//                .addPathPatterns("/api/v1/things-board/**");
     }
 }

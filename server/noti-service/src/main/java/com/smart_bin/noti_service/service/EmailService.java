@@ -64,6 +64,17 @@ public class EmailService {
         sendHtmlEmail(toEmail, "Welcome to Smart Bin System - Your Account Details", htmlContent);
     }
 
+    public void sendAlarmEmail(String toEmail, String firstName, String deviceName, String alarmType, String severity) {
+        Context context = new Context();
+        context.setVariable("firstName", firstName);
+        context.setVariable("deviceName", deviceName);
+        context.setVariable("alarmType", alarmType);
+        context.setVariable("severity", severity);
+        context.setVariable("loginLink", frontendUrl + "/login"); // Link để họ vào check hệ thống
+
+        String htmlContent = templateEngine.process("alarm-email", context);
+        sendHtmlEmail(toEmail, "Device Alarms " + deviceName, htmlContent);
+    }
 
     private void sendHtmlEmail(String to, String subject, String htmlBody) {
         try {

@@ -135,7 +135,7 @@ public class DeviceGroupService {
             alarmRule.put("id", rule.alarmType().toLowerCase());
             alarmRule.put("alarmType", rule.alarmType());
 
-            // 2. createRules object (CRITICAL, MAJOR, v.v)
+            // 2. createRules object
             ObjectNode createRules = alarmRule.putObject("createRules");
             ObjectNode severityNode = createRules.putObject(rule.severity());
 
@@ -151,7 +151,6 @@ public class DeviceGroupService {
             ObjectNode keyNode = conditionNode.putObject("key");
             keyNode.put("type", "TIME_SERIES");
 
-            // Logic ánh xạ: Nếu alarmType là HIGH_AVERAGE_WASTE thì key telemtry tương ứng là avg_fill_level
             String telemetryKey = rule.alarmType().equalsIgnoreCase("HIGH_AVERAGE_WASTE")
                     ? "avg_fill_level"
                     : rule.alarmType().toLowerCase();
@@ -161,15 +160,53 @@ public class DeviceGroupService {
 
             ObjectNode predicate = conditionNode.putObject("predicate");
             predicate.put("type", "NUMERIC");
-            predicate.put("operation", rule.operator()); // GREATER, LESS_OR_EQUAL...
+            predicate.put("operation", rule.operator());
 
             ObjectNode valueNode = predicate.putObject("value");
-            valueNode.put("defaultValue", rule.threshold()); // Ngưỡng giá trị tĩnh (VD: 85.0)
+            valueNode.put("type", "DYNAMIC");
+            ObjectNode dynamicValueNode = valueNode.putObject("dynamicValue");
+            dynamicValueNode.put("sourceType", "CURRENT_DEVICE");
+
+            String thresholdAttribute = "max_" + rule.alarmType().toLowerCase() + "_threshold";
+            dynamicValueNode.put("sourceAttribute", thresholdAttribute);
+            dynamicValueNode.put("inherit", false);
 
             conditionArray.add(conditionNode);
 
-            // 4. Các setting bổ sung
-            alarmRule.put("propagate", false); // Có cho phép báo động lan truyền lên các entity cha không
+            // 4. Clear Rule
+            if (rule.clearOperator() != null && rule.clearThreshold() != null) {
+                ObjectNode clearRule = alarmRule.putObject("clearRule");
+
+                clearRule.putObject("schedule").put("type", "ANY_TIME");
+
+                ObjectNode clearConditionWrapper = clearRule.putObject("condition");
+                ArrayNode clearConditionArray = clearConditionWrapper.putArray("condition");
+
+                ObjectNode clearConditionNode = objectMapper.createObjectNode();
+
+                ObjectNode clearKeyNode = clearConditionNode.putObject("key");
+                clearKeyNode.put("type", "TIME_SERIES");
+                clearKeyNode.put("key", telemetryKey);
+
+                clearConditionNode.put("valueType", "NUMERIC");
+
+                ObjectNode clearPredicate = clearConditionNode.putObject("predicate");
+                clearPredicate.put("type", "NUMERIC");
+                clearPredicate.put("operation", rule.clearOperator());
+
+                ObjectNode clearValueNode = clearPredicate.putObject("value");
+                clearValueNode.put("type", "DYNAMIC");
+                ObjectNode clearDynamicValueNode = clearValueNode.putObject("dynamicValue");
+                clearDynamicValueNode.put("sourceType", "CURRENT_DEVICE");
+                String clearThresholdAttribute = "clear_" + rule.alarmType().toLowerCase() + "_threshold";
+                clearDynamicValueNode.put("sourceAttribute", clearThresholdAttribute);
+                clearDynamicValueNode.put("inherit", false);
+
+                clearConditionArray.add(clearConditionNode);
+            }
+
+            // 5. Các setting bổ sung
+            alarmRule.put("propagate", false);
 
             alarmsArray.add(alarmRule);
         }

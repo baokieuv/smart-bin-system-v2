@@ -164,6 +164,7 @@ class Esp32OtaConfig:
         )
     )
     chunk_size: int = _env_int("SMART_BIN_CHUNK_SIZE", 512)
+    upload_task_timeout_seconds: int = _env_int("SMART_BIN_OTA_TASK_TIMEOUT", 15 * 60)
     secret_key: bytes = field(
         default_factory=lambda: _env_str("SMART_BIN_SECRET_KEY", "HUST_SMART_BIN_KEY_2026").encode("utf-8")
     )

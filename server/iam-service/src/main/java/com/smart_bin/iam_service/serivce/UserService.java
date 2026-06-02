@@ -59,6 +59,9 @@ public class UserService {
     @Value("${app.tenant.default-email}")
     private String defaultTenantEmail;
 
+    @Value("${app.internal.secret:SUPER_SECRET_INTERNAL_KEY}")
+    private String internalSecret;
+
     private static final SecureRandom random = new SecureRandom();
 
     @Transactional
@@ -355,6 +358,22 @@ public class UserService {
             emailData.put("activationCode", activationCode);
         }
         kafkaService.sendEmailToUser(emailData, emailType);
+    }
+
+    public Object getUserByIdInternal(String userId, String internalSecret) {
+        if (!this.internalSecret.equals(internalSecret)) {
+            throw new ApiException(AuthErrorCode.FORBIDDEN_ACCESS, "Invalid internal secret");
+        }
+
+        Optional<Tenant> tenantOpt = tenantRepository.findByKeycloakId(userId);
+        if (tenantOpt.isPresent()) {
+            return tenantMapper.toDto(tenantOpt.get());
+        }
+
+        User user = userRepository.findById(parseUUID(userId))
+                .orElseThrow(() -> new ApiException(UserErrorCode.USER_NOT_FOUND, "Không tìm thấy người dùng hoặc tổ chức với ID này"));
+
+        return mapper.toDto(user);
     }
 
     private String generateRandomPassword() {

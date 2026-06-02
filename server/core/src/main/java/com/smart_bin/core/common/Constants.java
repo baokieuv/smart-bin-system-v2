@@ -16,6 +16,9 @@ public class Constants {
     public static final String AVATAR_PREFIX = "avatar/image_";
     public static final String DETECTION_RESULT_PREFIX = "waste/image_";
 
+    public static final String DEFAULT_TENANT_ID = "5cf993b8-2bd1-4ba3-9fbf-a1ba49c9b673";
+    public static final String DEFAULT_GROUP_CODE = "DEFAULT_SMART_BIN";
+
     public enum THINGSBOARD_SCOPE {
         SERVER_SCOPE,
         SHARED_SCOPE,

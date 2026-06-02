@@ -1,4 +1,4 @@
-package com.smart_bin.iam_service.dto.auth.response;
+package com.smart_bin.iam_service.dto.user.response;
 
 import java.util.UUID;
 

@@ -14,5 +14,6 @@ public interface DeviceGroupRepository extends JpaRepository<DeviceGroup, UUID> 
     Optional<DeviceGroup> findByIdAndActiveTrue(UUID id);
     Optional<DeviceGroup> findByIdAndTenantIdAndActiveTrue(UUID id, String tenantId);
     List<DeviceGroup> findAllByTenantIdAndActiveTrue(String id, Pageable pageable);
+    Optional<DeviceGroup> findByCodeAndActiveTrue(String code);
     boolean existsByCodeAndActiveTrue(String code);
 }

@@ -1,17 +1,18 @@
 package com.smart_bin.device_service.service;
 
+import com.smart_bin.core.common.EmailType;
 import com.smart_bin.core.common.NotificationType;
+import com.smart_bin.core.dto.EmailEventDto;
 import com.smart_bin.core.dto.NotificationEventDto;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.DeviceStatus;
+import com.smart_bin.device_service.config.IamServiceClient;
 import com.smart_bin.device_service.dto.request.DeviceActivityWebhookRequest;
 import com.smart_bin.device_service.entity.Device;
 import com.smart_bin.device_service.exception.DeviceErrorCode;
 import com.smart_bin.device_service.repository.DeviceRepository;
-import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.codec.digest.HmacUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -24,13 +25,13 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @Service
 @Slf4j
 public class ThingsBoardService {
 
     private final RestClient restClient;
+    private final IamServiceClient iamServiceClient;
     private final DeviceRepository repository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final KafkaService kafkaService;
@@ -38,14 +39,19 @@ public class ThingsBoardService {
     @Value("${things-board.key}")
     private String secretKey;
 
+    @Value("${app.iam-service.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
+    private String internalSecret;
+
     public ThingsBoardService(
             @Qualifier("tbRestClient") RestClient restClient,
             DeviceRepository repository,
-            KafkaService kafkaService
+            KafkaService kafkaService,
+            IamServiceClient iamServiceClient
     ) {
         this.restClient = restClient;
         this.repository = repository;
         this.kafkaService = kafkaService;
+        this.iamServiceClient = iamServiceClient;
     }
 
     public JsonNode addDevice(String name, String type) {
@@ -60,7 +66,7 @@ public class ThingsBoardService {
                 .body(JsonNode.class);
     }
 
-    public ObjectNode assignProfileToDevice(String deviceId, String profileId) {
+    public void assignProfileToDevice(String deviceId, String profileId) {
         ObjectNode deviceNode = restClient.get()
                 .uri("/api/device/{deviceId}", deviceId)
                 .retrieve()
@@ -79,7 +85,7 @@ public class ThingsBoardService {
         }
 
         assert deviceNode != null;
-        return restClient.post()
+        restClient.post()
                 .uri("/api/device")
                 .body(deviceNode)
                 .retrieve()
@@ -262,10 +268,17 @@ public class ThingsBoardService {
 
         try {
             JsonNode alarmNode = objectMapper.readTree(payload);
-            String deviceIdStr = alarmNode.path("deviceId").asString();
 
+            JsonNode originatorNode = alarmNode.path("originator");
+            String deviceIdStr = originatorNode.path("id").asString();
 
-            String alarmType = alarmNode.path("alarmType").asString();
+            if (deviceIdStr == null || deviceIdStr.isEmpty()) {
+                log.error("Không tìm thấy originator.id trong webhook payload!");
+                throw new ApiException(DeviceErrorCode.INVALID_PAYLOAD_FORMAT);
+            }
+
+            String alarmType = alarmNode.path("type").asString();
+
             String severity = alarmNode.path("severity").asString();
             String status = alarmNode.path("status").asString();
 
@@ -275,22 +288,29 @@ public class ThingsBoardService {
             String userId = device.getUserId();
             String tenantId = device.getTenantId();
 
-            // 5. Xử lý logic gửi Notification vào Kafka
             if (status.startsWith("ACTIVE")) {
                 String title = "Smart Bin Alarm: " + severity;
                 String message = "Alarm '" + alarmType + "' was triggered for your bin: " + device.getName();
 
+                boolean isNotified = false;
+
                 if (StringUtils.hasText(userId)) {
                     sendNotificationEvent(userId, title, message, NotificationType.SYSTEM_INFO);
+                    triggerAlarmEmail(userId, device.getName(), alarmType, severity); // GỌI HÀM GỬI EMAIL
+                    isNotified = true;
                 }
 
-                if (StringUtils.hasText(tenantId)) {
-                    if (!tenantId.equals(userId)) {
-                        sendNotificationEvent(tenantId, title, message, NotificationType.SYSTEM_INFO);
-                    }
+                if (StringUtils.hasText(tenantId) && !tenantId.equals(userId)) {
+                    sendNotificationEvent(tenantId, title, message, NotificationType.SYSTEM_INFO);
+                    triggerAlarmEmail(tenantId, device.getName(), alarmType, severity); // GỌI HÀM GỬI EMAIL
+                    isNotified = true;
                 }
 
-                log.info("Processed and sent notification for active alarm on device {}: {}", deviceIdStr, alarmType);
+                if (isNotified) {
+                    log.info("Processed and sent notification for active alarm on device {}: {}", deviceIdStr, alarmType);
+                } else {
+                    log.warn("Alarm triggered for device {} but no owner/tenant found to notify.", deviceIdStr);
+                }
 
             } else if (status.startsWith("CLEARED")) {
                 log.info("Alarm cleared for device {}: {}", deviceIdStr, alarmType);
@@ -315,5 +335,27 @@ public class ThingsBoardService {
 
         kafkaService.publishNotification(payload);
 //        kafkaTemplate.send("notification-events", eventPayload);
+    }
+
+    private void triggerAlarmEmail(String ownerId, String deviceName, String alarmType, String severity) {
+        try {
+             var userResponse = iamServiceClient.getUserById(ownerId, internalSecret);
+             String email = userResponse.get("data").get("email").asString();
+             String fullName = userResponse.get("data").get("name").asString();
+
+            if (StringUtils.hasText(email)) {
+                Map<String, Object> data = new HashMap<>();
+                data.put("email", email);
+                data.put("fullName", fullName);
+                data.put("deviceName", deviceName);
+                data.put("alarmType", alarmType);
+                data.put("severity", severity);
+
+                EmailEventDto emailEvent = new EmailEventDto(EmailType.ALARM_TRIGGERED, data);
+                kafkaService.publishEmailEvent(emailEvent);
+            }
+        } catch (Exception e) {
+            log.error("Lỗi khi chuẩn bị gửi email cảnh báo cho {}: {}", ownerId, e.getMessage());
+        }
     }
 }

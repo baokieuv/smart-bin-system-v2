@@ -14,5 +14,11 @@ public record AlarmRuleDto(
         Double threshold,
 
         @NotBlank(message = "Mức độ nghiêm trọng không được để trống (VD: CRITICAL, MAJOR)")
-        String severity
+        String severity,
+
+        @NotBlank(message = "Toán tử so sánh để xóa cảnh báo không được để trống (VD: LESS, GREATER_OR_EQUAL)")
+        String clearOperator,
+
+        @NotNull(message = "Ngưỡng giá trị để xóa cảnh báo không được để trống")
+        Double clearThreshold
 ) {}

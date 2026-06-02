@@ -66,41 +66,63 @@ class ActuatorRepository:
 
         self._command_queue: Queue[CommandTask] = Queue()
         self._queue_stop = Event()
+        self._queue_worker: Thread | None = None
+        self._start_queue_worker()
+
+    def _start_queue_worker(self) -> None:
+        if self._queue_worker is not None and self._queue_worker.is_alive():
+            return
+
+        self._queue_stop.clear()
         self._queue_worker = Thread(target=self._run_queue, daemon=True, name="smart-bin-serial-queue")
         self._queue_worker.start()
+        self.logger.info("Serial queue worker started alive=%s", self._queue_worker.is_alive())
 
     # ------------------------------------------------------------------
     # Serial connection helpers
     # ------------------------------------------------------------------
 
     def _open_serial(self) -> serial.Serial:
-        ser = serial.Serial(self.com_port, self.baud_rate, timeout=1)
-        ser.setDTR(False)
-        ser.setRTS(False)
-        time.sleep(1.5)
-        ser.reset_input_buffer()
-        return ser
+        try:
+            ser = serial.Serial(
+                self.com_port, 
+                self.baud_rate, 
+                timeout=1.0,
+                write_timeout=2.0,
+            )
+            self.logger.info("Serial opened successfully: port=%s baud=%s", self.com_port, self.baud_rate)
+            ser.setDTR(False)
+            ser.setRTS(False)
+            time.sleep(1.5)
+            ser.reset_input_buffer()
+            return ser
+        except serial.SerialException as exc:
+            self.logger.error("Failed to open serial port %s: %s", self.com_port, exc)
+            raise
 
     @contextmanager
     def _serial_session(self) -> Generator[serial.Serial, None, None]:
-        """Acquire the serial lock, (re-)open the port if needed, yield the connection.
-
-        Using a context manager instead of the old _get_or_open_serial() +
-        separate `with self._serial_lock` avoids the double-acquire deadlock:
-        the lock is held for the entire open → write → read cycle.
-        """
+        """Acquire the serial lock, (re-)open the port if needed, yield the connection."""
         with self._serial_lock:
-            if self._serial_conn is None or not self._serial_conn.is_open:
-                self._serial_conn = self._open_serial()
-            yield self._serial_conn
+            try:
+                if self._serial_conn is None or not self._serial_conn.is_open:
+                    self.logger.info("Opening serial connection: port=%s baud=%s", self.com_port, self.baud_rate)
+                    self._serial_conn = self._open_serial()
+                else:
+                    self.logger.debug("Reusing open serial connection: port=%s baud=%s", self.com_port, self.baud_rate)
+                yield self._serial_conn
+            except serial.SerialException as exc:
+                self.logger.error("Serial connection error during session: %s", exc)
+                self._serial_conn = None
+                raise
 
     def _close_serial(self) -> None:
         with self._serial_lock:
             if self._serial_conn is not None and self._serial_conn.is_open:
                 try:
                     self._serial_conn.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.warning("Error closing serial port: %s", exc)
             self._serial_conn = None
 
     # ------------------------------------------------------------------
@@ -130,13 +152,7 @@ class ActuatorRepository:
     def _extract_valid_frame(
         self, buffer: bytearray
     ) -> tuple[int | None, bytes | None, int]:
-        """Scan buffer for the next valid HMAC-authenticated frame.
-
-        Frame layout: [H1][H2][CMD][LEN_H][LEN_L][PAYLOAD…][HMAC-32][TAIL]
-
-        Returns (cmd, payload, bytes_consumed).  bytes_consumed == 0 means
-        no complete frame was found yet.
-        """
+        """Scan buffer for the next valid HMAC-authenticated frame."""
         min_frame = 5 + 32 + 1  # header(5) + hmac(32) + tail(1)
         while len(buffer) >= min_frame:
             if buffer[0] != self.config.header_1 or buffer[1] != self.config.header_2:
@@ -167,16 +183,21 @@ class ActuatorRepository:
         buffer = bytearray()
 
         while time.time() < deadline:
-            if ser.in_waiting:
-                buffer.extend(ser.read(ser.in_waiting))
-                cmd, _payload, consumed = self._extract_valid_frame(buffer)
-                if consumed:
-                    if cmd == self.config.cmd_ack:
-                        return True
-                    if cmd == self.config.cmd_nack:
-                        self.logger.warning("Received NACK from ESP32")
-                        return False
-                    buffer = buffer[consumed:]
+            try:
+                if ser.in_waiting:
+                    buffer.extend(ser.read(ser.in_waiting))
+                    cmd, _payload, consumed = self._extract_valid_frame(buffer)
+                    if consumed:
+                        if cmd == self.config.cmd_ack:
+                            return True
+                        if cmd == self.config.cmd_nack:
+                            self.logger.warning("Received NACK from ESP32")
+                            return False
+                        buffer = buffer[consumed:]
+            except serial.SerialException as exc:
+                self.logger.error("Serial read error waiting for ACK: %s", exc)
+                return False
+                
             time.sleep(0.01)
 
         self.logger.warning("ACK timeout. buffer=%s", buffer.hex(" "))
@@ -187,25 +208,47 @@ class ActuatorRepository:
     # ------------------------------------------------------------------
 
     def _run_queue(self) -> None:
-        """Background thread — consume and execute tasks in FIFO order."""
-        while not self._queue_stop.is_set():
-            try:
-                task: CommandTask = self._command_queue.get(timeout=0.2)
-            except Empty:
-                continue
+        current_task: CommandTask | None = None
+        try:
+            while not self._queue_stop.is_set():
+                try:
+                    current_task = self._command_queue.get(timeout=0.2)
+                except Empty:
+                    current_task = None
+                    continue
 
-            try:
-                task.result = task.action() if task.action else (False, "Missing command action")
-            except Exception as exc:
-                self.logger.exception("Error executing queued command %s", task.cmd_name)
-                task.result = (False, str(exc))
-            finally:
-                task.done_event.set()
+                try:
+                    self.logger.info("Dequeued serial task: %s", current_task.cmd_name)
+                    current_task.result = current_task.action() if current_task.action else (False, "Missing command action")
+                    self.logger.info("Completed serial task: %s result=%s", current_task.cmd_name, current_task.result[0])
+                except Exception as exc:
+                    self.logger.exception("Error executing queued command %s", current_task.cmd_name)
+                    current_task.result = (False, str(exc))
+                finally:
+                    current_task.done_event.set()
+                    self._command_queue.task_done()
+                    current_task = None
+
+        except Exception:
+            self.logger.exception("Serial queue worker crashed — worker will stop")
+        finally:
+            if current_task is not None and not current_task.done_event.is_set():
+                current_task.result = (False, "Worker crashed unexpectedly")
+                current_task.done_event.set()
                 self._command_queue.task_done()
+            self.logger.info("Serial queue worker exited")
 
     def _enqueue(self, action: Callable[[], tuple[bool, Any]], cmd_name: str) -> CommandTask:
+        self._start_queue_worker()
         task = CommandTask(cmd_name=cmd_name, action=action)
         self._command_queue.put(task)
+        worker_alive = self._queue_worker.is_alive() if self._queue_worker is not None else False
+        self.logger.info(
+            "Enqueued serial task: %s queue_size=%d worker_alive=%s",
+            cmd_name,
+            self._command_queue.qsize(),
+            worker_alive,
+        )
         return task
 
     def _wait_for_task(self, task: CommandTask, timeout: float | None = None) -> tuple[bool, Any]:
@@ -218,11 +261,18 @@ class ActuatorRepository:
     # ------------------------------------------------------------------
 
     def _send_frame_and_wait_ack(self, frame: bytearray, timeout: float = 3.0) -> tuple[bool, str]:
-        with self._serial_session() as ser:
-            ser.write(frame)
-            if not self._wait_for_ack(ser, timeout=timeout):
-                return False, "ESP32 did not ACK command"
-        return True, "OK"
+        try:
+            with self._serial_session() as ser:
+                ser.write(frame)
+                if not self._wait_for_ack(ser, timeout=timeout):
+                    return False, "ESP32 did not ACK command"
+            return True, "OK"
+        except serial.SerialException as exc:
+            self.logger.error("Serial I/O error in _send_frame_and_wait_ack: %s", exc)
+            return False, f"Serial error: {exc}"
+        except Exception as exc:
+            self.logger.exception("Unexpected error in _send_frame_and_wait_ack")
+            return False, str(exc)
 
     def _request_fill_levels_task(self, timeout: float = 3.0) -> tuple[bool, list[int] | None]:
         try:
@@ -231,17 +281,24 @@ class ActuatorRepository:
                 deadline = time.time() + timeout
                 buffer = bytearray()
                 while time.time() < deadline:
-                    if ser.in_waiting:
-                        buffer.extend(ser.read(ser.in_waiting))
-                        cmd, payload, consumed = self._extract_valid_frame(buffer)
-                        if consumed:
-                            if cmd == self.config.cmd_report_fill_level and payload:
-                                self.logger.info("Fill levels: %s", list(payload))
-                                return True, list(payload)
-                            buffer = buffer[consumed:]
+                    try:
+                        if ser.in_waiting:
+                            buffer.extend(ser.read(ser.in_waiting))
+                            cmd, payload, consumed = self._extract_valid_frame(buffer)
+                            if consumed:
+                                if cmd == self.config.cmd_report_fill_level and payload:
+                                    self.logger.info("Fill levels: %s", list(payload))
+                                    return True, list(payload)
+                                buffer = buffer[consumed:]
+                    except serial.SerialException as exc:
+                        self.logger.error("Serial read error during fill levels request: %s", exc)
+                        return False, None
                     time.sleep(0.01)
 
             self.logger.warning("Timeout waiting for fill levels response")
+            return False, None
+        except serial.SerialException as exc:
+            self.logger.error("Serial error in _request_fill_levels_task: %s", exc)
             return False, None
         except Exception:
             self.logger.exception("Failed to request fill levels")
@@ -254,15 +311,22 @@ class ActuatorRepository:
                 deadline = time.time() + timeout
                 buffer = bytearray()
                 while time.time() < deadline:
-                    if ser.in_waiting:
-                        buffer.extend(ser.read(ser.in_waiting))
-                        cmd, payload, consumed = self._extract_valid_frame(buffer)
-                        if consumed:
-                            if cmd == self.config.cmd_get_version:
-                                version = payload.decode("utf-8", errors="ignore").rstrip("\x00") if payload else None
-                                return True, version or None
-                            buffer = buffer[consumed:]
+                    try:
+                        if ser.in_waiting:
+                            buffer.extend(ser.read(ser.in_waiting))
+                            cmd, payload, consumed = self._extract_valid_frame(buffer)
+                            if consumed:
+                                if cmd == self.config.cmd_get_version:
+                                    version = payload.decode("utf-8", errors="ignore").rstrip("\x00") if payload else None
+                                    return True, version or None
+                                buffer = buffer[consumed:]
+                    except serial.SerialException as exc:
+                        self.logger.error("Serial read error during version request: %s", exc)
+                        return False, None
                     time.sleep(0.01)
+            return False, None
+        except serial.SerialException as exc:
+            self.logger.error("Serial error in _get_bin_version_task: %s", exc)
             return False, None
         except Exception:
             self.logger.exception("Failed to query bin version")
@@ -275,18 +339,25 @@ class ActuatorRepository:
                 deadline = time.time() + timeout
                 buffer = bytearray()
                 while time.time() < deadline:
-                    if ser.in_waiting:
-                        buffer.extend(ser.read(ser.in_waiting))
-                        cmd, payload, consumed = self._extract_valid_frame(buffer)
-                        if consumed:
-                            if cmd == self.config.cmd_get_system_info:
-                                try:
-                                    return True, SystemInfoDto.from_payload(payload)
-                                except Exception:
-                                    self.logger.exception("Invalid system info payload")
-                                    return False, None
-                            buffer = buffer[consumed:]
+                    try:
+                        if ser.in_waiting:
+                            buffer.extend(ser.read(ser.in_waiting))
+                            cmd, payload, consumed = self._extract_valid_frame(buffer)
+                            if consumed:
+                                if cmd == self.config.cmd_get_system_info:
+                                    try:
+                                        return True, SystemInfoDto.from_payload(payload)
+                                    except Exception:
+                                        self.logger.exception("Invalid system info payload")
+                                        return False, None
+                                buffer = buffer[consumed:]
+                    except serial.SerialException as exc:
+                        self.logger.error("Serial read error during system info request: %s", exc)
+                        return False, None
                     time.sleep(0.01)
+            return False, None
+        except serial.SerialException as exc:
+            self.logger.error("Serial error in _get_system_info_task: %s", exc)
             return False, None
         except Exception:
             self.logger.exception("Failed to query system info")
@@ -328,6 +399,9 @@ class ActuatorRepository:
 
             self.logger.info("OTA upload completed. bytes_sent=%d", bytes_sent)
             return True, "OTA upload completed successfully"
+        except serial.SerialException as exc:
+            self.logger.error("Serial error during OTA upload: %s", exc)
+            return False, f"Serial error: {exc}"
         except Exception as exc:
             self.logger.exception("OTA upload failed")
             return False, str(exc)
@@ -373,15 +447,21 @@ class ActuatorRepository:
     def upload_ota(self, firmware_file: str | Path | None = None) -> tuple[bool, str]:
         firmware_path = Path(firmware_file) if firmware_file else self.firmware_file
         task = self._enqueue(lambda: self._upload_ota_task(firmware_path), f"upload_ota({firmware_path.name})")
-        return self._wait_for_task(task, timeout=None)
+        return self._wait_for_task(task, timeout=float(self.config.upload_task_timeout_seconds))
 
     def get_system_info(self, timeout: float = 3.0) -> tuple[bool, SystemInfoDto | None]:
         task = self._enqueue(lambda: self._get_system_info_task(timeout), "get_system_info")
         return self._wait_for_task(task, timeout=timeout + 1.0)
 
     def close_serial(self) -> None:
-        self._queue_stop.set()
-        self._close_serial()
+        try:
+            self._queue_stop.set()
+            if self._queue_worker is not None:
+                self._queue_worker.join(timeout=5.0)  # Chờ worker thoát sạch
+        except Exception as exc:
+            self.logger.warning("Error stopping queue worker: %s", exc)
+        finally:
+            self._close_serial()
 
 
 # Backward-compatible alias for older imports.

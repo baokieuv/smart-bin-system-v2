@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal, pyqtSlot
 
 from src.models.device_config_dto import DeviceConfigDto
 from src.models.trash_model import TrashData
@@ -200,7 +200,12 @@ class MainViewModel(QObject):
             return
 
         self.state_loading.emit("Initialization complete. Connecting services...")
-        self.runtime.refresh_device_config(reason="startup")
+        # refresh_device_config có thể block (activation retry) → phải chạy ở background thread.
+        self.runtime._start_background_task(
+            "_app_version_refresh_running",
+            "smart-bin-startup-config",
+            lambda: self.runtime.refresh_device_config(reason="startup"),
+        )
         self.reset_to_welcome()
         self.runtime.check_app_version()
 
@@ -339,6 +344,21 @@ class MainViewModel(QObject):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    @pyqtSlot()
+    def _apply_config_qt_state(self) -> None:
+        """Qt slot: thực thi Qt timer/signal operations được marshal từ background thread.
+
+        Được gọi qua QMetaObject.invokeMethod(QueuedConnection) bởi runtime._apply_config()
+        khi nó phát hiện đang chạy ngoài main thread.
+        """
+        fn = getattr(self, "_pending_qt_state_fn", None)
+        if fn is not None:
+            self._pending_qt_state_fn = None
+            fn()
+
+    def _emit_activation_required(self) -> None:
+        """Qt slot: emit signal session-expired từ background thread một cách an toàn."""
+        self.state_activation_required.emit(True, "Session expired. Re-activating device...")
 
     def _persist_access_token(self, access_token: str) -> None:
         self.access_token = access_token
@@ -406,6 +426,10 @@ class MainViewModel(QObject):
         return "device not found" in self._extract_error_message(result).lower()
 
     def _build_activation_hint_message(self, result) -> str:
+        # result có thể là None, dict, hoặc string error từ backend.
+        # Khi được gọi với None (không có error cụ thể), trả về fallback message.
+        if result is None:
+            return "Device config is unavailable. Press Activate Device and app will retry every 5 minutes."
         if self._is_device_not_active_error(result):
             return "Device is not activated. Press Activate Device to continue."
         if self._is_device_not_found_error(result):

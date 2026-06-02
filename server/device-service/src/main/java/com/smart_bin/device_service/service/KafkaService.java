@@ -1,5 +1,6 @@
 package com.smart_bin.device_service.service;
 
+import com.smart_bin.core.dto.EmailEventDto;
 import com.smart_bin.core.dto.NotificationEventDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +20,9 @@ public class KafkaService {
     @Value("${app.kafka.topics.send-noti}")
     private String notiTopic;
 
+    @Value("${app.kafka.topics.send-email}")
+    private String emailTopic;
+
     public void publishNotification(NotificationEventDto eventPayload) {
         log.info("Đang gửi thông báo [{}]: {}", eventPayload.type(), eventPayload.title());
 
@@ -33,6 +37,24 @@ public class KafkaService {
             } else {
                 log.error("Lỗi khi gửi thông báo [{}]: {}. Nguyên nhân: {}",
                         eventPayload.type(), eventPayload.title(), ex.getMessage(), ex);
+            }
+        });
+    }
+
+    public void publishEmailEvent(EmailEventDto eventPayload) {
+        log.info("Đang gửi yêu cầu email [{}]: {}", eventPayload.emailType(), eventPayload.data().get("email"));
+
+        CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(emailTopic, eventPayload);
+
+        future.whenComplete((result, ex) -> {
+            if (ex == null) {
+                log.info("Gửi email thành công lên Kafka. Topic: {}, Partition: {}, Offset: {}",
+                        result.getRecordMetadata().topic(),
+                        result.getRecordMetadata().partition(),
+                        result.getRecordMetadata().offset());
+            } else {
+                log.error("Lỗi khi gửi email [{}]. Nguyên nhân: {}",
+                        eventPayload.emailType(), ex.getMessage(), ex);
             }
         });
     }

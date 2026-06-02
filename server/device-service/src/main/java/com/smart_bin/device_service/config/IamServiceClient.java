@@ -22,4 +22,10 @@ public interface IamServiceClient {
             @RequestParam("tenantId") String tenantId,
             @RequestParam("userId") String userId
     );
+
+    @GetMapping("/api/v1/users/internal")
+    JsonNode getUserById(
+            @RequestParam("userId") String userId,
+            @RequestHeader("x-internal-secret") String secret
+    );
 }

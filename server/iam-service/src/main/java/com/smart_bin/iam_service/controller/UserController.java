@@ -110,4 +110,13 @@ public class UserController {
         var user = userService.updateUser(keycloakId, request);
         return responseFactory.response(SuccessCode.OK, user);
     }
+
+    @GetMapping("/internal")
+    public ResponseEntity<ApiResponseFormat<Object>> getUserByIdInternal(
+            @RequestParam("userId") String userId,
+            @RequestHeader("x-internal-secret") String secret
+    ){
+        var user = userService.getUserByIdInternal(userId, secret);
+        return responseFactory.response(SuccessCode.OK, user);
+    }
 }

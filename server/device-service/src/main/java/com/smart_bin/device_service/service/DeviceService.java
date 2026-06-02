@@ -3,7 +3,6 @@ package com.smart_bin.device_service.service;
 import com.nimbusds.jose.shaded.gson.JsonObject;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.common.NotificationType;
-import com.smart_bin.core.common.SyncTenantUserType;
 import com.smart_bin.core.dto.NotificationEventDto;
 import com.smart_bin.core.dto.PageResponseDto;
 import com.smart_bin.core.exception.ApiException;
@@ -41,6 +40,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Service
@@ -197,19 +197,27 @@ public class DeviceService {
 
         if (request.pollingInterval() != null || request.fullThreshold() != null) {
             Map<String, Object> currentConfigs = device.getUserConfigs();
+            Map<String, Object> sharedAttributes = new HashMap<>();
             if (currentConfigs == null) {
                 currentConfigs = new HashMap<>();
             }
 
             if (request.pollingInterval() != null) {
                 currentConfigs.put("polling_interval", request.pollingInterval());
+                sharedAttributes.put("polling_interval", request.pollingInterval());
             }
             if (request.fullThreshold() != null) {
                 currentConfigs.put("full_threshold", request.fullThreshold());
+                sharedAttributes.put("max_high_average_waste_threshold", request.fullThreshold());
+                sharedAttributes.put("clear_high_average_waste_threshold", request.fullThreshold() - 10.0);
             }
 
             device.setUserConfigs(currentConfigs);
             isDbUpdated = true;
+
+            if (!sharedAttributes.isEmpty() && device.getDeviceId() != null) {
+                thingsBoardService.updateAttributes(device.getDeviceId(), Constants.THINGSBOARD_SCOPE.SHARED_SCOPE.name(), sharedAttributes);
+            }
         }
 
         if (!tbAttributes.isEmpty()) {
@@ -403,15 +411,10 @@ public class DeviceService {
         // 4. Tự động tìm và gán Firmware dựa trên hw_metadata
         autoAssignFirmware(device);
 
-        Device savedDevice = repository.save(device);
-
         // 5. Nếu là máy mới (chưa có Config) thì tạo Default Config
-        if (device.getUserConfigs() == null) {
-            device.setUserConfigs(Map.of(
-                    "polling_interval", 300,
-                    "full_threshold", 80.0
-            ));
-        }
+        assignGroupToDevice(device);
+
+        Device savedDevice = repository.save(device);
 
         // 6. Trả về Token và ID cho phần cứng
         return new DeviceProvisionResponse(
@@ -480,6 +483,46 @@ public class DeviceService {
         device.setStatus(DeviceStatus.OFFLINE);
         device.setDeviceProfile(profile);
         return device;
+    }
+
+    private void assignGroupToDevice(Device device) {
+        if (device.getUserConfigs() == null || device.getUserConfigs().isEmpty()) {
+            log.info("Thiết bị MAC {} chưa có cấu hình riêng. Tiến hành sao chép cấu hình từ Device Group...", device.getMac());
+
+            AtomicReference<Double> fullThreshold = new AtomicReference<>(80.0);
+            AtomicReference<Double> clearThreshold = new AtomicReference<>(70.0);
+            int pollingInterval = 300;
+
+            if (device.getDeviceGroup() != null) {
+                DeviceGroup group = device.getDeviceGroup();
+
+                if (group.getAlarmRules() != null) {
+                    // Giả định Entity DeviceGroup có quan hệ hoặc chứa danh sách AlarmRule định nghĩa trước
+                    group.getAlarmRules().stream()
+                            .filter(rule -> "HIGH_AVERAGE_WASTE".equals(rule.alarmType()))
+                            .findFirst()
+                            .ifPresent(rule -> {
+                                fullThreshold.set(rule.threshold());
+                                clearThreshold.set(rule.clearThreshold());
+                            });
+                }
+            }
+
+            Map<String, Object> dynamicConfigs = new HashMap<>();
+            dynamicConfigs.put("polling_interval", pollingInterval);
+            dynamicConfigs.put("full_threshold", fullThreshold.get());
+            device.setUserConfigs(dynamicConfigs);
+
+            Map<String, Object> sharedAttrs = new HashMap<>();
+            sharedAttrs.put("polling_interval", pollingInterval);
+            sharedAttrs.put("max_high_average_waste_threshold", fullThreshold.get());
+            sharedAttrs.put("clear_high_average_waste_threshold", clearThreshold.get());
+
+            if (device.getDeviceId() != null) {
+                thingsBoardService.updateAttributes(device.getDeviceId(), Constants.THINGSBOARD_SCOPE.SHARED_SCOPE.name(), sharedAttrs);
+                log.info("Đã đồng bộ cấu hình mặc định từ Group lên ThingsBoard cho thiết bị {}", device.getMac());
+            }
+        }
     }
 
     private void syncWithThingsBoard(Device device, String mac) {
@@ -590,6 +633,25 @@ public class DeviceService {
         if (device.getUserId() != null) {
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_CLAIMED);
         }
+
+        JsonNode userInfo = iamServiceClient.getUserById(userId, internalSecret);
+        String tenantId = userInfo.get("data").get("tenantId").asString();
+
+        if (device.getTenantId() != null && !device.getTenantId().equals(tenantId)) {
+            throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_CLAIMED);
+        }
+
+        if (tenantId.equals(Constants.DEFAULT_TENANT_ID)) {
+            DeviceGroup defaultGroup = groupRepository.findByCodeAndActiveTrue(Constants.DEFAULT_GROUP_CODE)
+                    .orElse(null);
+            device.setDeviceGroup(defaultGroup);
+
+            if (defaultGroup != null && defaultGroup.getTbProfileId() != null) {
+                thingsBoardService.assignProfileToDevice(device.getDeviceId(), defaultGroup.getTbProfileId());
+            }
+        }
+
+        device.setTenantId(tenantId);
         device.setUserId(userId);
         device.setClaimedAt(System.currentTimeMillis());
 
@@ -618,6 +680,24 @@ public class DeviceService {
     private String createPendingDeviceForFutureProvision(ClaimDeviceRequest request, String userId) {
         try {
             Device device = new Device();
+
+            JsonNode userInfo = iamServiceClient.getUserById(userId, internalSecret);
+            String tenantId = userInfo.get("data").get("tenantId").asString();
+
+            if (device.getTenantId() != null && !device.getTenantId().equals(tenantId)) {
+                throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_CLAIMED);
+            }
+
+            if (tenantId.equals(Constants.DEFAULT_TENANT_ID)) {
+                DeviceGroup defaultGroup = groupRepository.findByCodeAndActiveTrue(Constants.DEFAULT_GROUP_CODE)
+                        .orElse(null);
+                device.setDeviceGroup(defaultGroup);
+
+                if (defaultGroup != null && defaultGroup.getTbProfileId() != null) {
+                    thingsBoardService.assignProfileToDevice(device.getDeviceId(), defaultGroup.getTbProfileId());
+                }
+            }
+
             device.setMac(request.mac());
             device.setUserId(userId);
             device.setState(DeviceState.PENDING); // Đặt trạng thái chờ

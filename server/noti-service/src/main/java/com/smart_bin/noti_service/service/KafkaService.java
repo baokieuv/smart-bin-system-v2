@@ -50,6 +50,12 @@ public class KafkaService {
                 case WELCOME_TENANT:
                     emailService.sendWelcomeTenantEmail(toEmail, firstName, password);
                     break;
+                case ALARM_TRIGGERED:
+                    String deviceName = data.get("deviceName").toString();
+                    String alarmType = data.get("alarmType").toString();
+                    String severity = data.get("severity").toString();
+                    emailService.sendAlarmEmail(toEmail, firstName, deviceName, alarmType, severity);
+                    break;
                 default:
                     log.warn("Không hỗ trợ loại email này: {}", type);
                     return;

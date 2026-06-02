@@ -109,11 +109,22 @@ class MainViewModelRuntime:
             delay = min(delay * 2, max_delay)
 
     def _reactivate_after_telemetry_unauthorized(self) -> tuple[bool, str]:
+        # Phương thức này chạy trong background thread (smart-bin-telemetry-reauth).
+        # Các Qt timer/signal phải được gọi từ main thread — dùng QMetaObject.invokeMethod
+        # để marshal về event loop chính một cách an toàn.
+        from PyQt6.QtCore import QMetaObject, Qt  # noqa: PLC0415
+
         vm = self.vm
         vm.logger.warning("Telemetry 401 — re-activating device")
         vm.access_token = None
-        vm.telemetry_timer.stop()
-        vm.state_activation_required.emit(True, "Session expired. Re-activating device...")
+
+        # Timer stop và signal emit → phải chạy trên main thread.
+        QMetaObject.invokeMethod(vm.telemetry_timer, "stop", Qt.ConnectionType.QueuedConnection)
+        QMetaObject.invokeMethod(
+            vm,
+            "_emit_activation_required",
+            Qt.ConnectionType.QueuedConnection,
+        )
         return self.refresh_device_config(reason="telemetry_401", force_activation=True)
 
     # ------------------------------------------------------------------
@@ -121,8 +132,17 @@ class MainViewModelRuntime:
     # ------------------------------------------------------------------
 
     def _apply_config(self, config: DeviceConfigDto, *, reason: str, source: str) -> None:
-        """Push a resolved DeviceConfigDto into the ViewModel and ESP32."""
+        """Push a resolved DeviceConfigDto into the ViewModel and ESP32.
+
+        Có thể được gọi từ background thread (vd: telemetry reauth).
+        Các Qt timer / signal operation được marshal về main thread qua
+        QMetaObject.invokeMethod để tránh undefined behaviour.
+        """
+        from PyQt6.QtCore import QCoreApplication, QMetaObject, Qt, QThread  # noqa: PLC0415
+
         vm = self.vm
+
+        # --- Cập nhật state thuần Python (thread-safe) ---
         vm.device_config = config
         vm.access_token = config.access_token
         vm.device_config_polling_seconds = self._clamp_polling_interval(config.polling_interval)
@@ -131,9 +151,7 @@ class MainViewModelRuntime:
         vm.target_bin_firmware_version = config.target_bin_firmware_version
         vm.target_desktop_version = config.target_desktop_version
 
-        vm.config_refresh_timer.setInterval(vm.device_config_polling_seconds * 1000)
-        self._start_timer_if_inactive(vm.config_refresh_timer, "config_refresh_timer")
-
+        # --- Gửi config xuống ESP32 (serial worker thread, không cần main thread) ---
         ok, message = vm.actuator_client.update_device_config(vm.full_threshold, vm.device_height)
         if ok:
             vm.logger.info(
@@ -143,14 +161,33 @@ class MainViewModelRuntime:
         else:
             vm.logger.warning("Failed to push config to ESP32: %s", message)
 
-        if vm.access_token:
-            vm.telemetry_timer.start()
-            vm.state_activation_required.emit(False, "")
-            vm.logger.info("Telemetry loop started (source=%s)", source)
+        # --- Qt timer / signal: phải chạy trên main thread ---
+        is_main_thread = QThread.currentThread() is QCoreApplication.instance().thread()
+
+        def _apply_qt_state():
+            vm.config_refresh_timer.setInterval(vm.device_config_polling_seconds * 1000)
+            self._start_timer_if_inactive(vm.config_refresh_timer, "config_refresh_timer")
+
+            if vm.access_token:
+                vm.telemetry_timer.start()
+                vm.state_activation_required.emit(False, "")
+                vm.logger.info("Telemetry loop started (source=%s)", source)
+            else:
+                vm.telemetry_timer.stop()
+                vm.state_activation_required.emit(True, vm._build_activation_hint_message(None))
+                vm.logger.warning("No access token after config apply (source=%s)", source)
+
+        if is_main_thread:
+            _apply_qt_state()
         else:
-            vm.telemetry_timer.stop()
-            vm.state_activation_required.emit(True, vm._build_activation_hint_message(source))
-            vm.logger.warning("No access token after config apply (source=%s)", source)
+            # Marshal toàn bộ Qt operation về main thread.
+            QMetaObject.invokeMethod(
+                vm,
+                "_apply_config_qt_state",
+                Qt.ConnectionType.QueuedConnection,
+            )
+            # Lưu callback để main_viewmodel gọi qua slot _apply_config_qt_state.
+            vm._pending_qt_state_fn = _apply_qt_state
 
     @staticmethod
     def _start_timer_if_inactive(timer, name: str) -> None:
@@ -162,12 +199,17 @@ class MainViewModelRuntime:
     # ------------------------------------------------------------------
 
     def refresh_device_config(self, reason: str, force_activation: bool = False) -> None:
-        """Refresh device config and synchronise cache, telemetry, and ESP32 params.
+        """Refresh device config và đồng bộ cache, telemetry, và tham số ESP32.
 
         Resolution order:
-        1. Use cached access token (skip /activate) unless *force_activation* is set.
-        2. Query backend for latest config; merge with cache if both exist.
-        3. Fall back to cached config, then to built-in defaults.
+        1. Dùng cached access token (bỏ qua /activate) trừ khi *force_activation* được đặt.
+        2. Query backend lấy config mới nhất; merge với cache nếu cả hai tồn tại.
+        3. Fallback về cached config, rồi đến built-in defaults.
+
+        QUAN TRỌNG: Phương thức này phải được gọi từ background thread
+        (hoặc thông qua _start_background_task) vì _activate_device_with_retry
+        có thể block lâu với time.sleep(). Không gọi trực tiếp từ main thread /
+        Qt slot.
         """
         vm = self.vm
         vm.logger.info("Config refresh requested reason=%s force=%s", reason, force_activation)
@@ -362,12 +404,7 @@ class MainViewModelRuntime:
         try:
             success, fill_levels = vm.actuator_client.request_fill_levels()
             success = True
-            fill_levels = {
-                "bin1": 90,
-                "bin2": 100,
-                "bin3": 90,
-                "bin4": 100
-            }
+            fill_levels = [00, 00, 00, 00]
             if success and fill_levels:
                 vm.latest_fill_levels = fill_levels
                 vm.logger.debug("Fill levels updated: %s", fill_levels)

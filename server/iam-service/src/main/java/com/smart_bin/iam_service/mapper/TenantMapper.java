@@ -1,7 +1,7 @@
 package com.smart_bin.iam_service.mapper;
 
 import com.smart_bin.iam_service.dto.auth.request.CreateTenantRequest;
-import com.smart_bin.iam_service.dto.auth.response.TenantDto;
+import com.smart_bin.iam_service.dto.user.response.TenantDto;
 import com.smart_bin.iam_service.entity.Tenant;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;

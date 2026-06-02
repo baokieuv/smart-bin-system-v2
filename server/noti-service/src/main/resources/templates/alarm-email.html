@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #374151; background-color: #F3F4F6; margin: 0; padding: 40px 20px; }
+        .container { max-width: 560px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #E5E7EB; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+        .header { padding: 32px 32px 0 32px; border-bottom: 2px solid #EF4444;}
+        .header h1 { margin: 0; font-size: 22px; color: #DC2626; font-weight: 600; display: flex; align-items: center; gap: 8px;}
+        .content { padding: 32px; }
+        .content h2 { font-size: 18px; color: #111827; margin-top: 0; font-weight: 500; }
+        .button { display: inline-block; padding: 12px 28px; background-color: #EF4444; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; margin: 24px 0; }
+
+        .alert-box { background-color: #FEF2F2; border: 1px solid #F87171; border-radius: 6px; padding: 16px; margin: 20px 0; }
+        .alert-row { display: flex; margin-bottom: 8px; font-size: 14px;}
+        .alert-row:last-child { margin-bottom: 0; }
+        .alert-label { font-weight: 600; color: #7F1D1D; min-width: 120px; }
+        .alert-value { color: #991B1B; font-weight: 500; }
+
+        .footer { padding: 24px 32px; text-align: center; color: #9CA3AF; font-size: 13px; border-top: 1px solid #F3F4F6; background-color: #ffffff; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>⚠️ SMART BIN ALERT</h1>
+    </div>
+    <div class="content">
+        <h2>Hello <span th:text="${firstName}">User</span>,</h2>
+        <p>Hệ thống vừa ghi nhận một cảnh báo từ thiết bị của bạn. Vui lòng kiểm tra và xử lý ngay lập tức để đảm bảo an toàn và vệ sinh.</p>
+
+        <div class="alert-box">
+            <div class="alert-row">
+                <span class="alert-label">Tên thiết bị:</span>
+                <span class="alert-value" th:text="${deviceName}">Smart Bin 01</span>
+            </div>
+            <div class="alert-row">
+                <span class="alert-label">Loại cảnh báo:</span>
+                <span class="alert-value" th:text="${alarmType}">HIGH_AVERAGE_WASTE</span>
+            </div>
+            <div class="alert-row">
+                <span class="alert-label">Mức độ:</span>
+                <span class="alert-value" th:text="${severity}">CRITICAL</span>
+            </div>
+        </div>
+
+        <a th:href="${loginLink}" class="button">Đăng nhập vào Hệ thống</a>
+
+        <p style="margin-top: 28px; font-size: 14px; color: #6B7280;">Nếu vấn đề đã được giải quyết, bạn có thể bỏ qua email này. Cảnh báo sẽ tự động được gỡ bỏ khi thiết bị trở lại trạng thái an toàn.</p>
+    </div>
+    <div class="footer">
+        &copy; 2026 Smart Bin System. All rights reserved.<br>
+        This is an automated message, please do not reply.
+    </div>
+</div>
+</body>
+</html>

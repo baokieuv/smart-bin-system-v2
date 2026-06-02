@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 @SpringBootApplication
 @ComponentScan(basePackages = {"com.smart_bin.media_service", "com.smart_bin.core"})
-@EntityScan(basePackages = {"com.smart_bin.media_./clservice", "com.smart_bin.core"})
+@EntityScan(basePackages = {"com.smart_bin.media_service", "com.smart_bin.core"})
 @EnableJpaAuditing
 public class MediaServiceApplication {
 
