@@ -12,6 +12,7 @@ type AccountTabProps = {
   isEditingName: boolean;
   editableName: string;
   hasNameChanged: boolean;
+  isUpdatingName: boolean;
   greeting: string;
   onPickAvatar: () => void;
   onStartEditingName: () => void;
@@ -29,6 +30,7 @@ export default function AccountTab({
   isEditingName,
   editableName,
   hasNameChanged,
+  isUpdatingName,
   greeting,
   onPickAvatar,
   onStartEditingName,
@@ -106,10 +108,10 @@ export default function AccountTab({
                     type="button"
                     size="sm"
                     onClick={onConfirmNameChange}
-                    disabled={!hasNameChanged}
-                    className={!hasNameChanged ? 'bg-slate-300 text-slate-600 shadow-none hover:bg-slate-300 active:bg-slate-300' : ''}
+                    disabled={!hasNameChanged || isUpdatingName}
+                    className={!hasNameChanged || isUpdatingName ? 'bg-slate-300 text-slate-600 shadow-none hover:bg-slate-300 active:bg-slate-300' : ''}
                   >
-                    Confirm
+                    {isUpdatingName ? 'Saving...' : 'Confirm'}
                   </Button>
                 </div>
               </div>

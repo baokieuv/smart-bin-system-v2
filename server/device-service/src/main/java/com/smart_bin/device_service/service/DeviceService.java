@@ -59,6 +59,7 @@ public class DeviceService {
     private final DeviceSecurityService securityService;
     private final DeviceProfileRepository profileRepository;
     private final DeviceGroupRepository groupRepository;
+    private final DeviceGroupService deviceGroupService;
     private final FirmwareMappingRepository mappingRepository;
 
     private static final String CLAIM_CACHE_PREFIX = "claim:mac:";
@@ -72,6 +73,8 @@ public class DeviceService {
     @Transactional
     public List<ImportDeviceResponse> importDevicesByTenant(ImportDeviceRequest request, String tenantId) {
         List<ImportDeviceResponse> results = new ArrayList<>();
+
+        DeviceGroup defaultGroup = deviceGroupService.getOrCreateDefaultGroupForTenant(tenantId);
 
         for (DeviceImportItem item : request.devices()) {
             String mac = item.mac();
@@ -96,7 +99,9 @@ public class DeviceService {
                     results.add(new ImportDeviceResponse(mac, "SKIPPED", "Thiết bị đã nằm trong danh sách của bạn."));
                 } else {
                     device.setTenantId(tenantId);
+                    device.setDeviceGroup(defaultGroup);
                     syncWithThingsBoard(device, mac);
+                    assignGroupToDevice(device);
                     repository.save(device);
                     results.add(new ImportDeviceResponse(mac, "SUCCESS", "Gán Tenant thành công cho thiết bị đã tồn tại."));
                 }
@@ -105,7 +110,9 @@ public class DeviceService {
                 shellDevice.setMac(mac);
                 shellDevice.setTenantId(tenantId);
                 shellDevice.setState(DeviceState.PENDING); // Trạng thái chờ kích hoạt
+                shellDevice.setDeviceGroup(defaultGroup);
                 syncWithThingsBoard(shellDevice, mac);
+                assignGroupToDevice(shellDevice);
                 repository.save(shellDevice);
 
                 results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));

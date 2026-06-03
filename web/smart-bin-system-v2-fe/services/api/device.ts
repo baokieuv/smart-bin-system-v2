@@ -56,18 +56,5 @@ export const deviceApi = {
     // Get telemetries requires auth and uses auto-refresh
     getTelemetries: async (deviceId: string, params?: TelemetryParams) => {
         return api.get(`/devices/${deviceId}/telemetries`, params);
-    },
-
-    // Get attributes requires auth and uses auto-refresh
-    getAttributes: async (deviceId: string) => {
-        const key = `device:${deviceId}:attributes`;
-        const cached = getCache<any>(key);
-        if (cached) return { success: true, data: cached } as any;
-
-        const res = await api.get(`/devices/${deviceId}/attributes`);
-        if (res && res.success && res.data) {
-            setCache(key, res.data, 5 * 60 * 1000);
-        }
-        return res;
     }
 }

@@ -16,6 +16,8 @@ type DashboardOverlaysProps = {
   editDeviceName: string;
   editDeviceLatitude: string;
   editDeviceLongitude: string;
+  editPollingInterval: string;
+  editFullThreshold: string;
   editLocation: LocationValue | null;
   macAddress: string;
   claimCode: string;
@@ -35,6 +37,8 @@ type DashboardOverlaysProps = {
   onEditDeviceNameChange: (value: string) => void;
   onEditDeviceLatitudeChange: (value: string) => void;
   onEditDeviceLongitudeChange: (value: string) => void;
+  onEditPollingIntervalChange: (value: string) => void;
+  onEditFullThresholdChange: (value: string) => void;
   onEditLocationChange: (location: LocationValue) => void;
   onSaveDeviceChanges: () => void;
   onCloseAddPopup: () => void;
@@ -60,6 +64,8 @@ export default function DashboardOverlays({
   editDeviceName,
   editDeviceLatitude,
   editDeviceLongitude,
+  editPollingInterval,
+  editFullThreshold,
   editLocation,
   macAddress,
   claimCode,
@@ -79,6 +85,8 @@ export default function DashboardOverlays({
   onEditDeviceNameChange,
   onEditDeviceLatitudeChange,
   onEditDeviceLongitudeChange,
+  onEditPollingIntervalChange,
+  onEditFullThresholdChange,
   onEditLocationChange,
   onSaveDeviceChanges,
   onCloseAddPopup,
@@ -143,6 +151,31 @@ export default function DashboardOverlays({
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-slate-700">Longitude</label>
                   <Input value={editDeviceLongitude} onChange={(event) => onEditDeviceLongitudeChange(event.target.value)} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">Polling Interval</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editPollingInterval}
+                    onChange={(event) => onEditPollingIntervalChange(event.target.value)}
+                    placeholder="Seconds"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">Full Threshold</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editFullThreshold}
+                    onChange={(event) => onEditFullThresholdChange(event.target.value)}
+                    placeholder="Percent"
+                  />
                 </div>
               </div>
 
@@ -263,7 +296,7 @@ export default function DashboardOverlays({
               <Button
                 type="button"
                 onClick={onAddDevice}
-                disabled={!canSubmitAddDevice}
+                disabled={!canSubmitAddDevice || isSubmittingDeviceAction}
               >
                 {isSubmittingDeviceAction ? 'Adding...' : 'Add Device'}
               </Button>

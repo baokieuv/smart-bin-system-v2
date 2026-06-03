@@ -5,6 +5,7 @@ import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.common.DeviceStatus;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 public record DeviceDto (
@@ -20,6 +21,7 @@ public record DeviceDto (
         Long claimedAt,
         String desktopVersion,
         String binVersion,
-        String groupCode
+        String groupCode,
+        Map<String, Object> userConfigs
 ) {
 }

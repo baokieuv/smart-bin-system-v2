@@ -293,14 +293,16 @@ export default function DeviceGroupsPage() {
                       >
                         Edit
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => void remove(item.id)}
-                        disabled={deleteLoadingId === item.id}
-                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
-                      >
-                        {deleteLoadingId === item.id ? "Deleting..." : "Delete"}
-                      </button>
+                      {!item.isDefault ? (
+                        <button
+                          type="button"
+                          onClick={() => void remove(item.id)}
+                          disabled={deleteLoadingId === item.id}
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                        >
+                          {deleteLoadingId === item.id ? "Deleting..." : "Delete"}
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

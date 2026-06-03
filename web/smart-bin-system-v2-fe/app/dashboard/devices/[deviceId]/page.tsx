@@ -7,6 +7,7 @@ import { Surface } from '@/components/ui/surface';
 import { Button } from '@/components/ui/button';
 import { ToastStack } from '@/components/ui/toast-stack';
 import { deviceApi } from '@/services/api/device';
+import { clearCache } from '@/lib/cache';
 import { DeviceDto, DeviceTelemetries } from '@/types/device';
 import { Input } from '@/components/ui/input';
 import { LocationPickerMap, type LocationValue } from '@/components/layout/location-picker-map';
@@ -97,6 +98,8 @@ export default function DeviceDetailPage() {
   const [editName, setEditName] = useState('');
   const [editLatitude, setEditLatitude] = useState('');
   const [editLongitude, setEditLongitude] = useState('');
+  const [editPollingInterval, setEditPollingInterval] = useState('');
+  const [editFullThreshold, setEditFullThreshold] = useState('');
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
   const pushToast = (message: string, type: Toast['type']) => {
@@ -113,6 +116,26 @@ export default function DeviceDetailPage() {
     () => parseCoordinatePair(editLatitude, editLongitude),
     [editLatitude, editLongitude],
   );
+
+  const parseOptionalNumber = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+
+    const parsed = Number(trimmed);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  };
+
+  const applyDeviceAttributes = (attributes: Record<string, unknown>) => {
+    const pollingInterval = attributes.polling_interval;
+    const fullThreshold = attributes.full_threshold;
+
+    setEditPollingInterval(
+      pollingInterval === undefined || pollingInterval === null ? '' : String(pollingInterval),
+    );
+    setEditFullThreshold(
+      fullThreshold === undefined || fullThreshold === null ? '' : String(fullThreshold),
+    );
+  };
 
   useEffect(() => {
     if (!device) {
@@ -158,6 +181,7 @@ export default function DeviceDetailPage() {
           setEditName(fetchedDevice.name || '');
           setEditLatitude(String(fetchedDevice.latitude ?? ''));
           setEditLongitude(String(fetchedDevice.longitude ?? ''));
+          applyDeviceAttributes(fetchedDevice.userConfigs ?? {});
         } else {
           setDevice(null);
           pushToast(response.message || 'Failed to load device detail.', 'error');
@@ -223,6 +247,8 @@ export default function DeviceDetailPage() {
         name: editName.trim(),
         latitude: location.latitude,
         longitude: location.longitude,
+        pollingInterval: parseOptionalNumber(editPollingInterval),
+        fullThreshold: parseOptionalNumber(editFullThreshold),
         scope: 'SERVER_SCOPE',
         additionalAttributes: {},
       });
@@ -232,7 +258,16 @@ export default function DeviceDetailPage() {
         return;
       }
 
-      setDevice(response.data as DeviceDto);
+      clearCache(`device:${device.id}`);
+      const refreshed = await deviceApi.getDetail(device.id);
+      if (refreshed.success && refreshed.data) {
+        const fetchedDevice = refreshed.data as DeviceDto;
+        setDevice(fetchedDevice);
+        setEditName(fetchedDevice.name || '');
+        setEditLatitude(String(fetchedDevice.latitude ?? ''));
+        setEditLongitude(String(fetchedDevice.longitude ?? ''));
+        applyDeviceAttributes(fetchedDevice.userConfigs ?? {});
+      }
       setIsEditPopupOpen(false);
       pushToast('Device updated successfully.', 'success');
     } catch {
@@ -254,6 +289,8 @@ export default function DeviceDetailPage() {
         return;
       }
 
+      clearCache(`device:${device.id}`);
+      await deviceApi.getList();
       pushToast('Device deleted successfully.', 'success');
       setTimeout(() => {
         window.location.href = '/dashboard';
@@ -452,6 +489,31 @@ export default function DeviceDetailPage() {
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-slate-700">Longitude</label>
                   <Input value={editLongitude} onChange={(event) => setEditLongitude(event.target.value)} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">Polling Interval</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editPollingInterval}
+                    onChange={(event) => setEditPollingInterval(event.target.value)}
+                    placeholder="Seconds"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">Full Threshold</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editFullThreshold}
+                    onChange={(event) => setEditFullThreshold(event.target.value)}
+                    placeholder="Percent"
+                  />
                 </div>
               </div>
 

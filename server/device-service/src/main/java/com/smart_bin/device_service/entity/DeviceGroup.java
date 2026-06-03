@@ -35,6 +35,9 @@ public class DeviceGroup extends BaseEntity {
 
     private String description;
 
+    @Column(name = "is_default", nullable = false)
+    private boolean isDefault = false;
+
     // Configuration for devices group
     @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, Object> sharedSpecs;

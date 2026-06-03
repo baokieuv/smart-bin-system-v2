@@ -5,11 +5,13 @@ import Panel from "@/components/ui/panel";
 import { unwrapListPayload, getListCount } from "@/lib/admin-utils";
 import { getCmsAccessRole } from "@/lib/auth-session";
 import type { BaseResponse, PagedPayload } from "@/types/core";
+import type { DeviceDto } from "@/types/device";
 import type { NotificationDto } from "@/types/notification";
 import { devicesAdminApi } from "@/services/api/devices-admin";
 import { notificationsAdminApi } from "@/services/api/notifications-admin";
 import { usersAdminApi } from "@/services/api/users-admin";
 import { tenantsAdminApi } from "@/services/api/tenants-admin";
+import DeviceLocationMap from "@/components/layout/device-location-map";
 
 interface Stats {
   users: number;
@@ -26,6 +28,7 @@ export default function DashboardPage() {
     tenants: 0,
     unreadNotifications: 0,
   });
+  const [mapDevices, setMapDevices] = useState<DeviceDto[]>([]);
 
   const [error, setError] = useState("");
 
@@ -54,7 +57,7 @@ export default function DashboardPage() {
       // Use allSettled so one failing endpoint doesn't prevent other counts from showing
       const results = await Promise.allSettled([
         usersAdminApi.getUsers({ page: 1, size: 999 }),
-        devicesAdminApi.getDevices(),
+        devicesAdminApi.getDevices({ page: 1, size: 1000 }),
         notificationsAdminApi.getNotifications({ page: 1, size: 200 }),
         tenantsAdminApi.getTenants({ page: 1, size: 1 }),
       ]);
@@ -72,6 +75,7 @@ export default function DashboardPage() {
         const notificationList = notifRes
           ? unwrapListPayload<NotificationDto>(notifRes.data as PagedPayload<NotificationDto>)
           : [];
+        const deviceList = devicesRes ? unwrapListPayload<DeviceDto>(devicesRes.data as PagedPayload<DeviceDto>) : [];
 
         setStats({
           users: usersRes ? getListCount((usersRes.data as PagedPayload<unknown>) ?? undefined) : 0,
@@ -79,6 +83,7 @@ export default function DashboardPage() {
           tenants: tenantsRes ? getListCount((tenantsRes.data as PagedPayload<unknown>) ?? undefined) : 0,
           unreadNotifications: notificationList.filter((item) => !item.isRead).length,
         });
+        setMapDevices(deviceList);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to compute dashboard stats");
       }
@@ -137,6 +142,10 @@ export default function DashboardPage() {
           </Panel>
         ))}
       </div>
+
+      <Panel title="Device Map" subtitle="Static device positions rendered from the CMS dashboard data">
+        <DeviceLocationMap devices={mapDevices} className="h-[520px] w-full" />
+      </Panel>
 
       <Panel title="CMS Mapping Notes" subtitle="From smart-bin-system-v2-fe user flows to admin operations">
         <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-2">

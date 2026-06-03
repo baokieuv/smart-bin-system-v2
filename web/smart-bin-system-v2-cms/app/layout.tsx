@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { IBM_Plex_Mono, Manrope } from "next/font/google";
+import "mapbox-gl/dist/mapbox-gl.css";
 import ToastHost from "@/components/ui/toast-host";
 import "./globals.css";
 

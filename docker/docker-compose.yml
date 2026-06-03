@@ -113,6 +113,19 @@ services:
     networks:
       - smart_bin_network
 
+  mqtt-ws-proxy:
+    image: python:3.11-alpine
+    container_name: mqtt_ws_proxy
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    # Dùng Python chính chủ, tự động cài websockify và chạy proxy bind ra IP 0.0.0.0
+    command: sh -c "pip install websockify && websockify 0.0.0.0:8081 thingsboard-ce:1883"
+    depends_on:
+      - thingsboard-ce
+    networks:
+      - smart_bin_network
+
   kafka:
     image: apache/kafka:3.7.0
     container_name: kafka_smart_bin

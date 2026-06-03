@@ -12,6 +12,11 @@ export type DeviceDto = {
   state: string;
   status: DeviceStatus | string;
   createdDate: string;
+  claimedAt?: number;
+  desktopVersion?: string;
+  binVersion?: string;
+  groupCode?: string;
+  userConfigs?: Record<string, unknown>;
 };
 
 export type DeviceAttributes = Record<string, unknown>;
@@ -45,6 +50,8 @@ export type UpdateDeviceRequest = {
   name?: string;
   latitude?: number;
   longitude?: number;
+  pollingInterval?: number;
+  fullThreshold?: number;
   scope?: string;
   additionalAttributes?: Record<string, unknown>;
 };

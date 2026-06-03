@@ -237,9 +237,12 @@ export default function DashboardPage() {
     const [editDeviceName, setEditDeviceName] = useState('');
     const [editDeviceLatitude, setEditDeviceLatitude] = useState('');
     const [editDeviceLongitude, setEditDeviceLongitude] = useState('');
+    const [editPollingInterval, setEditPollingInterval] = useState('');
+    const [editFullThreshold, setEditFullThreshold] = useState('');
     const [isSubmittingDeviceAction, setIsSubmittingDeviceAction] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
     const [editableName, setEditableName] = useState('');
+    const [isUpdatingName, setIsUpdatingName] = useState(false);
     const [activities, setActivities] = useState<NotificationDto[]>([]);
     const [isActivityLoading, setIsActivityLoading] = useState(false);
     const [isMarkingAllActivityRead, setIsMarkingAllActivityRead] = useState(false);
@@ -388,6 +391,69 @@ export default function DashboardPage() {
         }, 2500);
     };
 
+    const loadCurrentUser = async () => {
+        const response = await usersApi.me();
+
+        if (!response.success || !response.data) {
+            return null;
+        }
+
+        setUserInfo({
+            ...response.data,
+            avatarUrl: withAvatarCacheBuster(response.data.avatarUrl),
+        });
+
+        return response.data;
+    };
+
+    const loadDeviceList = async (selectedDeviceIdToKeep?: string | null) => {
+        setIsDeviceLoading(true);
+
+        try {
+            const deviceResponse = await deviceApi.getList();
+
+            if (deviceResponse.success && Array.isArray(deviceResponse.data)) {
+                const nextDevices = deviceResponse.data;
+                setDevices(nextDevices);
+
+                if (selectedDeviceIdToKeep !== undefined) {
+                    const keepSelection = selectedDeviceIdToKeep !== null
+                        && nextDevices.some((device) => device.id === selectedDeviceIdToKeep);
+                    setSelectedDeviceId(keepSelection ? selectedDeviceIdToKeep : null);
+                }
+
+                return nextDevices;
+            }
+
+            setDevices([]);
+            if (selectedDeviceIdToKeep !== undefined) {
+                setSelectedDeviceId(null);
+            }
+            pushToast(deviceResponse.message || 'Failed to load devices.', 'error');
+            return [];
+        } catch {
+            setDevices([]);
+            if (selectedDeviceIdToKeep !== undefined) {
+                setSelectedDeviceId(null);
+            }
+            pushToast('Failed to load device list.', 'error');
+            return [];
+        } finally {
+            setIsDeviceLoading(false);
+        }
+    };
+
+    const refreshActivityFeed = async (page = activityPage) => {
+        await loadActivities(page);
+        await loadUnreadCount();
+    };
+
+    const redirectToLogin = () => {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        router.push('/auth/login');
+    };
+
     const userInitial = userInfo?.firstName?.charAt(0).toUpperCase() ?? userInfo?.email?.charAt(0).toUpperCase() ?? 'U';
     const fullName = `${userInfo?.firstName ?? ''} ${userInfo?.lastName ?? ''}`.trim() || 'User';
     const normalizedFullName = fullName.trim().replace(/\s+/g, ' ');
@@ -426,6 +492,26 @@ export default function DashboardPage() {
         if (longitude < -180 || longitude > 180) return null;
 
         return { latitude, longitude };
+    };
+
+    const parseOptionalNumber = (value: string) => {
+        const trimmed = value.trim();
+        if (!trimmed) return undefined;
+
+        const parsed = Number(trimmed);
+        return Number.isNaN(parsed) ? undefined : parsed;
+    };
+
+    const applyDeviceAttributes = (attributes: Record<string, unknown>) => {
+        const pollingInterval = attributes.polling_interval;
+        const fullThreshold = attributes.full_threshold;
+
+        setEditPollingInterval(
+            pollingInterval === undefined || pollingInterval === null ? '' : String(pollingInterval),
+        );
+        setEditFullThreshold(
+            fullThreshold === undefined || fullThreshold === null ? '' : String(fullThreshold),
+        );
     };
 
     const addLocation = parseCoordinatePair(addDeviceLatitude, addDeviceLongitude);
@@ -471,26 +557,17 @@ export default function DashboardPage() {
             }
 
             const uploadResponse = await usersApi.uploadAvatar(croppedFile, {
-                folder: 'avatar',
                 oldObjectName: objectName || undefined,
             });
 
             if (!uploadResponse.success) {
-                pushToast(uploadResponse.message || 'Failed to update avatar.', 'error');
+                pushToast('Failed to update avatar.', 'error');
                 return;
             }
-
-            const uploadedAvatarUrl = extractAvatarUrlFromUploadResponse(uploadResponse.data);
-            if (!uploadedAvatarUrl) {
-                pushToast('Avatar uploaded but the server did not return a usable URL.', 'error');
-                return;
-            }
-
-            const currentName = `${userInfo?.firstName ?? ''} ${userInfo?.lastName ?? ''}`.trim();
 
             const updateResponse = await usersApi.update({
-                name: currentName,
-                avatarUrl: uploadedAvatarUrl,
+                name: `${userInfo?.firstName ?? ''} ${userInfo?.lastName ?? ''}`.trim(),
+                avatarUrl: extractAvatarUrlFromUploadResponse(uploadResponse.data),
             });
 
             if (!updateResponse.success) {
@@ -498,17 +575,14 @@ export default function DashboardPage() {
                 return;
             }
 
-            const newAvatarUrl = uploadedAvatarUrl;
-
-            if (newAvatarUrl) {
-                const finalAvatarUrl = withAvatarCacheBuster(newAvatarUrl);
-
-                setUserInfo((prev) => (prev ? { ...prev, avatarUrl: finalAvatarUrl } : prev));
-                setImageSrc(null);
-                pushToast('Avatar updated successfully.', 'success');
-            } else {
-                pushToast('Failed to update avatar.', 'error');
+            const reloadedUser = await loadCurrentUser();
+            if (!reloadedUser) {
+                pushToast('Failed to reload user profile.', 'error');
+                return;
             }
+
+            setImageSrc(null);
+            pushToast('Avatar updated successfully.', 'success');
         } catch {
             pushToast('Failed to update avatar.', 'error');
         } finally {
@@ -548,8 +622,7 @@ export default function DashboardPage() {
             }
 
             const created = response.data as DeviceDto;
-            setDevices((prev) => [created, ...prev]);
-            setSelectedDeviceId(created.id);
+            await loadDeviceList(created.id);
             setIsAddDevicePopupOpen(false);
             setMacAddress('');
             setClaimCode('');
@@ -670,12 +743,7 @@ export default function DashboardPage() {
                 return;
             }
 
-            setActivities((prev) => prev.map((item) => (
-                String(item.id) === String(id)
-                    ? { ...item, isRead: true }
-                    : item
-            )));
-            setActivityUnreadCount((prev) => Math.max(prev - 1, 0));
+            await refreshActivityFeed(activityPage);
         } catch {
             pushToast('Failed to mark notification as read.', 'error');
         } finally {
@@ -695,8 +763,7 @@ export default function DashboardPage() {
                 return;
             }
 
-            setActivities((prev) => prev.map((item) => ({ ...item, isRead: true })));
-            setActivityUnreadCount(0);
+            await refreshActivityFeed(activityPage);
             pushToast('All notifications marked as read.', 'success');
         } catch {
             pushToast('Failed to mark all notifications as read.', 'error');
@@ -747,10 +814,8 @@ export default function DashboardPage() {
                 return;
             }
 
-            const idSet = new Set(idNumbers.map((id) => String(id)));
-            setActivities((prev) => prev.map((item) => (idSet.has(String(item.id)) ? { ...item, isRead } : item)));
             setSelectedActivityIds([]);
-            loadUnreadCount();
+            await refreshActivityFeed(activityPage);
             pushToast(isRead ? 'Selected notifications marked as read.' : 'Selected notifications marked as unread.', 'success');
         } catch {
             pushToast('Failed to update selected notifications.', 'error');
@@ -764,6 +829,7 @@ export default function DashboardPage() {
         setEditDeviceName(selectedDevice.name || '');
         setEditDeviceLatitude(String(selectedDevice.latitude ?? ''));
         setEditDeviceLongitude(String(selectedDevice.longitude ?? ''));
+        applyDeviceAttributes(selectedDevice.userConfigs ?? {});
         setIsEditDevicePopupOpen(true);
     };
 
@@ -789,6 +855,8 @@ export default function DashboardPage() {
                 name: editDeviceName.trim(),
                 latitude: location.latitude,
                 longitude: location.longitude,
+                pollingInterval: parseOptionalNumber(editPollingInterval),
+                fullThreshold: parseOptionalNumber(editFullThreshold),
                 scope: 'SERVER_SCOPE',
                 additionalAttributes: {},
             });
@@ -799,8 +867,7 @@ export default function DashboardPage() {
             }
 
             const updated = response.data as DeviceDto;
-            setDevices((prev) => prev.map((item) => (item.id === selectedDevice.id ? updated : item)));
-            setSelectedDeviceId(updated.id);
+            await loadDeviceList(updated.id);
             setIsEditDevicePopupOpen(false);
             pushToast('Device updated successfully.', 'success');
         } catch {
@@ -822,8 +889,7 @@ export default function DashboardPage() {
                 return;
             }
 
-            setDevices((prev) => prev.filter((item) => item.id !== selectedDevice.id));
-            setSelectedDeviceId(null);
+            await loadDeviceList(null);
             setIsDeletePopupOpen(false);
             pushToast('Device deleted successfully.', 'success');
         } catch {
@@ -846,30 +912,28 @@ export default function DashboardPage() {
         }
 
         try {
+            setIsUpdatingName(true);
             const response = await usersApi.update({
                 name: nextName,
                 avatarUrl: userInfo?.avatarUrl ? usersApi.sanitizeAvatarUrl(userInfo.avatarUrl) : '',
             });
 
-            if (response.success){
-                const [firstName, ...rest] = nextName.split(/\s+/);
-                const lastName = rest.join(' ');
-                setUserInfo((prev) => {
-                    if (!prev) return prev;
-                    return {
-                        ...prev,
-                        firstName,
-                        lastName,
-                    };
-                });
+            if (response.success) {
+                const reloadedUser = await loadCurrentUser();
+                if (!reloadedUser) {
+                    pushToast('Failed to reload user profile.', 'error');
+                    return;
+                }
                 pushToast('Name updated successfully.', 'success');
-            }else{
+            } else {
                 pushToast('Failed to updated name.', 'error');
             }
         } catch (err: unknown){
             const systemMessage = err instanceof Error ? err.message : '';
 
             pushToast(systemMessage || 'Error occured.', 'error');
+        } finally {
+            setIsUpdatingName(false);
         }
 
         setIsEditingName(false);
@@ -947,6 +1011,7 @@ export default function DashboardPage() {
                             isEditingName={isEditingName}
                             editableName={editableName}
                             hasNameChanged={hasNameChanged}
+                            isUpdatingName={isUpdatingName}
                             greeting={greeting}
                             onPickAvatar={() => fileInputRef.current?.click()}
                             onStartEditingName={() => setIsEditingName(true)}
@@ -976,7 +1041,7 @@ export default function DashboardPage() {
                             warningTypes={WARNING_NOTIFICATION_TYPES}
                             formatTime={formatTime}
                             toNotificationLabel={toNotificationLabel}
-                            onRefresh={() => loadActivities(activityPage)}
+                            onRefresh={() => refreshActivityFeed(activityPage)}
                             onSetFilter={setActivityFilter}
                             onMarkAllRead={handleMarkAllActivitiesAsRead}
                             onToggleSelectAllVisible={handleToggleSelectAllVisible}
@@ -1000,6 +1065,8 @@ export default function DashboardPage() {
                 editDeviceName={editDeviceName}
                 editDeviceLatitude={editDeviceLatitude}
                 editDeviceLongitude={editDeviceLongitude}
+                editPollingInterval={editPollingInterval}
+                editFullThreshold={editFullThreshold}
                 editLocation={editLocation}
                 macAddress={macAddress}
                 claimCode={claimCode}
@@ -1019,6 +1086,8 @@ export default function DashboardPage() {
                 onEditDeviceNameChange={setEditDeviceName}
                 onEditDeviceLatitudeChange={setEditDeviceLatitude}
                 onEditDeviceLongitudeChange={setEditDeviceLongitude}
+                onEditPollingIntervalChange={setEditPollingInterval}
+                onEditFullThresholdChange={setEditFullThreshold}
                 onEditLocationChange={(location) => {
                     setEditDeviceLatitude(location.latitude.toFixed(6));
                     setEditDeviceLongitude(location.longitude.toFixed(6));

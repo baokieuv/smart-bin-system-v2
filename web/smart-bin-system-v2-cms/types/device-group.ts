@@ -29,6 +29,7 @@ export interface DeviceGroupDto {
   id: string;
   code: string;
   name: string;
+  isDefault: boolean;
   metadata: Record<string, unknown>;
   description?: string;
   alarmRules?: AlarmRuleDto[];

@@ -10,6 +10,7 @@ public record DeviceGroupResponse(
         UUID id,
         String code,
         String name,
+        Boolean isDefault,
         Map<String, Object> sharedSpecs,
         String description,
         List<AlarmRuleDto> alarmRules

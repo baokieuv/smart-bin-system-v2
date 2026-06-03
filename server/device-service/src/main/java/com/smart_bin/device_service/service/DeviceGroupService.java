@@ -96,6 +96,11 @@ public class DeviceGroupService {
         if (deviceRepository.existsByDeviceGroup_IdAndActiveTrue(group.getId())) {
             throw new ApiException(DeviceErrorCode.DEVICE_GROUP_IN_USE);
         }
+
+        if (group.isDefault()) {
+            throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS, "Không thể xóa nhóm thiết bị mặc định của hệ thống.");
+        }
+
         String tbProfileId = group.getTbProfileId();
 
         group.setTbProfileId(null);
@@ -104,6 +109,44 @@ public class DeviceGroupService {
 
         thingsBoardService.deleteDeviceProfile(tbProfileId);
         return "Deleted device group successfully";
+    }
+
+    @Transactional
+    public DeviceGroup getOrCreateDefaultGroupForTenant(String tenantId) {
+        return repository.findByTenantIdAndIsDefaultTrueAndActiveTrue(tenantId)
+                .orElseGet(() -> {
+                    DeviceGroup defaultGroup = new DeviceGroup();
+                    defaultGroup.setTenantId(tenantId);
+                    defaultGroup.setCode("DEFAULT_GRP_" + tenantId.substring(0, 8).toUpperCase());
+                    defaultGroup.setName("Default Group");
+                    defaultGroup.setDescription("Nhóm thiết bị mặc định của hệ thống. Không thể xóa.");
+                    defaultGroup.setActive(true);
+                    defaultGroup.setDefault(true);
+
+                    // Khởi tạo Profile mặc định trên ThingsBoard
+                    JsonNode tbProfileResponse = thingsBoardService.addDeviceProfile(defaultGroup.getName(), defaultGroup.getDescription());
+
+                    List<AlarmRuleDto> defaultAlarms = List.of(
+                            new AlarmRuleDto(
+                                    "HIGH_AVERAGE_WASTE", // alarmType
+                                    "GREATER_OR_EQUAL",   // operator
+                                    85.0,                 // threshold
+                                    "CRITICAL",           // severity
+                                    "LESS",               // clearOperator
+                                    70.0                  // clearThreshold
+                            )
+                    );
+
+                    if (tbProfileResponse != null && tbProfileResponse.has("id")) {
+                        defaultGroup.setTbProfileId(tbProfileResponse.get("id").get("id").asString());
+                        JsonNode tbAlarmConfig = buildThingsBoardAlarmConfig(defaultAlarms);
+                        thingsBoardService.configAlarmRules(defaultGroup.getTbProfileId(), tbAlarmConfig);
+                    } else {
+                        throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể tạo Default Profile trên ThingsBoard");
+                    }
+
+                    return repository.save(defaultGroup);
+                });
     }
 
     private DeviceGroup getGroupAndVerifyAccess(String id, String actorId) {
