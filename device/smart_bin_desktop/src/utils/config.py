@@ -129,7 +129,14 @@ class WasteGroupConfig:
             "unknown": "Không xác định",
         }
     )
-
+    
+@dataclass(frozen=True)
+class RpcMethod:
+    open_lid = "openLid"
+    close_lid = "closeLid"
+    block_lid = "lockLid"
+    unblock_lid = "unlockLid"
+    force_sync = "forceSync"
 
 @dataclass(frozen=True)
 class ViewModelConfig:
@@ -180,6 +187,12 @@ class Esp32OtaConfig:
     cmd_ota_start: int = 0x20
     cmd_ota_data: int = 0x21
     cmd_ota_end: int = 0x22
+    
+    cmd_open_lid: int = 0x80
+    cmd_close_lid: int = 0x81
+    cmd_block_lid: int = 0x82
+    cmd_unblock_lid: int = 0x83
+
     cmd_ack: int = 0x30
     cmd_nack: int = 0x31
 
@@ -271,6 +284,7 @@ class AppConfig:
     desktop_version: str = _env_str("SMART_BIN_DESKTOP_VERSION", "1.0.0")
     backend: BackendConfig = field(default_factory=BackendConfig)
     paths: PathConfig = field(default_factory=PathConfig)
+    rpc_method: RpcMethod = field(default_factory=RpcMethod)
 
     # Expose shared defaults so other modules don't re-define them.
     default_polling_interval_s: int = _DEFAULT_POLLING_INTERVAL_S

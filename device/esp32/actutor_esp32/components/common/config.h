@@ -50,6 +50,14 @@
 #define CMD_GET_VERSION        0x60
 #define CMD_GET_SYSTEM_INFO    0x70
 
+#define CMD_LID_OPEN           0x80
+#define CMD_LID_CLOSE          0x81
+#define CMD_LID_BLOCK          0x82
+#define CMD_LID_UNBLOCK        0x83
+
+#define SERVO_ANGLE_CLOSE      0
+#define SERVO_ANGLE_OPEN       90
+
 // Ultrasonic constants
 #define SOUND_SPEED             343.0
 #define ECHO_TIMEOUT            300000
@@ -66,6 +74,7 @@
 // NVS
 #define NVS_NAMESPACE       "storage"
 #define NVS_KEY_CONFIG      "bin_config"
+#define NVS_KEY_STATE       "bin_state"
 
 // State
 typedef enum {
@@ -97,4 +106,10 @@ typedef struct {
     uint8_t full_threshold_pct; // Ngưỡng báo đầy (% - ví dụ: 90%)
     char firm_version[16];      // Version of firmware
 } SmartBinConfig_t;
+
+typedef enum {
+    BIN_STATE_NORMAL,       // Trạng thái bình thường
+    BIN_STATE_OPEN_HELD,    // Trạng thái mở nắp và giữ
+    BIN_STATE_BLOCKED       // Trạng thái khóa (không cho phép mở)
+} SmartBinState_t;
 #endif // CONFIG_H

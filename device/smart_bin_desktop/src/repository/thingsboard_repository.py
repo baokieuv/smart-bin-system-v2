@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import paho.mqtt.client as mqtt
 
 from src.utils.config import APP_CONFIG
+from src.repository.actuator_repository import ActuatorRepository
 
 
 class ThingsboardClient:
@@ -24,6 +25,7 @@ class ThingsboardClient:
                  tls_enabled: bool = True,
                  client_id: str = "",
                  connect_timeout: int = 5,
+                 handler: callable | None = None,
                  logger: logging.Logger | None = None):
         self.logger = logger or logging.getLogger("smart_bin.thingsboard_repository")
         # Derive host from config if not provided.
@@ -52,7 +54,7 @@ class ThingsboardClient:
         self._connack_rc: int | None = None
 
         # RPC handler: callable(method: str, params: dict, request_id: str)
-        self._rpc_handler = None
+        self._rpc_handler = handler
 
         # Wire callbacks
         self._client.on_connect = self._on_connect

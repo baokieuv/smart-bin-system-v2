@@ -58,7 +58,7 @@ class MainViewModel(QObject):
         # --- Repositories / services ---
         self.actuator_client = ActuatorRepository()
         self.device_client = DeviceClient(actuator_client=self.actuator_client)
-        self.thingsboard_client = ThingsboardClient()
+        self.thingsboard_client = ThingsboardClient(handler=self._rpc_handler, logger=self.logger)
         self.device_config_store = DeviceConfigStore(APP_CONFIG.paths.device_config_cache_path, self.logger)
         self.metadata_store = DetectionMetadataStore(APP_CONFIG.paths.detection_metadata_dir, self.logger)
         self.upload_manager = DetectionUploadManager(self.metadata_store, self.device_client, self.logger)
@@ -435,3 +435,48 @@ class MainViewModel(QObject):
         if self._is_device_not_found_error(result):
             return "Device is not registered. Press Activate Device to register and activate."
         return "Device config is unavailable. Press Activate Device and app will retry every 5 minutes."
+    
+    
+    def _rpc_handler(self, method: str | None, params: dict | str | None, request_id: str) -> dict | None:
+        """Handle incoming RPC requests from ThingsBoard and return response dict if applicable."""
+        self.logger.info("RPC handler invoked method=%s params=%s request_id=%s", method, params, request_id)
+        
+        if method == APP_CONFIG.rpc_method.open_lid:
+            ok, msg = self.actuator_client.open_lid()# 0° for open
+            if ok:
+                self.logger.info("RPC openLid successful")
+                return {"status": "success"}
+            else:
+                self.logger.warning("RPC openLid failed: %s", msg)
+                return {"status": "error", "message": f"Failed to open lid: {msg}"}
+        elif method == APP_CONFIG.rpc_method.close_lid:
+            ok, msg = self.actuator_client.close_lid()# 90° for close
+            if ok:
+                self.logger.info("RPC closeLid successful")
+                return {"status": "success"}
+            else:
+                self.logger.warning("RPC closeLid failed: %s", msg)
+                return {"status": "error", "message": f"Failed to close lid: {msg}"}
+        elif method == APP_CONFIG.rpc_method.block_lid:
+            ok, msg = self.actuator_client.block_lid()# 180° for block
+            if ok:
+                self.logger.info("RPC blockLid successful")
+                return {"status": "success"}
+            else:
+                self.logger.warning("RPC blockLid failed: %s", msg)
+                return {"status": "error", "message": f"Failed to block lid: {msg}"}
+        elif method == APP_CONFIG.rpc_method.unblock_lid:
+            ok, msg = self.actuator_client.unblock_lid()# 270° for unblock
+            if ok:
+                self.logger.info("RPC unblockLid successful")
+                return {"status": "success"}
+            else:
+                self.logger.warning("RPC unblockLid failed: %s", msg)
+                return {"status": "error", "message": f"Failed to unblock lid: {msg}"}
+        elif method == APP_CONFIG.rpc_method.force_sync:
+            self.runtime.refresh_device_config(reason="force_sync_rpc")
+            self.logger.info("RPC forceSync triggered device config refresh")
+            return {"status": "success"}
+        else:
+            self.logger.warning("Unknown RPC method received: %s", method)
+            return {"status": "error", "message": f"Unknown method {method}"}

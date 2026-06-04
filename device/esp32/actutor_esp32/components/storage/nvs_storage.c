@@ -58,6 +58,55 @@ esp_err_t nvs_load_bin_config(SmartBinConfig_t *config) {
     return err;
 }
 
+esp_err_t nvs_save_bin_state(const SmartBinState_t *state) {
+    if (!state) return ESP_ERR_INVALID_ARG;
+
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Lỗi mở NVS: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    err = nvs_set_u8(nvs, NVS_KEY_STATE, (uint8_t)(*state));
+    
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs);
+        ESP_LOGI(TAG, "Da luu trang thai thung rac vao Flash: %d", *state);
+    } else {
+        ESP_LOGE(TAG, "Loi khi luu trang thai: %s", esp_err_to_name(err));
+    }
+
+    nvs_close(nvs);
+    return err;
+}
+
+esp_err_t nvs_load_bin_state(SmartBinState_t *state) {
+    if (!state) return ESP_ERR_INVALID_ARG;
+
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "NVS chua duoc khoi tao hoac chua co data.");
+        return err;
+    }
+
+    uint8_t state_u8;
+    err = nvs_get_u8(nvs, NVS_KEY_STATE, &state_u8);
+
+    if (err == ESP_OK) {
+        *state = (SmartBinState_t)state_u8;
+        ESP_LOGI(TAG, "Da tai trang thai thung rac tu Flash: %d", *state);
+    } else {
+        ESP_LOGW(TAG, "Khong tim thay trang thai thung rac trong Flash, se dung mac dinh NORMAL.");
+        *state = BIN_STATE_NORMAL;
+        err = ESP_ERR_INVALID_STATE; // Không có trạng thái nào được lưu trước đó
+    }
+
+    nvs_close(nvs);
+    return err;
+}
+
 esp_err_t nvs_clear_config(void) {
     nvs_handle_t nvs;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);

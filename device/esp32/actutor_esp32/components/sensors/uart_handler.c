@@ -17,6 +17,7 @@
 static const char *TAG = "UART_HANDLER";
 
 extern SmartBinConfig_t system_config;
+extern SmartBinState_t bin_state;
 
 esp_ota_handle_t update_handle = 0 ;
 const esp_partition_t *update_partition = NULL;
@@ -90,6 +91,12 @@ void uart_send_frame_hmac(uint8_t cmd, uint8_t *payload, uint16_t len) {
 }
 
 static void handle_cmd_ctrl_servo(uint16_t len, uint8_t *payload) {
+    if (bin_state == BIN_STATE_BLOCKED) {
+        ESP_LOGW(TAG, "Tu choi dieu khien servo: Thung rac dang bi BLOCK");
+        send_response(CMD_NACK);
+        return;
+    }
+    
     if (len >= 1) {
         set_servo_angle(payload[0]);
         send_response(CMD_ACK);
@@ -99,6 +106,12 @@ static void handle_cmd_ctrl_servo(uint16_t len, uint8_t *payload) {
 }
 
 static void handle_cmd_ctrl_stepper(uint16_t len, uint8_t *payload) {
+    if (bin_state == BIN_STATE_BLOCKED) {
+        ESP_LOGW(TAG, "Tu choi dieu khien stepper: Thung rac dang bi BLOCK");
+        send_response(CMD_NACK);
+        return;
+    }
+
     if (len >= 2) {
         int16_t target_degree = (payload[0] << 8) | payload[1];
         xQueueSend(step_action_queue, &target_degree, 0);
@@ -188,6 +201,44 @@ static void handle_cmd_report(void) {
     uart_send_frame_hmac(CMD_REPORT_FILL_LEVEL, fill_level, 4);
 }
 
+static void handle_cmd_lid_open(void) {
+    if (bin_state != BIN_STATE_BLOCKED) {
+        set_servo_angle(SERVO_ANGLE_OPEN);
+        bin_state = BIN_STATE_OPEN_HELD;
+        send_response(CMD_ACK);
+        ESP_LOGI(TAG, "Mo nap va giu (OPEN_HELD)");
+    } else {
+        ESP_LOGW(TAG, "Tu choi mo nap: Thung rac dang bi BLOCK");
+        send_response(CMD_NACK);
+    }
+}
+
+static void handle_cmd_lid_close(void) {
+    if (bin_state != BIN_STATE_BLOCKED) {
+        set_servo_angle(SERVO_ANGLE_CLOSE);
+        bin_state = BIN_STATE_NORMAL;
+        send_response(CMD_ACK);
+        ESP_LOGI(TAG, "Dong nap (NORMAL)");
+    } else {
+        ESP_LOGW(TAG, "Tu choi dong nap (thu cong): Thung rac dang bi BLOCK");
+        send_response(CMD_NACK);
+    }
+}
+
+static void handle_cmd_lid_block(void) {
+    // Luôn đóng nắp trước khi chuyển sang trạng thái Block
+    set_servo_angle(SERVO_ANGLE_CLOSE);
+    bin_state = BIN_STATE_BLOCKED;
+    send_response(CMD_ACK);
+    ESP_LOGI(TAG, "Khoa thung rac (BLOCKED)");
+}
+
+static void handle_cmd_lid_unblock(void) {
+    bin_state = BIN_STATE_NORMAL;
+    send_response(CMD_ACK);
+    ESP_LOGI(TAG, "Mo khoa thung rac (NORMAL)");
+}
+
 static void handle_cmd_system_info(void) {
     ESP_LOGI(TAG, "Start Get system info");
     esp_chip_info_t chip_info;
@@ -237,6 +288,10 @@ static void process_uart_command(uint8_t cmd, uint16_t len, uint8_t *payload) {
         case CMD_OTA_END:      handle_cmd_ota_end(); break;
         case CMD_REPORT_FILL_LEVEL: handle_cmd_report(); break;
         case CMD_GET_SYSTEM_INFO:   handle_cmd_system_info(); break;
+        case CMD_LID_OPEN:     handle_cmd_lid_open(); break;
+        case CMD_LID_CLOSE:    handle_cmd_lid_close(); break;
+        case CMD_LID_BLOCK:    handle_cmd_lid_block(); break;
+        case CMD_LID_UNBLOCK:  handle_cmd_lid_unblock(); break;
         default:
             ESP_LOGW(TAG, "Lenh khong hop le: 0x%02X", cmd);
             send_response(CMD_NACK);

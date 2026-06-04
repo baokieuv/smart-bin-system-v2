@@ -21,4 +21,14 @@ esp_err_t nvs_load_bin_config(SmartBinConfig_t *config);
  */
 esp_err_t nvs_clear_config(void);
 
+/**
+ * @brief Lưu trạng thái thùng rác vào NVS Flash
+ */
+esp_err_t nvs_save_bin_state(const SmartBinState_t *state);
+
+/**
+ * @brief Tải trạng thái thùng rác từ NVS Flash
+ */
+esp_err_t nvs_load_bin_state(SmartBinState_t *state);
+
 #endif // NVS_STORAGE_H

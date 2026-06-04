@@ -13,6 +13,7 @@
 static const char *TAG = "MAIN_APP";
 
 SmartBinConfig_t system_config;
+SmartBinState_t bin_state = BIN_STATE_NORMAL;
 
 void sensor_report_task(void *arg){
     while(1) {
@@ -64,6 +65,12 @@ void app_main(void)
         system_config.bin_depth_cm = 60.0;       // Sâu 60cm
         system_config.full_threshold_pct = 90;   // Ngưỡng 90%
         nvs_save_bin_config(&system_config);     // Lưu ngay xuống Flash
+    }
+
+    if (nvs_load_bin_state(&bin_state) != ESP_OK) {
+        ESP_LOGW(TAG, "Cai dat mac dinh cho trang thai thung rac...");
+        bin_state = BIN_STATE_NORMAL;
+        nvs_save_bin_state(&bin_state);
     }
     
     // 2. Khởi tạo các module ngoại vi

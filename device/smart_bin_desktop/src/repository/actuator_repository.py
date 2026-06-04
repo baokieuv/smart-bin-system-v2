@@ -462,6 +462,42 @@ class ActuatorRepository:
             self.logger.warning("Error stopping queue worker: %s", exc)
         finally:
             self._close_serial()
+            
+    def open_lid(self) -> tuple[bool, str]:
+        try:
+            frame = self._create_frame(self.config.cmd_open_lid)
+            self._enqueue(lambda: self._send_frame_and_wait_ack(frame, timeout=2.0), "open_lid")
+            return True, "Open lid command queued"
+        except Exception as exc:
+            self.logger.exception("Failed to queue open lid command")
+            return False, str(exc)
+        
+    def close_lid(self) -> tuple[bool, str]:
+        try:
+            frame = self._create_frame(self.config.cmd_close_lid)
+            self._enqueue(lambda: self._send_frame_and_wait_ack(frame, timeout=2.0), "close_lid")
+            return True, "Close lid command queued"
+        except Exception as exc:
+            self.logger.exception("Failed to queue close lid command")
+            return False, str(exc)
+        
+    def block_lid(self) -> tuple[bool, str]:
+        try:
+            frame = self._create_frame(self.config.cmd_block_lid)
+            self._enqueue(lambda: self._send_frame_and_wait_ack(frame, timeout=2.0), "block_lid")
+            return True, "Block lid command queued"
+        except Exception as exc:
+            self.logger.exception("Failed to queue block lid command")
+            return False, str(exc)
+        
+    def unblock_lid(self) -> tuple[bool, str]:
+        try:
+            frame = self._create_frame(self.config.cmd_unblock_lid)
+            self._enqueue(lambda: self._send_frame_and_wait_ack(frame, timeout=2.0), "unblock_lid")
+            return True, "Unblock lid command queued"
+        except Exception as exc:
+            self.logger.exception("Failed to queue unblock lid command")
+            return False, str(exc)
 
 
 # Backward-compatible alias for older imports.
