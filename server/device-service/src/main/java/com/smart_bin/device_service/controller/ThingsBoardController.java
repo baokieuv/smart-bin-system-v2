@@ -35,4 +35,6 @@ public class ThingsBoardController {
         var response = service.processDeviceAlarm(signature, payload);
         return responseFactory.response(SuccessCode.OK, response);
     }
+
+    
 }

@@ -258,6 +258,26 @@ public class ThingsBoardService {
         return "Status Processed";
     }
 
+    public JsonNode sendRpcCommand(String tbDeviceId, String method, Object params, boolean isTwoWay) {
+        String rpcType = isTwoWay ? "twoway" : "oneway";
+
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("method", method);
+
+        requestBody.set("params", objectMapper.valueToTree(params));
+
+        try {
+            return restClient.post()
+                    .uri("/api/plugins/rpc/{rpcType}/{deviceId}", rpcType, tbDeviceId)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (Exception e) {
+            log.error("Lỗi khi gửi RPC [{}] xuống thiết bị {}: {}", method, tbDeviceId, e.getMessage());
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể gửi lệnh xuống thiết bị (Thiết bị có thể đang Offline)");
+        }
+    }
+
     public String processDeviceAlarm(String signature, String payload) {
 //        String serverSignature = new HmacUtils("HmacSHA256", secretKey).hmacHex(payload);
 //

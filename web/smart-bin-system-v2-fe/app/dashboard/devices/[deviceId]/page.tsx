@@ -13,6 +13,33 @@ import { Input } from '@/components/ui/input';
 import { LocationPickerMap, type LocationValue } from '@/components/layout/location-picker-map';
 import { resolveMapboxLocationLabel } from '@/lib/mapbox-location';
 
+type RpcMethodOption = {
+  method: string;
+  label: string;
+  type: "ONE_WAY" | "TWO_WAY";
+  description: string;
+};
+
+const rpcMethodOptions: RpcMethodOption[] = [
+  { method: "openLid", label: "Open lid", type: "TWO_WAY", description: "Send the device command to open the lid." },
+  { method: "closeLid", label: "Close lid", type: "TWO_WAY", description: "Send the device command to close the lid." },
+  { method: "lockBin", label: "Lock bin", type: "TWO_WAY", description: "Lock the bin mechanism remotely." },
+  { method: "unlockBin", label: "Unlock bin", type: "TWO_WAY", description: "Unlock the bin mechanism remotely." },
+  { method: "forceSync", label: "Force sync", type: "ONE_WAY", description: "Force the device to sync state and telemetry." },
+  { method: "triggerAlarmAlert", label: "Trigger alarm alert", type: "ONE_WAY", description: "Trigger a manual alarm alert on the device." },
+];
+
+const getRpcMethodOption = (method: string) => rpcMethodOptions.find((option) => option.method === method) ?? rpcMethodOptions[0];
+
+const getDefaultRpcParams = (method: string) => {
+  switch (method) {
+    case "triggerAlarmAlert":
+      return JSON.stringify({ message: "Manual alert" }, null, 2);
+    default:
+      return "{}";
+  }
+};
+
 type Toast = {
   id: number;
   message: string;
@@ -101,6 +128,54 @@ export default function DeviceDetailPage() {
   const [editPollingInterval, setEditPollingInterval] = useState('');
   const [editFullThreshold, setEditFullThreshold] = useState('');
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+
+  // RPC states
+  const [isRpcPopupOpen, setIsRpcPopupOpen] = useState(false);
+  const [selectedRpcMethod, setSelectedRpcMethod] = useState(rpcMethodOptions[0].method);
+  const [rpcParamsText, setRpcParamsText] = useState(getDefaultRpcParams(rpcMethodOptions[0].method));
+  const [rpcMessage, setRpcMessage] = useState("");
+  const [rpcLoading, setRpcLoading] = useState(false);
+  const [rpcResponseText, setRpcResponseText] = useState("");
+
+  const closeRpcModal = () => {
+    if (rpcLoading) return;
+    setIsRpcPopupOpen(false);
+    setSelectedRpcMethod(rpcMethodOptions[0].method);
+    setRpcParamsText(getDefaultRpcParams(rpcMethodOptions[0].method));
+    setRpcMessage("");
+    setRpcResponseText("");
+  };
+
+  const executeSelectedRpc = async () => {
+    if (!device) return;
+    let parsedParams: Record<string, unknown> = {};
+    if (rpcParamsText.trim()) {
+      try {
+        parsedParams = JSON.parse(rpcParamsText);
+      } catch {
+        setRpcMessage("Params must be valid JSON");
+        return;
+      }
+    }
+
+    setRpcLoading(true);
+    setRpcMessage("");
+    setRpcResponseText("");
+
+    try {
+      const response = await deviceApi.executeRpc(device.id, {
+        method: selectedRpcMethod,
+        params: parsedParams,
+      });
+
+      setRpcResponseText(JSON.stringify(response.data ?? response, null, 2));
+      setRpcMessage(response.message || "RPC command sent");
+    } catch (error) {
+      setRpcMessage(error instanceof Error ? error.message : "Failed to send RPC command");
+    } finally {
+      setRpcLoading(false);
+    }
+  };
 
   const pushToast = (message: string, type: Toast['type']) => {
     const id = Date.now() + Math.floor(Math.random() * 1000);
@@ -397,6 +472,13 @@ export default function DeviceDetailPage() {
               </Button>
               <Button
                 type="button"
+                onClick={() => setIsRpcPopupOpen(true)}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Device Control
+              </Button>
+              <Button
+                type="button"
                 onClick={() => setIsDeletePopupOpen(true)}
                 variant="danger"
               >
@@ -539,6 +621,111 @@ export default function DeviceDetailPage() {
               </Button>
               <Button type="button" onClick={handleUpdateDevice} disabled={isSubmittingAction}>
                 {isSubmittingAction ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isRpcPopupOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-900">Device Control</h2>
+            <p className="mt-2 text-sm text-slate-600">Choose an RPC method, review params, then send the command</p>
+
+            <form onSubmit={(e) => { e.preventDefault(); executeSelectedRpc(); }} className="mt-5 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-2">Two-Way Methods</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {rpcMethodOptions.filter((option) => option.type === "TWO_WAY").map((option) => (
+                        <button
+                          key={option.method}
+                          type="button"
+                          onClick={() => {
+                            setSelectedRpcMethod(option.method);
+                            setRpcParamsText(getDefaultRpcParams(option.method));
+                            setRpcMessage("");
+                            setRpcResponseText("");
+                          }}
+                          className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                            selectedRpcMethod === option.method
+                              ? "border-blue-600 bg-blue-50 text-blue-700"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="font-semibold">{option.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-2">One-Way Methods</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {rpcMethodOptions.filter((option) => option.type === "ONE_WAY").map((option) => (
+                        <button
+                          key={option.method}
+                          type="button"
+                          onClick={() => {
+                            setSelectedRpcMethod(option.method);
+                            setRpcParamsText(getDefaultRpcParams(option.method));
+                            setRpcMessage("");
+                            setRpcResponseText("");
+                          }}
+                          className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                            selectedRpcMethod === option.method
+                              ? "border-blue-600 bg-blue-50 text-blue-700"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="font-semibold">{option.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-slate-700">RPC params JSON</label>
+                    <span className="text-xs text-slate-500">Selected: {getRpcMethodOption(selectedRpcMethod).method}</span>
+                  </div>
+                  <textarea
+                    className="w-full h-32 rounded-lg border border-slate-300 p-2 font-mono text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={rpcParamsText}
+                    onChange={(event) => setRpcParamsText(event.target.value)}
+                    placeholder="{}"
+                  />
+
+                  <div className="rounded-lg bg-white p-3 text-sm text-slate-700 shadow-sm border border-slate-200">
+                    <p className="font-semibold text-slate-900">Selected method: {getRpcMethodOption(selectedRpcMethod).label}</p>
+                    <p>{getRpcMethodOption(selectedRpcMethod).description}</p>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={rpcLoading}
+                  >
+                    {rpcLoading ? "Sending..." : "Send RPC command"}
+                  </Button>
+                  
+                  {rpcMessage ? <p className="text-sm text-slate-600">{rpcMessage}</p> : null}
+                  
+                  {rpcResponseText ? (
+                    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-100 p-3">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Response</p>
+                      <pre className="overflow-x-auto whitespace-pre-wrap wrap-break-word font-mono text-xs leading-6">{rpcResponseText}</pre>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </form>
+
+            <div className="mt-5 flex justify-end">
+              <Button type="button" variant="secondary" onClick={closeRpcModal} disabled={rpcLoading}>
+                Close
               </Button>
             </div>
           </div>

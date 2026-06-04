@@ -2,7 +2,7 @@
 
 import { api } from "@/lib/api-client";
 import { getCache, setCache } from '@/lib/cache';
-import { AddDeviceRequest, DeviceDto, TelemetryParams, UpdateDeviceRequest } from "@/types/device";
+import { AddDeviceRequest, DeviceDto, TelemetryParams, UpdateDeviceRequest, RpcRequestPayload } from "@/types/device";
 
 export const deviceApi = {
     // Add device requires auth and uses auto-refresh
@@ -56,5 +56,10 @@ export const deviceApi = {
     // Get telemetries requires auth and uses auto-refresh
     getTelemetries: async (deviceId: string, params?: TelemetryParams) => {
         return api.get(`/devices/${deviceId}/telemetries`, params);
+    },
+
+    // Execute RPC command on device
+    executeRpc: async (deviceId: string, payload: RpcRequestPayload) => {
+        return api.post(`/devices/${deviceId}/rpc`, payload);
     }
 }

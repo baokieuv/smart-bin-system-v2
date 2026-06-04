@@ -14,6 +14,42 @@ import type { FirmwareDto } from "@/types/firmware";
 import type { UserDto } from "@/types/user";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+type RpcMethodOption = {
+  method: string;
+  label: string;
+  type: "ONE_WAY" | "TWO_WAY";
+  description: string;
+};
+
+const rpcMethodOptions: RpcMethodOption[] = [
+  { method: "openLid", label: "Open lid", type: "TWO_WAY", description: "Send the device command to open the lid." },
+  { method: "closeLid", label: "Close lid", type: "TWO_WAY", description: "Send the device command to close the lid." },
+  { method: "lockBin", label: "Lock bin", type: "TWO_WAY", description: "Lock the bin mechanism remotely." },
+  { method: "unlockBin", label: "Unlock bin", type: "TWO_WAY", description: "Unlock the bin mechanism remotely." },
+  { method: "forceSync", label: "Force sync", type: "ONE_WAY", description: "Force the device to sync state and telemetry." },
+  { method: "triggerAlarmAlert", label: "Trigger alarm alert", type: "ONE_WAY", description: "Trigger a manual alarm alert on the device." },
+  { method: "rebootDevice", label: "Reboot device", type: "ONE_WAY", description: "Restart the device remotely." },
+  { method: "calibrateSensor", label: "Calibrate sensor", type: "TWO_WAY", description: "Start a sensor calibration workflow." },
+  { method: "setPollingInterval", label: "Set polling interval", type: "TWO_WAY", description: "Update the device polling interval." },
+  { method: "clearHardwareError", label: "Clear hardware error", type: "TWO_WAY", description: "Clear a hardware-level error state." },
+  { method: "triggerOtaUpdate", label: "Trigger OTA update", type: "ONE_WAY", description: "Start the over-the-air update flow." },
+];
+
+const getRpcMethodOption = (method: string) => rpcMethodOptions.find((option) => option.method === method) ?? rpcMethodOptions[0];
+
+const getDefaultRpcParams = (method: string) => {
+  switch (method) {
+    case "setPollingInterval":
+      return JSON.stringify({ intervalSeconds: 60 }, null, 2);
+    case "triggerAlarmAlert":
+      return JSON.stringify({ message: "Manual alert" }, null, 2);
+    case "calibrateSensor":
+      return JSON.stringify({}, null, 2);
+    default:
+      return JSON.stringify({}, null, 2);
+  }
+};
+
 const firmwareLabel = (firmware: FirmwareDto) => {
   const suffix = firmware.description ? ` - ${firmware.description}` : "";
   return `${firmware.version}${suffix}`;
@@ -57,6 +93,12 @@ export default function DevicesPage() {
   const [configLoading, setConfigLoading] = useState(false);
   const [configFetchingId, setConfigFetchingId] = useState<string | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showControlModal, setShowControlModal] = useState(false);
+  const [selectedRpcMethod, setSelectedRpcMethod] = useState(rpcMethodOptions[0].method);
+  const [rpcParamsText, setRpcParamsText] = useState(getDefaultRpcParams(rpcMethodOptions[0].method));
+  const [rpcMessage, setRpcMessage] = useState("");
+  const [rpcLoading, setRpcLoading] = useState(false);
+  const [rpcResponseText, setRpcResponseText] = useState("");
 
   const sortedFirmwares = useMemo(
     () =>
@@ -91,6 +133,7 @@ export default function DevicesPage() {
 
   const canAssignDevices = role !== "super_admin";
   const canConfigureFirmware = role !== "admin";
+  const canControlDevice = role === "admin";
 
   const loadRole = () => {
     const cachedRole = typeof window !== "undefined" ? localStorage.getItem("admin_role") : null;
@@ -310,6 +353,67 @@ export default function DevicesPage() {
     }
   };
 
+  const openControlModal = (device: DeviceDto) => {
+    if (!canControlDevice) {
+      return;
+    }
+
+    setSelectedDeviceId(device.id);
+    setSelectedDevice(device);
+    setSelectedRpcMethod(rpcMethodOptions[0].method);
+    setRpcParamsText(getDefaultRpcParams(rpcMethodOptions[0].method));
+    setRpcMessage("");
+    setRpcResponseText("");
+    setShowControlModal(true);
+  };
+
+  const closeControlModal = () => {
+    if (rpcLoading) return;
+    setShowControlModal(false);
+    setSelectedDeviceId("");
+    setSelectedDevice(null);
+    setSelectedRpcMethod(rpcMethodOptions[0].method);
+    setRpcParamsText(getDefaultRpcParams(rpcMethodOptions[0].method));
+    setRpcMessage("");
+    setRpcResponseText("");
+  };
+
+  const executeSelectedRpc = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!selectedDevice || !canControlDevice) {
+      return;
+    }
+
+    let parsedParams: unknown = {};
+    if (rpcParamsText.trim()) {
+      try {
+        parsedParams = JSON.parse(rpcParamsText);
+      } catch {
+        setRpcMessage("Params must be valid JSON");
+        return;
+      }
+    }
+
+    setRpcLoading(true);
+    setRpcMessage("");
+    setRpcResponseText("");
+
+    try {
+      const response = await devicesAdminApi.executeRpc(selectedDevice.id, {
+        method: selectedRpcMethod,
+        params: parsedParams,
+      });
+
+      setRpcResponseText(JSON.stringify(response.data ?? response, null, 2));
+      setRpcMessage(response.message || "RPC command sent");
+    } catch (error) {
+      setRpcMessage(error instanceof Error ? error.message : "Failed to send RPC command");
+    } finally {
+      setRpcLoading(false);
+    }
+  };
+
   const closeConfigModal = () => {
     if (configLoading) return;
     setShowConfigModal(false);
@@ -405,7 +509,19 @@ export default function DevicesPage() {
                       />
                     </td>
                   ) : null}
-                  <td className="py-2 px-3 font-medium text-foreground whitespace-nowrap">{device.name}</td>
+                  <td className="py-2 px-3 font-medium text-foreground whitespace-nowrap">
+                    {canControlDevice ? (
+                      <button
+                        type="button"
+                        onClick={() => openControlModal(device)}
+                        className="text-left font-medium text-sky-800 underline decoration-sky-300 underline-offset-4 hover:text-sky-900"
+                      >
+                        {device.name}
+                      </button>
+                    ) : (
+                      device.name
+                    )}
+                  </td>
                   <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.mac}</td>
                   <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.groupCode || "-"}</td>
                   <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.targetBinVersion || "-"}</td>
@@ -602,6 +718,124 @@ export default function DevicesPage() {
           <p className="text-sm text-slate-600">Use the popup editor when you need to add one device quickly.</p>
         </Panel>
       </div>
+
+      {showControlModal && canControlDevice ? (
+        <Modal title="Device Control" subtitle="Choose an RPC method, review params, then send the command" onClose={closeControlModal} widthClassName="w-[min(1120px,98vw)]">
+          {selectedDevice ? (
+            <form onSubmit={executeSelectedRpc} className="space-y-5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <p className="font-semibold text-foreground">{selectedDevice.name}</p>
+                <p>MAC: {selectedDevice.mac}</p>
+                <p>Device ID: {selectedDevice.id}</p>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-3">
+                    <h4 className="text-sm font-semibold text-slate-900">ONE_WAY methods</h4>
+                    <p className="text-xs text-slate-500">Commands that do not expect a device response.</p>
+                  </div>
+                  <div className="grid gap-2">
+                    {rpcMethodOptions.filter((option) => option.type === "ONE_WAY").map((option) => (
+                      <button
+                        key={option.method}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRpcMethod(option.method);
+                          setRpcParamsText(getDefaultRpcParams(option.method));
+                          setRpcMessage("");
+                          setRpcResponseText("");
+                        }}
+                        className={`rounded-xl border px-3 py-2 text-left transition ${
+                          selectedRpcMethod === option.method
+                            ? "border-sky-300 bg-sky-50 text-sky-900"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        <div className="text-sm font-semibold">{option.label}</div>
+                        <div className="mt-1 text-xs text-slate-500">{option.method}</div>
+                        <p className="mt-1 text-xs text-slate-600">{option.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-3">
+                    <h4 className="text-sm font-semibold text-slate-900">TWO_WAY methods</h4>
+                    <p className="text-xs text-slate-500">Commands that typically wait for an acknowledgment.</p>
+                  </div>
+                  <div className="grid gap-2">
+                    {rpcMethodOptions.filter((option) => option.type === "TWO_WAY").map((option) => (
+                      <button
+                        key={option.method}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRpcMethod(option.method);
+                          setRpcParamsText(getDefaultRpcParams(option.method));
+                          setRpcMessage("");
+                          setRpcResponseText("");
+                        }}
+                        className={`rounded-xl border px-3 py-2 text-left transition ${
+                          selectedRpcMethod === option.method
+                            ? "border-sky-300 bg-sky-50 text-sky-900"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        <div className="text-sm font-semibold">{option.label}</div>
+                        <div className="mt-1 text-xs text-slate-500">{option.method}</div>
+                        <p className="mt-1 text-xs text-slate-600">{option.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="block text-sm font-medium text-slate-700">RPC params JSON</label>
+                  <span className="text-xs text-slate-500">Selected: {getRpcMethodOption(selectedRpcMethod).method}</span>
+                </div>
+                <textarea
+                  className="min-h-35 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm"
+                  value={rpcParamsText}
+                  onChange={(event) => setRpcParamsText(event.target.value)}
+                  placeholder="{}"
+                />
+                <p className="text-xs text-slate-500">Leave it as <span className="font-mono">{`{}`}</span> for methods that do not need parameters.</p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <p className="font-semibold text-foreground">Selected method: {getRpcMethodOption(selectedRpcMethod).label}</p>
+                <p>{getRpcMethodOption(selectedRpcMethod).description}</p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
+                <button
+                  className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  type="submit"
+                  disabled={rpcLoading}
+                >
+                  {rpcLoading ? "Sending..." : "Send RPC command"}
+                </button>
+                <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeControlModal}>
+                  Cancel
+                </button>
+                {rpcMessage ? <p className="text-sm text-slate-600">{rpcMessage}</p> : null}
+              </div>
+
+              {rpcResponseText ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-sm text-slate-100">
+                  <div className="mb-2 text-xs uppercase tracking-wide text-slate-400">Response payload</div>
+                  <pre className="overflow-x-auto whitespace-pre-wrap wrap-break-word font-mono text-xs leading-6">{rpcResponseText}</pre>
+                </div>
+              ) : null}
+            </form>
+          ) : (
+            <p className="text-sm text-slate-600">Choose a device to control.</p>
+          )}
+        </Modal>
+      ) : null}
 
       {showConfigModal ? (
         <Modal title="Target Versions" subtitle="Select a device, then choose target firmware versions and confirm changes" onClose={closeConfigModal} widthClassName="w-[min(1100px,98vw)]">

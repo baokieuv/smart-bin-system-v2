@@ -3,14 +3,12 @@ package com.smart_bin.device_service.service;
 import com.nimbusds.jose.shaded.gson.JsonObject;
 import com.smart_bin.core.common.Constants;
 import com.smart_bin.core.common.NotificationType;
+import com.smart_bin.core.common.UserRole;
 import com.smart_bin.core.dto.NotificationEventDto;
 import com.smart_bin.core.dto.PageResponseDto;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
-import com.smart_bin.device_service.common.DetectionFeedback;
-import com.smart_bin.device_service.common.DeviceState;
-import com.smart_bin.device_service.common.DeviceStatus;
-import com.smart_bin.device_service.common.WasteType;
+import com.smart_bin.device_service.common.*;
 import com.smart_bin.device_service.config.IamServiceClient;
 import com.smart_bin.device_service.config.MediaServiceClient;
 import com.smart_bin.device_service.dto.request.*;
@@ -481,6 +479,19 @@ public class DeviceService {
         return device;
     }
 
+    public JsonNode executeRpc(String deviceId, RpcRequest request, String actorId, UserRole role) {
+        RpcMethod rpcMethod = RpcMethod.fromMethodName(request.method());
+        if (!rpcMethod.isAllowed(role)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không có quyền thực thi lệnh hệ thống này!");
+        }
+
+        Device device = getDeviceAndVerifyUserOwnership(deviceId, actorId);
+
+//        boolean isTwoWay = method.equals("openLid") || method.equals("calibrateSensor");
+
+        return thingsBoardService.sendRpcCommand(device.getDeviceId(), rpcMethod.getMethodName(), request.params(), false);
+    }
+
     private Device resetExistingDeviceForProvision(Device device, DeviceProvisionRequest request, DeviceProfile profile) {
         if (device.getPublicKey() != null && device.getState() == DeviceState.ACTIVE) {
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED, "Thiết bị này đã được kích hoạt trước đó.");
@@ -576,13 +587,15 @@ public class DeviceService {
         }
     }
 
-    private Device getDeviceAndVerifyUserOwnership(String deviceIdStr, String userId) {
+    private Device getDeviceAndVerifyUserOwnership(String deviceIdStr, String actorId) {
         UUID deviceId = parseUUID(deviceIdStr);
         Device device = repository.findByIdAndActiveTrue(deviceId)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
         // Kiểm tra quyền của Normal User
-        if (device.getUserId() == null || !device.getUserId().equals(userId)) {
+        if (!Objects.equals(actorId, device.getUserId()) &&
+                !Objects.equals(actorId, device.getTenantId()))
+        {
             throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
         }
 

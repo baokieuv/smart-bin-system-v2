@@ -43,7 +43,7 @@ export interface TelemetryParams {
   limit?: number;
   agg?: string;
   interval?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export type UpdateDeviceRequest = {
@@ -54,4 +54,9 @@ export type UpdateDeviceRequest = {
   fullThreshold?: number;
   scope?: string;
   additionalAttributes?: Record<string, unknown>;
+};
+
+export type RpcRequestPayload = {
+  method: string;
+  params: Record<string, unknown>;
 };

@@ -2,6 +2,11 @@ import { api } from "@/lib/api-client";
 import type { PagedPayload } from "@/types/core";
 import type { DeviceAdminConfigDto, DeviceDto, DeviceOperationResult } from "@/types/device";
 
+export type RpcRequestPayload = {
+  method: string;
+  params?: unknown;
+};
+
 export type DeviceImportRequestItem = {
   mac: string;
   claimCode: string;
@@ -26,6 +31,7 @@ export const devicesAdminApi = {
     deviceId: string,
     payload: { targetBinFirmwareId?: string; targetDesktopFirmwareId?: string }
   ) => api.put(`/configs/devices/${deviceId}/admin`, payload),
+  executeRpc: async (deviceId: string, payload: RpcRequestPayload) => api.post(`/devices/${deviceId}/rpc`, payload),
   updateDevice: async (deviceId: string, payload: Partial<DeviceDto>) => api.put<DeviceDto>(`/devices/${deviceId}`, payload),
   deleteDevice: async (deviceId: string) => api.delete<string>(`/devices/${deviceId}`),
 };

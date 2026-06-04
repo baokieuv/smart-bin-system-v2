@@ -15,7 +15,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.GrantedAuthority;
 
+import java.util.Comparator;
 import java.util.Objects;
 
 @RestController
@@ -157,6 +159,33 @@ public class DeviceController {
     ){
         String keycloakId = jwt.getSubject();
         var response = deviceService.getTelemetries(deviceId, keycloakId, keys, startTs, endTs);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PostMapping("/{deviceId}/rpc")
+    public ResponseEntity<ApiResponseFormat<Object>> executeCommand(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String deviceId,
+            @RequestBody RpcRequest request,
+            Authentication authentication
+    ){
+        String keycloakId = jwt.getSubject();
+
+        UserRole role = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority).filter(Objects::nonNull)
+                .map(auth -> auth.replaceFirst("^ROLE_", ""))
+                .map(authName -> {
+                    try {
+                        return UserRole.fromString(authName);
+                    } catch (IllegalArgumentException e) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .max(Comparator.comparingInt(UserRole::getValue))
+               .orElse(UserRole.USER);
+
+        var response = deviceService.executeRpc(deviceId, request, keycloakId, role);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
