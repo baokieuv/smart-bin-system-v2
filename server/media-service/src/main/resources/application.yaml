@@ -1,42 +1,46 @@
 server:
-  port: ${SERVER_PORT:2109}
+  port: ${MEDIA_SERVICE_PORT:8080}
 
 spring:
   application:
     name: media-service
 
-  # 1. DATABASE
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
-    username: ${SPRING_DATASOURCE_USERNAME:admin}
-    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    url: ${MEDIA_DB_URL:jdbc:mariadb://localhost:3306/media_db}
+    username: ${MEDIA_DB_USER:admin}
+    password: ${MEDIA_DB_PASS:admin}
     driver-class-name: org.mariadb.jdbc.Driver
     type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      connection-timeout: ${MEDIA_DB_POOL_TIMEOUT:20000}
+      maximum-pool-size: ${MEDIA_DB_POOL_MAX:10}
+      minimum-idle: ${MEDIA_DB_POOL_MIN:5}
+      max-lifetime: ${MEDIA_DB_POOL_LIFETIME:1200000}
+      idle-timeout: ${MEDIA_DB_POOL_IDLE_TIMEOUT:300000}
+      leak-detection-threshold: ${MEDIA_DB_POOL_LEAK_THRESHOLD:60000}
 
   jpa:
     database-platform: org.hibernate.dialect.MariaDBDialect
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
-    show-sql: ${SHOW_SQL:false}
+      ddl-auto: ${MEDIA_DB_DDL_AUTO:update}
+    show-sql: ${MEDIA_DB_SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: ${MEDIA_DB_FORMAT_SQL:true}
 
-  # 2. CẤU HÌNH MULTIPART
   servlet:
     multipart:
-      enabled: ${MULTIPART_ENABLED:true}
-      # Giới hạn 1 file tối đa 5MB
-      max-file-size: ${MAX_FILE_SIZE:5MB}
-      # Giới hạn tổng dung lượng 1 lần request
-      max-request-size: ${MAX_REQUEST_SIZE:20MB}
+      enabled: ${MEDIA_MULTIPART_ENABLED:true}
+      max-file-size: ${MEDIA_MAX_FILE_SIZE:5MB}
+      max-request-size: ${MEDIA_MAX_REQUEST_SIZE:20MB}
 
-  # 3. SECURITY (Xác minh JWT từ người dùng)
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
-          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+          jwk-set-uri: ${KEYCLOAK_JWK_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
 
-# 4. CẤU HÌNH MINIO (Kết nối tới Object Storage)
 minio:
   url: ${MINIO_SERVER_URL:https://s3.kvbhust.id.vn}
   bucket: ${MINIO_BUCKET:smart-bin-system}

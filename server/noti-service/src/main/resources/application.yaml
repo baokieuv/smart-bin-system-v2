@@ -1,30 +1,38 @@
 server:
-  port: ${SERVER_PORT:2107} # Chạy ở port 2107
+  port: ${NOTI_SERVICE_PORT:8080}
 
 spring:
   application:
     name: noti-service
 
-  # 1. DATABASE (Lưu lịch sử thông báo, template...)
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
-    username: ${SPRING_DATASOURCE_USERNAME:admin}
-    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    url: ${NOTI_DB_URL:jdbc:mariadb://localhost:3306/smart-bin-noti}
+    username: ${NOTI_DB_USER:admin}
+    password: ${NOTI_DB_PASS:admin}
     driver-class-name: org.mariadb.jdbc.Driver
     type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      connection-timeout: ${NOTI_DB_POOL_TIMEOUT:20000}
+      maximum-pool-size: ${NOTI_DB_POOL_MAX:10}
+      minimum-idle: ${NOTI_DB_POOL_MIN:5}
+      max-lifetime: ${NOTI_DB_POOL_LIFETIME:1200000}
+      idle-timeout: ${NOTI_DB_POOL_IDLE_TIMEOUT:300000}
+      leak-detection-threshold: ${NOTI_DB_POOL_LEAK_THRESHOLD:60000}
 
   jpa:
     database-platform: org.hibernate.dialect.MariaDBDialect
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
-    show-sql: ${SHOW_SQL:false}
+      ddl-auto: ${NOTI_DB_DDL_AUTO:update}
+    show-sql: ${NOTI_DB_SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: ${NOTI_DB_FORMAT_SQL:true}
 
-  # 2. CẤU HÌNH GỬI MAIL (Được dọn từ monolithic sang đây)
   mail:
-    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
-    port: ${SPRING_MAIL_PORT:465}
-    username: ${SPRING_MAIL_USERNAME:kieubao2k4@gmail.com}
-    password: ${SPRING_MAIL_PASSWORD:zwac yohn qmho pdyr}
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:kieubao2k4@gmail.com}
+    password: ${MAIL_PASSWORD:zwac yohn qmho pdyr}
     protocol: smtps
     properties:
       mail:
@@ -32,16 +40,15 @@ spring:
           auth: true
           ssl:
             enable: true
-          trust: ${SPRING_MAIL_HOST:smtp.gmail.com}
+          trust: ${MAIL_HOST:smtp.gmail.com}
 
-  # 3. KAFKA CONSUMER (Lắng nghe sự kiện)
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${SHARED_KAFKA_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
     consumer:
-      group-id: notification-group
+      group-id: ${NOTI_KAFKA_GROUP_ID:notification-group}
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
@@ -52,25 +59,23 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
-          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+          jwk-set-uri: ${KEYCLOAK_JWK_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
 
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:redisadmin}
-# 4. APP CUSTOM PROPERTIES
+      host: ${SHARED_REDIS_HOST:localhost}
+      port: ${SHARED_REDIS_PORT:6379}
+      password: ${SHARED_REDIS_PASS:redisadmin}
+
 app:
   email:
-    from: ${APP_EMAIL_FROM:kieubao2k4@gmail.com}
+    from: ${NOTI_EMAIL_FROM:kieubao2k4@gmail.com}
     verification:
       url: ${APP_EMAIL_VERIFICATION_URL:http://localhost:3000/verify-email}
-
   frontend:
     url: ${APP_FRONTEND_URL:http://localhost:3000}
-
   kafka:
     topics:
-      send-email: "send-email-topic"
-      send-noti: "device-notification-topic"
+      send-email: ${TOPIC_SEND_EMAIL:send-email-topic}
+      send-noti: ${TOPIC_DEVICE_NOTIFICATION:device-notification-topic}

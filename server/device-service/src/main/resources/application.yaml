@@ -1,75 +1,70 @@
 server:
-  port: ${SERVER_PORT:2108} # Port riêng biệt
+  port: ${DEVICE_SERVICE_PORT:8080}
 
 spring:
   application:
     name: device-service
 
-  # 1. DATABASE (Lưu trữ User Identity nội bộ)
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
-    username: ${SPRING_DATASOURCE_USERNAME:admin}
-    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    url: ${DEVICE_DB_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
+    username: ${DEVICE_DB_USER:admin}
+    password: ${DEVICE_DB_PASS:admin}
     driver-class-name: org.mariadb.jdbc.Driver
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
-      connection-timeout: 20000
-      maximum-pool-size: 10
-      minimum-idle: 5
-      max-lifetime: 1200000
-      idle-timeout: 300000
-      leak-detection-threshold: 60000
+      connection-timeout: ${DEVICE_DB_POOL_TIMEOUT:20000}
+      maximum-pool-size: ${DEVICE_DB_POOL_MAX:10}
+      minimum-idle: ${DEVICE_DB_POOL_MIN:5}
+      max-lifetime: ${DEVICE_DB_POOL_LIFETIME:1200000}
+      idle-timeout: ${DEVICE_DB_POOL_IDLE_TIMEOUT:300000}
+      leak-detection-threshold: ${DEVICE_DB_POOL_LEAK_THRESHOLD:60000}
 
   jpa:
     database-platform: org.hibernate.dialect.MariaDBDialect
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
-    show-sql: ${SHOW_SQL:false}
+      ddl-auto: ${DEVICE_DB_DDL_AUTO:update}
+    show-sql: ${DEVICE_DB_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${DEVICE_DB_FORMAT_SQL:true}
 
-  # 2. REDIS (Có thể dùng lưu trạng thái online/offline của thiết bị siêu nhanh)
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:redisadmin}
+      host: ${SHARED_REDIS_HOST:localhost}
+      port: ${SHARED_REDIS_PORT:6379}
+      password: ${SHARED_REDIS_PASS:redisadmin}
 
-  # 3. KAFKA (Đóng vai trò Producer)
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${SHARED_KAFKA_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
 
-  # 4. SECURITY (Xác minh JWT từ người dùng quản lý thùng rác)
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
-          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+          jwk-set-uri: ${KEYCLOAK_JWK_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
 
-# 5. CẤU HÌNH THINGSBOARD (IOT PLATFORM)
 things-board:
-  url: ${THINGS_BOARD_URL:http://localhost:8080}
-  email: ${THINGS_BOARD_EMAIL:tenant@thingsboard.org}
-  password: ${THINGS_BOARD_PASS:tenant}
-  key: ${THINGS_BOARD_SECRET_KEY:MY_SUPPER_SECRET_KEY}
+  url: ${THINGSBOARD_URL:http://localhost:8080}
+  email: ${THINGSBOARD_TENANT_EMAIL:tenant@thingsboard.org}
+  password: ${THINGSBOARD_TENANT_PASS:tenant}
+  key: ${THINGSBOARD_SECRET_KEY:MY_SUPPER_SECRET_KEY}
 
 app:
-  secret-key: "SECRET_KEY_12345"
+  secret-key: ${DEVICE_SERVICE_SECRET_KEY:SECRET_KEY_12345}
   kafka:
     topics:
-      send-noti: "device-notification-topic"
-      send-email: "send-email-topic"
-      sync-user-tenant: "sync-user-tenant-topic"
+      send-noti: ${TOPIC_DEVICE_NOTIFICATION:device-notification-topic}
+      send-email: ${TOPIC_SEND_EMAIL:send-email-topic}
+      sync-user-tenant: ${TOPIC_SYNC_USER_TENANT:sync-user-tenant-topic}
   webhook:
-    allowed-ips: 127.0.0.1, 172.16.0.0/12, 192.168.0.0/16
+    allowed-ips: ${DEVICE_WEBHOOK_ALLOWED_IPS:127.0.0.1, 172.16.0.0/12, 192.168.0.0/16}
   iam-service:
-    internal-secret: ${IAM_SERVICE_SECRET:SUPER_SECRET_INTERNAL_KEY}
+    internal-secret: ${IAM_INTERNAL_SECRET:SUPER_SECRET_INTERNAL_KEY}
     url: ${IAM_SERVICE_URL:http://localhost:2106}
   media-service:
-    internal-secret: ${MEDIA_SERVICE_SECRET:SUPER_SECRET_INTERNAL_KEY}
+    internal-secret: ${MEDIA_INTERNAL_SECRET:SUPER_SECRET_INTERNAL_KEY}
     url: ${MEDIA_SERVICE_URL:http://localhost:2109}

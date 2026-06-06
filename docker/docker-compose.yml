@@ -46,6 +46,7 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:25.0
+    container_name: keycloak_auth
     restart: unless-stopped
     env_file:
       - .env
@@ -54,17 +55,15 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-      KC_HOSTNAME: localhost 
-      KC_HOSTNAME_PORT: 8180
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    
+      KC_HTTP_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
-      KC_HTTP_ENABLED: "true"
-      KC_PROXY: edge
+      KC_PROXY_HEADERS: xforwarded
+      
     command: start-dev --features=token-exchange,admin-fine-grained-authz
-    ports:
-      - "8180:8080"
     depends_on:
       - postgres
     networks:
@@ -119,7 +118,6 @@ services:
     restart: unless-stopped
     ports:
       - "8081:8081"
-    # Dùng Python chính chủ, tự động cài websockify và chạy proxy bind ra IP 0.0.0.0
     command: sh -c "pip install websockify && websockify 0.0.0.0:8081 thingsboard-ce:1883"
     depends_on:
       - thingsboard-ce
@@ -142,16 +140,130 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      # Fix lỗi single node khi tạo topic mặc định
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
     volumes:
-      # Đường dẫn mặc định của Apache Kafka là /tmp/kafka-logs
       - ./kafka_data:/tmp/kafka-logs
     networks:
       - smart_bin_network
 
+  iam-service:
+    image: baokieu/iam-service:latest
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      - IAM_SERVICE_PORT=8080
+    depends_on:
+      - mariadb
+      - redis
+      - kafka
+      - keycloak
+    networks:
+      - smart_bin_network
+
+  device-service:
+    image: baokieu/device-service:latest
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      - DEVICE_SERVICE_PORT=8080
+    depends_on:
+      - mariadb
+      - redis
+      - kafka
+    networks:
+      - smart_bin_network
+
+  noti-service:
+    image: baokieu/noti-service:latest
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      - NOTI_SERVICE_PORT=8080
+    depends_on:
+      - mariadb
+      - redis
+      - kafka
+    networks:
+      - smart_bin_network
+
+  media-service:
+    image: baokieu/media-service:latest
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      - MEDIA_SERVICE_PORT=8080
+    depends_on:
+      - mariadb
+      - redis
+      - minio
+    networks:
+      - smart_bin_network
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx_proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"   # Mở port 80 để tiếp nhận traffic từ proxy/tunnel nếu cần
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - iam-service
+      - device-service
+    networks:
+      - smart_bin_network
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared_tunnel
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ./cloudflared/d1ebb6d2-bb41-46ee-a24b-c18a2f68d540.json:/etc/cloudflared/d1ebb6d2-bb41-46ee-a24b-c18a2f68d540.json:ro
+    depends_on:
+      - nginx
+    networks:
+      - smart_bin_network
+
+  frontend:
+    image: baokieu/smart-bin-fe:latest
+    container_name: nextjs_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+      - NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+      - NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
+    depends_on:
+      - iam-service
+    networks:
+      - smart_bin_network
+  cms:
+    image: baokieu/smart-bin-cms:latest
+    container_name: nextjs_cms
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+      - NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+      - NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
+    depends_on:
+      - iam-service
+    networks:
+      - smart_bin_network
 networks:
   smart_bin_network:
     driver: bridge

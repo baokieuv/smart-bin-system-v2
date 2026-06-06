@@ -1,6 +1,5 @@
 server:
-  # Thường đổi port mặc định cho các service con để tránh đụng độ (ví dụ: IAM chạy port 8081)
-  port: ${SERVER_PORT:2106}
+  port: ${IAM_SERVICE_PORT:8080}
 
 spring:
   application:
@@ -9,63 +8,58 @@ spring:
   cache:
     type: redis
     redis:
-      time-to-live: 3600000 # Thời gian sống của cache là 1 giờ (tính bằng milliseconds)
-      cache-null-values: false # Không lưu các giá trị null vào cache
+      time-to-live: ${IAM_CACHE_TTL:3600000}
+      cache-null-values: false
 
-  # 1. DATABASE (Lưu trữ User Identity nội bộ)
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
-    username: ${SPRING_DATASOURCE_USERNAME:admin}
-    password: ${SPRING_DATASOURCE_PASSWORD:admin}
+    url: ${IAM_DB_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
+    username: ${IAM_DB_USER:admin}
+    password: ${IAM_DB_PASS:admin}
     driver-class-name: org.mariadb.jdbc.Driver
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
-      connection-timeout: 20000
-      maximum-pool-size: 10
-      minimum-idle: 5
-      max-lifetime: 1200000
-      idle-timeout: 300000
-      leak-detection-threshold: 60000
+      connection-timeout: ${IAM_DB_POOL_TIMEOUT:20000}
+      maximum-pool-size: ${IAM_DB_POOL_MAX:10}
+      minimum-idle: ${IAM_DB_POOL_MIN:5}
+      max-lifetime: ${IAM_DB_POOL_LIFETIME:1200000}
+      idle-timeout: ${IAM_DB_POOL_IDLE_TIMEOUT:300000}
+      leak-detection-threshold: ${IAM_DB_POOL_LEAK_THRESHOLD:60000}
 
   jpa:
     database-platform: org.hibernate.dialect.MariaDBDialect
     hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
-    show-sql: ${SHOW_SQL:false}
+      ddl-auto: ${IAM_DB_DDL_AUTO:update}
+    show-sql: ${IAM_DB_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${IAM_DB_FORMAT_SQL:true}
 
-  # 2. CACHE (Dùng để Blacklist Token khi Logout hoặc lưu tạm OTP)
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:redisadmin}
+      host: ${SHARED_REDIS_HOST:localhost}
+      port: ${SHARED_REDIS_PORT:6379}
+      password: ${SHARED_REDIS_PASS:redisadmin}
 
-  # 3. KAFKA (Thêm mới: Dùng để bắn Event sang Notification Service)
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${SHARED_KAFKA_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
     consumer:
-      group-id: notification-group
+      group-id: ${IAM_KAFKA_GROUP_ID:iam-service-group}
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
 
-  # 4. SECURITY (Xác thực Token với Keycloak)
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
-          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
+          jwk-set-uri: ${KEYCLOAK_JWK_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
 
-# 5. KEYCLOAK ADMIN (Để gọi API tạo User, đổi mật khẩu)
 keycloak:
   server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8180}
   realm: ${KEYCLOAK_REALM:smart-bin-realm}
@@ -74,28 +68,24 @@ keycloak:
   admin-username: ${KEYCLOAK_ADMIN_USERNAME:admin}
   admin-password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
 
-# 6. APP CUSTOM PROPERTIES
 app:
   internal:
-    secret: ${APP_INTERNAL_SECRET:SUPER_SECRET_INTERNAL_KEY}
+    secret: ${IAM_INTERNAL_SECRET:SUPER_SECRET_INTERNAL_KEY}
   frontend:
     url: ${APP_FRONTEND_URL:http://localhost:3000}
-
   kafka:
     topics:
-      send-email: "send-email-topic"
-      sync-user-tenant: "sync-user-tenant-topic"
+      send-email: ${TOPIC_SEND_EMAIL:send-email-topic}
+      sync-user-tenant: ${TOPIC_SYNC_USER_TENANT:sync-user-tenant-topic}
   admin:
-    root-email: ${APP_ROOT_EMAIL:kieubao2k4@gmail.com}
-    root-password: ${APP_ROOT_PASS:12345678}
+    root-email: ${IAM_ADMIN_ROOT_EMAIL:kieubao2k4@gmail.com}
+    root-password: ${IAM_ADMIN_ROOT_PASS:12345678}
   tenant:
-    default-email: default_tenant@smartbin.com
-    default-password: ${APP_ROOT_PASS:12345678}
+    default-email: ${IAM_TENANT_DEFAULT_EMAIL:default_tenant@smartbin.com}
+    default-password: ${IAM_TENANT_DEFAULT_PASS:12345678}
 
-# 7. GOOGLE RECAPTCHA (Bảo vệ API Login/Register khỏi bị spam)
 google:
   recaptcha:
     secret: ${GOOGLE_CAPTCHA_SECRET:6Lc675ssAAAAAPBj08i1ho7E4BkoX-8RkL6EjmoU}
-    # Lưu ý: Mình đã sửa lại URL này cho chuẩn xác với API của Google
     verify-url: ${GOOGLE_URL:https://www.google.com/recaptcha/api/siteverify}
     threshold: ${GOOGLE_THRESHOLD:0.5}
