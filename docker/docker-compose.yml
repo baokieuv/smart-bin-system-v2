@@ -50,6 +50,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    ports:
+      - "8180:8080"
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
@@ -63,7 +65,9 @@ services:
       KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_PROXY_HEADERS: xforwarded
       
-    command: start-dev --features=token-exchange,admin-fine-grained-authz
+    command: start-dev --features=token-exchange,admin-fine-grained-authz --import-realm
+    volumes:
+      - ./keycloak_import:/opt/keycloak/data/import:ro
     depends_on:
       - postgres
     networks:
