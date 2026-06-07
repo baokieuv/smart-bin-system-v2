@@ -72,7 +72,7 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/smart-bin-cms:latest
           build-args: |
-            NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn
+            NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn/api/v1
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
             NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${{ secrets.NEXT_PUBLIC_RECAPTCHA_SITE_KEY }}
             NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${{ secrets.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN }}
@@ -96,10 +96,10 @@ jobs:
             git pull origin main
             
             # Tải các Docker Image vừa được build ở trên về máy VPS
-            docker compose pull iam-service media-service device-service noti-service frontend cms
+            docker compose pull iam-service media-service device-service noti-service frontend cms nginx
             
             # Khởi động lại các container ứng dụng với bản code mới nhất
-            docker compose up -d iam-service media-service device-service noti-service frontend cms
+            docker compose up -d iam-service media-service device-service noti-service frontend cms nginx
             
             # Dọn dẹp các Docker Image cũ, hết hạn để giải phóng không gian ổ cứng
             docker image prune -f
