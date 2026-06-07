@@ -1,0 +1,29 @@
+tunnel: d1ebb6d2-bb41-46ee-a24b-c18a2f68d540
+credentials-file: /etc/cloudflared/d1ebb6d2-bb41-46ee-a24b-c18a2f68d540.json
+
+ingress:
+  - hostname: kvbhust.id.vn
+    service: http://nginx:80
+  
+  - hostname: shop.kvbhust.id.vn
+    service: http://nginx:80
+
+  - hostname: cms.kvbhust.id.vn
+    service: http://nginx:80
+
+  - hostname: api.kvbhust.id.vn
+    service: http://nginx:80
+
+  - hostname: auth.kvbhust.id.vn
+    service: http://nginx:80
+
+  - hostname: thingsboard.kvbhust.id.vn
+    service: http://nginx:80
+
+  - hostname: minio.kvbhust.id.vn
+    service: http://nginx:80
+
+  - hostname: s3.kvbhust.id.vn
+    service: http://nginx:80
+
+  - service: http_status:404
