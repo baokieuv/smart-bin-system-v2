@@ -26,5 +26,8 @@ replay_pid*
 /docker/*
 
 !/docker/docker-compose.yml
+!/docker/keycloak_import/*
+!/docker/nginx/*
+!/docker/cloudflared/*
 
 .env
