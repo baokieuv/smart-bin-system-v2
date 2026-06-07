@@ -99,7 +99,9 @@ jobs:
             docker compose pull iam-service media-service device-service noti-service frontend cms nginx
             
             # Khởi động lại các container ứng dụng với bản code mới nhất
-            docker compose up -d iam-service media-service device-service noti-service frontend cms nginx
+            docker compose up -d iam-service media-service device-service noti-service frontend cms
             
+            docker compose restart nginx
+
             # Dọn dẹp các Docker Image cũ, hết hạn để giải phóng không gian ổ cứng
             docker image prune -f
