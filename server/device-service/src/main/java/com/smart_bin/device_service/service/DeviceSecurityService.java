@@ -37,9 +37,12 @@ public class DeviceSecurityService {
 
     @PostConstruct
     public void init() {
-        try {
-            String path = privateKeyResource.getFile().getAbsolutePath();
-            this.serverPrivateKey = PemUtils.getPrivateKey(path);
+        try (InputStream inputStream = privateKeyResource.getInputStream()) {
+            String pemContent = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+
+            this.serverPrivateKey = PemUtils.getPrivateKeyFromString(pemContent);
+
+            log.info("Loaded RSA Private Key successfully!");
         } catch (Exception e) {
             log.error("Failed to load RSA Private Key of Server", e);
         }

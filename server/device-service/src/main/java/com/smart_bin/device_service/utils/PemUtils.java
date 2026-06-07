@@ -55,4 +55,22 @@ public class PemUtils {
         KeyFactory keyFactory = KeyFactory.getInstance("RSA");
         return keyFactory.generatePrivate(new PKCS8EncodedKeySpec(encoded));
     }
+
+    public static PrivateKey getPrivateKeyFromString(String keyContent) throws Exception {
+        // 1. Loại bỏ các header/footer của chuẩn PEM và các ký tự xuống dòng
+        String privateKeyPEM = keyContent
+                .replace("-----BEGIN PRIVATE KEY-----", "")
+                .replace("-----END PRIVATE KEY-----", "")
+                .replace("-----BEGIN RSA PRIVATE KEY-----", "")
+                .replace("-----END RSA PRIVATE KEY-----", "")
+                .replaceAll("\\s", ""); // Xóa khoảng trắng, \n, \r
+
+        // 2. Decode Base64
+        byte[] encoded = Base64.getDecoder().decode(privateKeyPEM);
+
+        // 3. Tạo PrivateKey object
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(encoded);
+        return keyFactory.generatePrivate(keySpec);
+    }
 }
