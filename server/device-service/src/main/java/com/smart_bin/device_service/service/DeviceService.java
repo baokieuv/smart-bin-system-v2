@@ -73,6 +73,7 @@ public class DeviceService {
         List<ImportDeviceResponse> results = new ArrayList<>();
 
         DeviceGroup defaultGroup = deviceGroupService.getOrCreateDefaultGroupForTenant(tenantId);
+        String tbProfileId = defaultGroup.getTbProfileId();
 
         for (DeviceImportItem item : request.devices()) {
             String mac = item.mac();
@@ -87,34 +88,44 @@ public class DeviceService {
             }
 
             Optional<Device> deviceOpt = repository.findByMac(mac);
+            Device targetDevice;
 
             if (deviceOpt.isPresent()) {
                 Device device = deviceOpt.get();
 
                 if (device.getTenantId() != null && !device.getTenantId().equals(tenantId)) {
                     results.add(new ImportDeviceResponse(mac, "FAILED", "Thiết bị đã thuộc quyền quản lý của Tenant khác."));
+                    continue;
                 } else if (device.getTenantId() != null) {
                     results.add(new ImportDeviceResponse(mac, "SKIPPED", "Thiết bị đã nằm trong danh sách của bạn."));
+                    continue;
                 } else {
-                    device.setTenantId(tenantId);
-                    device.setDeviceGroup(defaultGroup);
-                    syncWithThingsBoard(device, mac);
-                    assignGroupToDevice(device);
-                    repository.save(device);
+                    targetDevice = device;
                     results.add(new ImportDeviceResponse(mac, "SUCCESS", "Gán Tenant thành công cho thiết bị đã tồn tại."));
                 }
             } else {
-                Device shellDevice = new Device();
-                shellDevice.setMac(mac);
-                shellDevice.setTenantId(tenantId);
-                shellDevice.setState(DeviceState.PENDING); // Trạng thái chờ kích hoạt
-                shellDevice.setDeviceGroup(defaultGroup);
-                syncWithThingsBoard(shellDevice, mac);
-                assignGroupToDevice(shellDevice);
-                repository.save(shellDevice);
-
+                targetDevice = new Device();
+                targetDevice.setMac(mac);
+                targetDevice.setState(DeviceState.PENDING); // Trạng thái chờ kích hoạt
                 results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));
             }
+
+            targetDevice.setTenantId(tenantId);
+            targetDevice.setDeviceGroup(defaultGroup);
+
+            syncWithThingsBoard(targetDevice, mac);
+
+            assignGroupToDevice(targetDevice);
+
+            if (tbProfileId != null && targetDevice.getDeviceId() != null) {
+                try {
+                    thingsBoardService.assignProfileToDevice(targetDevice.getDeviceId(), tbProfileId);
+                } catch (Exception e) {
+                    log.error("Lỗi khi gán profile cho thiết bị {} lúc import", mac, e);
+                }
+            }
+
+            repository.save(targetDevice);
         }
 
         return results;

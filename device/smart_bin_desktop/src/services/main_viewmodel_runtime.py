@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+import random
 from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, Callable
@@ -404,7 +405,7 @@ class MainViewModelRuntime:
         try:
             success, fill_levels = vm.actuator_client.request_fill_levels()
             success = True
-            fill_levels = [00, 00, 00, 00]
+            fill_levels = [random.randint(0, 100) for _ in range(4)]
             if success and fill_levels:
                 vm.latest_fill_levels = fill_levels
                 vm.logger.debug("Fill levels updated: %s", fill_levels)

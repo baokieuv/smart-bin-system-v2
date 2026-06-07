@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import paho.mqtt.client as mqtt
 
 from src.utils.config import APP_CONFIG
+from typing import Callable
 from src.repository.actuator_repository import ActuatorRepository
 
 
@@ -25,7 +26,7 @@ class ThingsboardClient:
                  tls_enabled: bool = True,
                  client_id: str = "",
                  connect_timeout: int = 5,
-                 handler: callable | None = None,
+                 handler: Callable | None = None,
                  logger: logging.Logger | None = None):
         self.logger = logger or logging.getLogger("smart_bin.thingsboard_repository")
         # Derive host from config if not provided.
@@ -120,8 +121,17 @@ class ThingsboardClient:
         if not access_token:
             return False, "Missing access token", None
 
+        if self._connected:
+            return True, "Already connected", None
+        
         try:
             # (Re)apply credentials
+            self._client.loop_stop()
+            self._client.disconnect()
+            
+            # Reset trạng thái ack
+            self._connack_rc = None
+            
             self._client.username_pw_set(username=access_token, password="")
             self._client.connect(self.host, port=self.port, keepalive=self.keepalive)
             self._client.loop_start()
@@ -134,13 +144,15 @@ class ThingsboardClient:
 
             if self._connack_rc is not None and self._connack_rc != 0:
                 rc = self._connack_rc
-                # Reset for next attempt
                 self._connack_rc = None
+                self._client.loop_stop()
+                
                 if rc == 5:
                     return False, "MQTT not authorized (CONNACK rc=5)", 401
                 return False, f"MQTT connect rejected (CONNACK rc={rc})", None
 
             if not self._connected:
+                self._client.loop_stop()
                 return False, "MQTT connect timed out or was rejected", None
 
             return True, "Connected", None
@@ -193,11 +205,9 @@ class ThingsboardClient:
 
         try:
             info = self._client.publish(topic, json.dumps(telemetry_payload), qos=1)
-            publish_waited = 0.0
-            while not info.is_published() and publish_waited < 5.0:
-                time.sleep(0.1)
-                publish_waited += 0.1
-
+            
+            info.wait_for_publish(timeout=5.0)
+            
             if info.is_published():
                 return True, "OK", None
             return False, "Publish failed or timed out", None
