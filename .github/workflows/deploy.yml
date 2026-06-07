@@ -1,0 +1,95 @@
+name: Smart Bin CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  # JOB 1: Tải code về, đóng gói thành Docker Image và đẩy lên Docker Hub
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }} # Điền Access Token lấy từ Docker Hub vào đây
+
+      # Đóng gói và đẩy bản build của IAM Service
+      - name: Build and Push IAM Service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server/iam-service
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/iam-service:latest
+
+      # Đóng gói và đẩy bản build của Media Service
+      - name: Build and Push Media Service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server/media-service
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/media-service:latest
+
+      # Đóng gói và đẩy bản build của Device Service
+      - name: Build and Push Device Service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server/device-service
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/device-service:latest
+
+      # Đóng gói và đẩy bản build của Notification Service
+      - name: Build and Push Notification Service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server/noti-service
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/noti-service:latest
+
+      # Đóng gói và đẩy bản build của Web client
+      - name: Build and Push Web client
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web/smart-bin-system-v2-fe
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/smart-bin-fe:latest
+
+      # Đóng gói và đẩy bản build của CMS Web client
+      - name: Build and Push CMS Web client
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web/smart-bin-system-v2-cms
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/smart-bin-cms:latest
+
+  # JOB 2: Kết nối vào VPS bằng mật khẩu, kéo Image mới về và restart hệ thống
+  deploy-to-vps:
+    needs: build-and-push # Chỉ chạy khi JOB 1 (Build) đã thành công hoàn toàn
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Deployment via SSH (Password Auth)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }} # Cấu hình sử dụng mật khẩu đăng nhập trực tiếp
+          script: |
+            # Di chuyển vào thư mục dự án trên VPS
+            cd ~/smart-bin-system-v2/docker
+            
+            # Cập nhật các thay đổi mới nhất về cấu hình docker-compose nếu có
+            git pull origin main
+            
+            # Tải các Docker Image vừa được build ở trên về máy VPS
+            docker compose pull iam-service media-service device-service noti-service smart-bin-fe smart-bin-cms
+            
+            # Khởi động lại các container ứng dụng với bản code mới nhất
+            docker compose up -d iam-service media-service device-service noti-service smart-bin-fe smart-bin-cms
+            
+            # Dọn dẹp các Docker Image cũ, hết hạn để giải phóng không gian ổ cứng
+            docker image prune -f
