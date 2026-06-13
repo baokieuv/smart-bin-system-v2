@@ -3,6 +3,7 @@ package com.smart_bin.iam_service.serivce;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.smart_bin.core.common.Constants;
+import com.smart_bin.core.common.DevicePermission;
 import com.smart_bin.core.common.EmailType;
 import com.smart_bin.core.common.UserRole;
 import com.smart_bin.core.exception.ApiException;
@@ -36,8 +37,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -67,10 +68,19 @@ public class UserService {
     @Transactional
     public UserDto createUser(CreateUserRequest request, String tenantId, boolean isTenant) {
         // 1. Khởi tạo/tái sử dụng thực thể User & Đăng ký trên Keycloak
-        User user = prepareUserEntity(request);
+        User user = prepareUserEntity(request, tenantId);
 
         // 2. Xác định và gán Tenant ID tương ứng
         String assignedTenantId = assignTenant(user, tenantId, isTenant);
+
+        Tenant defaultTenant = tenantRepository.findByEmail(defaultTenantEmail)
+                .orElseThrow(() -> new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Hệ thống chưa cấu hình Default Tenant"));
+
+        if (assignedTenantId.equals(defaultTenant.getKeycloakId())) {
+            user.setDevicePermissions(new HashSet<>(Arrays.asList(DevicePermission.values())));
+        } else {
+            user.setDevicePermissions(new HashSet<>(Set.of(DevicePermission.VIEW_DEVICE)));
+        }
 
         // 3. Thiết lập trạng thái hoạt động & Token xác thực email
         configureUserStatus(user, isTenant);
@@ -114,10 +124,20 @@ public class UserService {
         newUser.setState(UserState.ACTIVE);
         newUser.setActive(true);
         newUser.setRole(UserRole.USER);
+        newUser.setDevicePermissions(new HashSet<>(Arrays.asList(DevicePermission.values())));
         userRepository.save(newUser);
 
         keycloakService.updatePassword(keycloakId, generateRandomPassword());
-        keycloakService.updateUserAttribute(keycloakId, "user_state", UserState.ACTIVE.name());
+
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put("user_state", UserState.ACTIVE.name());
+        attributes.put("tenant_id", defaultTenant.getKeycloakId());
+        String fullPermsStr = Arrays.stream(DevicePermission.values())
+                .map(Enum::name)
+                .collect(Collectors.joining(","));
+        attributes.put("device_permissions", fullPermsStr);
+
+        keycloakService.updateUserAttributes(keycloakId, attributes);
 
         sendEmailToUser(newUser.getEmail(), newUser.getName(), null, EmailType.WELCOME);
     }
@@ -291,8 +311,21 @@ public class UserService {
         if (needSyncKeycloakInfo) {
             keycloakService.updateUserInfo(targetUser.getKeycloakId(), targetUser.getName());
         }
+
+        Map<String, String> attributesToUpdate = new HashMap<>();
         if (needSyncKeycloakState) {
-            keycloakService.updateUserAttribute(targetUser.getKeycloakId(), "user_state", targetUser.getState().name());
+            attributesToUpdate.put("user_state", targetUser.getState().name());
+        }
+
+        if (request.devicePermissions() != null) {
+            String permsStr = request.devicePermissions().stream()
+                    .map(Enum::name)
+                    .collect(Collectors.joining(","));
+            attributesToUpdate.put("device_permissions", permsStr);
+        }
+
+        if (!attributesToUpdate.isEmpty()) {
+            keycloakService.updateUserAttributes(targetUser.getKeycloakId(), attributesToUpdate);
         }
 
         return mapper.toDto(savedUser);
@@ -392,7 +425,7 @@ public class UserService {
         return password.toString();
     }
 
-    private User prepareUserEntity(CreateUserRequest request) {
+    private User prepareUserEntity(CreateUserRequest request, String tenantId) {
         User user = userRepository.findByEmail(request.email()).orElse(null);
 
         if (user != null) {
@@ -410,7 +443,7 @@ public class UserService {
             user = mapper.toEntity(request);
         }
 
-        user.setKeycloakId(keycloakService.createUser(request));
+        user.setKeycloakId(keycloakService.createUser(request, tenantId));
         user.setRole(UserRole.USER);
         return user;
     }
@@ -448,11 +481,21 @@ public class UserService {
     }
 
     private void syncKeycloakAndNotify(User user, String assignedTenantId, boolean isTenant) {
-        keycloakService.updateUserAttribute(user.getKeycloakId(), "user_state", user.getState().name());
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put("user_state", user.getState().name());
 
         if (assignedTenantId != null) {
-            keycloakService.updateUserAttribute(user.getKeycloakId(), "tenant_id", assignedTenantId);
+            attributes.put("tenant_id", assignedTenantId);
         }
+
+        if (user.getDevicePermissions() != null && !user.getDevicePermissions().isEmpty()) {
+            String permsStr = user.getDevicePermissions().stream()
+                    .map(Enum::name)
+                    .collect(Collectors.joining(","));
+            attributes.put("device_permissions", permsStr);
+        }
+
+        keycloakService.updateUserAttributes(user.getKeycloakId(), attributes);
 
         if (!isTenant) {
             sendEmailToUser(user.getEmail(), user.getName(), user.getActionToken(), EmailType.VERIFICATION);

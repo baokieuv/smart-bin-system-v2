@@ -72,14 +72,14 @@ public class Device extends BaseEntity {
     @Column(name = "hw_metadata")
     private Map<String, Object> hwMetadata;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "description")
+    private Map<String, Object> description;
+
     // --- Quan hệ ---
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "group_id")
     private DeviceGroup deviceGroup;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "profile_id")
-    private DeviceProfile deviceProfile;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "user_configs")

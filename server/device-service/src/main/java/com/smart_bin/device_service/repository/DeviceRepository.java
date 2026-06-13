@@ -24,24 +24,27 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
     // Map với cột userId trong entity
     Page<Device> findByUserIdAndActiveTrue(String userId, Pageable pageable);
 
+    @Query("SELECT d FROM Device d WHERE d.active = true AND (d.userId = :id OR d.tenantId = :id)")
+    Page<Device> findActiveDevicesByUserOrTenant(@Param("id") String id, Pageable pageable);
+
     Optional<Device> findByIdAndActiveTrue(UUID id);
 
     boolean existsByDeviceGroup_IdAndActiveTrue(UUID groupId);
 
-    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceProfile LEFT JOIN FETCH d.deviceGroup",
+    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup",
             countQuery = "SELECT COUNT(d) FROM Device d")
     Page<Device> findAllForAdminWithConfig(Pageable pageable);
 
-    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceProfile LEFT JOIN FETCH d.deviceGroup WHERE d.tenantId = :tenantId",
+    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup WHERE d.tenantId = :tenantId",
             countQuery = "SELECT COUNT(d) FROM Device d WHERE d.tenantId = :tenantId")
     Page<Device> findAllByTenantIdForAdminWithConfig(@Param("tenantId") String tenantId, Pageable pageable);
 
     @Query("SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup WHERE d.mac = :mac")
     Optional<Device> findByMacWithGroup(@Param("mac") String mac);
 
-    boolean existsByDeviceProfile_IdAndActiveTrue(UUID profileId);
-
     List<Device> findByMacInAndActiveTrue(List<String> macs);
+
+    Page<Device> findByTenantIdAndActiveTrue(String tenantId, Pageable pageable);
 
     long countByUserIdAndTenantId(String userId, String tenantId);
 }

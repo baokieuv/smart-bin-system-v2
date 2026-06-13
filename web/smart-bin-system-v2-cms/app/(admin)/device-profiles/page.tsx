@@ -58,7 +58,7 @@ export default function DeviceProfilesPage() {
     try {
       parsedSpecs = JSON.parse(form.sharedSpecsJson || "{}");
     } catch {
-      setMessage("Invalid JSON for shared specs");
+      setMessage("Dữ liệu JSON của thông số chung không hợp lệ");
       return;
     }
 
@@ -70,7 +70,7 @@ export default function DeviceProfilesPage() {
           sharedSpecs: parsedSpecs,
           description: form.description.trim() || undefined,
         });
-        setMessage("Device profile updated");
+        setMessage("Đã cập nhật mẫu thiết bị");
       } else {
         await deviceProfilesAdminApi.createDeviceProfile({
           code: form.code.trim(),
@@ -78,13 +78,13 @@ export default function DeviceProfilesPage() {
           sharedSpecs: parsedSpecs,
           description: form.description.trim() || undefined,
         });
-        setMessage("Device profile created");
+        setMessage("Đã tạo mẫu thiết bị");
       }
 
       resetForm();
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Save failed");
+      setMessage(error instanceof Error ? error.message : "Không lưu được mẫu thiết bị");
     } finally {
       setSaveLoading(false);
     }
@@ -94,10 +94,10 @@ export default function DeviceProfilesPage() {
     try {
       setDeleteLoadingId(id);
       await deviceProfilesAdminApi.deleteDeviceProfile(id);
-      setMessage("Device profile deleted");
+      setMessage("Đã xóa mẫu thiết bị");
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Delete failed");
+      setMessage(error instanceof Error ? error.message : "Không xóa được mẫu thiết bị");
     } finally {
       setDeleteLoadingId(null);
     }
@@ -111,16 +111,16 @@ export default function DeviceProfilesPage() {
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
-      <Panel title="Device Profiles" subtitle="Super admin CRUD for device catalog profiles">
+      <Panel title="Mẫu thiết bị" subtitle="Quản lý thông tin chuẩn của thiết bị">
         <div className="overflow-x-auto">
           <table className="w-full min-w-220 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
                 <th className="py-2 px-3">Code</th>
                 <th className="py-2 px-3">Name</th>
-                <th className="py-2 px-3">Shared Specs</th>
+                <th className="py-2 px-3">Thông số chung</th>
                 <th className="py-2 px-3">Description</th>
-                <th className="py-2 px-3">Action</th>
+                <th className="py-2 px-3">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -160,34 +160,34 @@ export default function DeviceProfilesPage() {
 
       <div className="space-y-4">
         <Panel
-          title="Device Profile Actions"
-          subtitle="Open the popup editor to create or update a profile"
+          title="Thao tác với mẫu thiết bị"
+          subtitle="Mở hộp thoại để tạo hoặc cập nhật mẫu"
           action={
             <button type="button" onClick={openCreateModal} className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white">
-              Create device profile
+              Tạo mẫu thiết bị
             </button>
           }
         >
-          <p className="text-sm text-slate-600">Use the popup editor so shared specs and descriptions are easier to edit.</p>
+          <p className="text-sm text-slate-600">Dùng hộp thoại để chỉnh sửa thông số chung và mô tả dễ hơn.</p>
         </Panel>
 
-        <Panel title="Device Profile Notes" subtitle="Super admin can manage the catalog, tenant-side only sees assigned groups">
+        <Panel title="Ghi chú mẫu thiết bị" subtitle="Quản trị viên cấp cao quản lý danh mục, đơn vị chỉ thấy các nhóm được giao">
           <p className="text-sm text-slate-600">
-            Device profiles are read and maintained by super admin, while tenants only work with assigned device groups.
+            Mẫu thiết bị do quản trị viên cấp cao quản lý, còn đơn vị sử dụng chỉ làm việc với các nhóm thiết bị đã được giao.
           </p>
         </Panel>
       </div>
 
       {showEditorModal ? (
         <Modal
-          title={editingId ? "Update Device Profile" : "Create Device Profile"}
-          subtitle="Edit code, shared specs, and description in one popup"
+          title={editingId ? "Cập nhật mẫu thiết bị" : "Tạo mẫu thiết bị"}
+          subtitle="Chỉnh mã, thông số chung và mô tả trong một hộp thoại"
           onClose={closeEditorModal}
         >
           <form onSubmit={saveProfile} className="space-y-4">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Code (e.g. SMART_BIN_PROFILE_60L)"
+              placeholder="Mã mẫu (ví dụ: SMART_BIN_PROFILE_60L)"
               value={form.code}
               onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))}
               required
@@ -199,7 +199,7 @@ export default function DeviceProfilesPage() {
               onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
               required
             />
-            <label className="block text-sm text-slate-600">Shared specs (JSON)</label>
+            <label className="block text-sm text-slate-600">Thông số chung (JSON)</label>
             <textarea
               className="h-36 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm"
               placeholder='{"width":20, "height":30, "color":"blue"}'
@@ -215,10 +215,10 @@ export default function DeviceProfilesPage() {
             />
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
               <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" type="submit" disabled={saveLoading}>
-                {saveLoading ? "Saving..." : editingId ? "Update device profile" : "Create device profile"}
+                {saveLoading ? "Đang lưu..." : editingId ? "Cập nhật mẫu thiết bị" : "Tạo mẫu thiết bị"}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeEditorModal}>
-                Cancel
+                Hủy
               </button>
               {message ? <p className="text-sm text-slate-600">{message}</p> : null}
             </div>

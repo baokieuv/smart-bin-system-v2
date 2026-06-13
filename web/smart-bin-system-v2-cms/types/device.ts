@@ -17,6 +17,7 @@ export interface DeviceDto {
   binVersion?: string;
   targetBinVersion?: string;
   targetDesktopVersion?: string;
+  userConfigs?: Record<string, unknown>;
 }
 
 export interface DeviceAdminConfigDto {
@@ -31,3 +32,47 @@ export interface DeviceOperationResult {
   status: boolean;
   message: string;
 }
+
+export interface TelemetryParams {
+  keys?: string;
+  startTs?: number;
+  endTs?: number;
+  limit?: number;
+  agg?: string;
+  interval?: number;
+  [key: string]: unknown;
+}
+
+export type RpcRequestPayload = {
+  method: string;
+  params?: unknown;
+};
+
+export type DeviceImportRequestItem = {
+  mac: string;
+  claimCode: string;
+};
+
+export type ImportDeviceResponseItem = {
+  mac: string;
+  status: string;
+  message: string;
+};
+
+export type AddDeviceRequest = {
+  mac: string;
+  longitude: number;
+  latitude: number;
+  name: string;
+  claimCode: string;
+};
+
+export type UpdateDeviceRequest = {
+  name?: string;
+  latitude?: number;
+  longitude?: number;
+  pollingInterval?: number;
+  fullThreshold?: number;
+  scope?: string;
+  additionalAttributes?: Record<string, unknown>;
+};

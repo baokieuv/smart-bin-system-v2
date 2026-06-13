@@ -19,3 +19,15 @@ export interface NotificationDto {
   isRead: boolean;
   createdDate: string;
 }
+
+export interface MarkNotificationsRequest {
+  ids: number[];
+  isRead: boolean;
+}
+
+
+export type UnreadCountPayload = number | { 
+  unreadCount?: number; 
+  count?: number; 
+  total?: number 
+};

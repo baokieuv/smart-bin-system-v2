@@ -29,9 +29,9 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>com.github.baokieuv</groupId>
-			<artifactId>smart-bin-system-v2</artifactId>
-			<version>1.0.1</version>
+			<groupId>com.smart-bin</groupId>
+			<artifactId>core</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 
 		<dependency>

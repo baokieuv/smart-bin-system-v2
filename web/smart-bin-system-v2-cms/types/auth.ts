@@ -34,3 +34,17 @@ export interface ChangePasswordRequest {
   newPassword: string;
   confirmPassword: string;
 }
+
+export interface LoginGoogleRequest {
+  token: string;
+}
+
+export interface ConfirmResetPassword {
+    token: string;
+    newPassword: string;
+}
+
+export interface ResendVerificationRequest {
+    email: string;
+    captcha: string;
+}

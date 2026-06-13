@@ -18,14 +18,14 @@ function JsonModal({ value, onClose, onSave }: { value: string; onClose: () => v
       JSON.parse(text || "{}");
       onSave(text);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid JSON");
+      setError(e instanceof Error ? e.message : "Oops! The JSON format looks invalid.");
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-[min(900px,95%)] rounded-xl bg-white p-6 shadow-lg">
-        <h3 className="mb-3 text-lg font-semibold">Edit metadata JSON</h3>
+        <h3 className="mb-3 text-lg font-semibold">Edit JSON Configuration</h3>
         <textarea
           className="h-60 w-full rounded-lg border border-slate-200 p-3 font-mono text-sm"
           value={text}
@@ -40,7 +40,7 @@ function JsonModal({ value, onClose, onSave }: { value: string; onClose: () => v
             className="rounded-xl bg-blue-600 px-4 py-2 text-white"
             onClick={save}
           >
-            Save JSON
+            Save Configuration
           </button>
         </div>
       </div>
@@ -69,7 +69,7 @@ export default function FirmwareMappingsPage() {
       const fwRes = await firmwaresAdminApi.getFirmwares({ page: 1, size: 200 });
       setFirmwares(unwrapListPayload(fwRes.data));
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Load failed");
+      setMessage(err instanceof Error ? err.message : "We couldn't load the firmware data at the moment.");
     }
   };
 
@@ -92,21 +92,21 @@ export default function FirmwareMappingsPage() {
         };
 
         await firmwareMappingsAdminApi.updateMapping(editing.id, request);
-        setMessage("Mapping updated");
+        setMessage("InnoEco routing rule updated successfully!");
       } else {
         await firmwareMappingsAdminApi.createMapping({
           metadataCriteria: metadata,
           targetFirmwareId: form.targetFirmwareId,
           priority: Number(form.priority || 0),
         });
-        setMessage("Mapping created");
+        setMessage("New InnoEco routing rule created successfully!");
       }
       setForm({ metadataJson: "{}", targetFirmwareId: "", priority: "0" });
       setEditing(null);
       setShowEditorModal(false);
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Save failed");
+      setMessage(err instanceof Error ? err.message : "We couldn't save your routing rule right now.");
     } finally {
       setSaveLoading(false);
     }
@@ -133,14 +133,14 @@ export default function FirmwareMappingsPage() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Delete this mapping?")) return;
+    if (!confirm("Are you sure you want to remove this update rule?")) return;
     try {
       setDeleteLoadingId(id);
       await firmwareMappingsAdminApi.deleteMapping(id);
-      setMessage("Mapping deleted");
+      setMessage("Routing rule removed successfully!");
       await load();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Delete failed");
+      setMessage(err instanceof Error ? err.message : "We couldn't remove this rule right now.");
     } finally {
       setDeleteLoadingId(null);
     }
@@ -149,27 +149,27 @@ export default function FirmwareMappingsPage() {
   return (
     <div className="space-y-4">
       <Panel
-        title="Firmware Mappings"
-        subtitle="Map device metadata to target firmware"
+        title="InnoEco Firmware Routing"
+        subtitle="Seamlessly route the correct firmware updates to your deployed InnoEco devices"
         action={
           <button type="button" className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-3 py-2 text-xs font-semibold text-white" onClick={openCreate}>
-            Create mapping
+            Create Routing Rule
           </button>
         }
       >
-        <p className="text-sm text-slate-600">Create or update mappings from the popup editor to keep metadata JSON readable.</p>
+        <p className="text-sm text-slate-600">Use the popup editor to easily set up or modify your firmware routing configurations in a clean JSON format.</p>
       </Panel>
 
-      <Panel title="Mappings List">
+      <Panel title="Active Routing Rules">
         <div className="overflow-x-auto">
           <table className="w-full min-w-240 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">Criteria</th>
-                <th className="py-2">Target</th>
+                <th className="py-2">Matching Criteria</th>
+                <th className="py-2">Target Firmware</th>
                 <th className="py-2">Priority</th>
                 <th className="py-2">Active</th>
-                <th className="py-2">Action</th>
+                <th className="py-2">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -198,19 +198,19 @@ export default function FirmwareMappingsPage() {
 
       {showEditorModal ? (
         <Modal
-          title={editing ? "Update Firmware Mapping" : "Create Firmware Mapping"}
-          subtitle="Edit metadata criteria, target firmware, and priority"
+          title={editing ? "Update Routing Rule" : "Create Routing Rule"}
+          subtitle="Adjust the matching criteria, target firmware, and priority level"
           onClose={closeEditorModal}
         >
           <form className="grid gap-4 md:grid-cols-[1fr_200px_120px]" onSubmit={createOrUpdate}>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Metadata criteria (JSON)</label>
+              <label className="block text-sm font-medium text-slate-700">Device Matching Criteria (JSON)</label>
               <div className="mt-2 flex gap-2">
                 <input
                   className="w-full rounded-xl border border-slate-300 px-4 py-2.5"
                   value={form.metadataJson}
                   onChange={(e) => setForm((c) => ({ ...c, metadataJson: e.target.value }))}
-                  placeholder='{"model":"X100","hardware":"v2"}'
+                  placeholder='{"model":"INNOECO_X100","hardware":"v2"}'
                 />
                 <button type="button" className="rounded-xl bg-slate-100 px-3" onClick={() => setShowJsonModal(true)}>
                   Edit
@@ -219,13 +219,13 @@ export default function FirmwareMappingsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">Target firmware</label>
+              <label className="block text-sm font-medium text-slate-700">Target Firmware</label>
               <select
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5"
                 value={form.targetFirmwareId}
                 onChange={(e) => setForm((c) => ({ ...c, targetFirmwareId: e.target.value }))}
               >
-                <option value="">-- select firmware --</option>
+                <option value="">-- Select an update --</option>
                 {firmwares.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.version} ({f.type})
@@ -235,13 +235,13 @@ export default function FirmwareMappingsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">Priority</label>
+              <label className="block text-sm font-medium text-slate-700">Priority Level</label>
               <input className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5" value={form.priority} onChange={(e) => setForm((c) => ({ ...c, priority: e.target.value }))} />
             </div>
 
             <div className="md:col-span-3 flex items-center gap-2 border-t border-slate-200 pt-4">
               <button type="submit" disabled={saveLoading} className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-                {saveLoading ? "Saving..." : editing ? "Update mapping" : "Create mapping"}
+                {saveLoading ? "Saving..." : editing ? "Update Rule" : "Create Rule"}
               </button>
               <button type="button" className="rounded-xl px-4 py-2.5" onClick={closeEditorModal}>
                 Cancel

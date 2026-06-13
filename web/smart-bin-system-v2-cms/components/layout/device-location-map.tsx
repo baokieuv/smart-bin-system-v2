@@ -17,6 +17,7 @@ const DEFAULT_CENTER = {
 const DEFAULT_ZOOM = 11.5;
 const MAX_FIT_BOUNDS_ZOOM = 14;
 const FIT_BOUNDS_PADDING = 56;
+const MAP_STYLES = ['mapbox://styles/mapbox/outdoors-v12', 'mapbox://styles/mapbox/streets-v12'] as const;
 
 const formatDeviceStatus = (status: string) => {
   const normalized = String(status || '').trim().toUpperCase();
@@ -29,8 +30,10 @@ function DeviceLocationMap({ devices, className }: DeviceLocationMapProps) {
   const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
   const [mapErrorMessage, setMapErrorMessage] = useState<string | null>(null);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [showLoadingWarning, setShowLoadingWarning] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const isMapLoadedRef = useRef(false);
   const markersRef = useRef<globalThis.Map<string, mapboxgl.Marker>>(new globalThis.Map());
 
   const validDevices = useMemo(
@@ -48,12 +51,22 @@ function DeviceLocationMap({ devices, className }: DeviceLocationMapProps) {
   useEffect(() => {
     if (!accessToken || !containerRef.current || mapRef.current) return;
     const markers = markersRef.current;
+    let active = true;
+    let didFallbackStyle = false;
+
+    // Lưu trữ các ID để dọn dẹp khi unmount
+    let loadTimeout: ReturnType<typeof setTimeout>;
+    let resizeTimeout1: ReturnType<typeof setTimeout>;
+    let resizeTimeout2: ReturnType<typeof setTimeout>;
+    let resizeTimeout3: ReturnType<typeof setTimeout>;
+    let raf1: number;
+    let raf2: number;
 
     mapboxgl.accessToken = accessToken;
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/outdoors-v12',
+      style: MAP_STYLES[0],
       center: [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat],
       zoom: DEFAULT_ZOOM,
       attributionControl: false,
@@ -61,31 +74,74 @@ function DeviceLocationMap({ devices, className }: DeviceLocationMapProps) {
 
     map.on('error', (event) => {
       const message = event.error?.message || 'Cannot load Mapbox map right now.';
-      setMapErrorMessage(message);
+
+      if (!didFallbackStyle && message.toLowerCase().includes('style')) {
+        didFallbackStyle = true;
+        map.setStyle(MAP_STYLES[1]);
+        return;
+      }
+
+      if (active) setMapErrorMessage(message);
     });
 
     map.on('load', () => {
+      if (!active) return;
+      isMapLoadedRef.current = true;
       setIsMapLoaded(true);
+      setShowLoadingWarning(false);
+      
       map.resize();
+      
+      raf1 = requestAnimationFrame(() => {
+        if (active) map.resize();
+      });
+      
+      resizeTimeout1 = setTimeout(() => {
+        if (active) map.resize();
+      }, 180);
     });
 
     const handleResize = () => {
-      map.resize();
+      if (active) map.resize();
     };
 
     window.addEventListener('resize', handleResize);
 
-    requestAnimationFrame(() => {
-      map.resize();
+    raf2 = requestAnimationFrame(() => {
+      if (active) map.resize();
     });
+
+    resizeTimeout2 = setTimeout(() => {
+      if (active) map.resize();
+    }, 80);
+
+    resizeTimeout3 = setTimeout(() => {
+      if (active) map.resize();
+    }, 260);
+
+    loadTimeout = setTimeout(() => {
+      if (!active || isMapLoadedRef.current) return;
+      setShowLoadingWarning(true);
+    }, 8000);
 
     mapRef.current = map;
 
     return () => {
+      active = false;
+      
+      // Dọn dẹp toàn bộ timeouts và animation frames
+      clearTimeout(loadTimeout);
+      clearTimeout(resizeTimeout1);
+      clearTimeout(resizeTimeout2);
+      clearTimeout(resizeTimeout3);
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      
       window.removeEventListener('resize', handleResize);
       markers.forEach((marker) => marker.remove());
       markers.clear();
       map.remove();
+      isMapLoadedRef.current = false;
       mapRef.current = null;
     };
   }, [accessToken]);
@@ -203,6 +259,12 @@ function DeviceLocationMap({ devices, className }: DeviceLocationMapProps) {
     <div className={className ?? ''}>
       <div className="relative h-full min-h-110 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-[0_10px_30px_rgba(20,45,80,0.08)]">
         <div ref={containerRef} className="h-full w-full" />
+
+        {!isMapLoaded ? (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-slate-50/80 text-sm font-medium text-slate-600 backdrop-blur-[1px]">
+            {showLoadingWarning ? 'Still loading map tiles...' : 'Loading map...'}
+          </div>
+        ) : null}
 
         <div className="pointer-events-none absolute left-4 top-4 z-10 flex flex-wrap gap-2">
           <div className="rounded-full border border-slate-200 bg-white/92 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm backdrop-blur">

@@ -1,5 +1,6 @@
 package com.smart_bin.iam_service.entity;
 
+import com.smart_bin.core.common.DevicePermission;
 import com.smart_bin.core.common.UserRole;
 import com.smart_bin.core.entity.BaseEntity;
 import com.smart_bin.iam_service.common.TokenType;
@@ -8,6 +9,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 
@@ -50,4 +53,10 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserRole role = UserRole.USER;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_tenant_permissions", joinColumns = @JoinColumn(name = "user_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "permission")
+    private Set<DevicePermission> devicePermissions = new HashSet<>();
 }

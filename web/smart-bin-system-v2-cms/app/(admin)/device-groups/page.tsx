@@ -80,17 +80,17 @@ const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[]) => {
       !rule.clearOperator.trim() ||
       !rule.clearThreshold.trim()
     ) {
-      return { error: "Please complete every alarm rule row or remove the empty row" } as const;
+      return { error: "Please fill in all fields for each alert rule, or remove the empty row." } as const;
     }
 
     const threshold = Number(rule.threshold);
     if (!Number.isFinite(threshold)) {
-      return { error: `Invalid threshold for alarm ${rule.alarmType || "rule"}` } as const;
+      return { error: `Oops! The threshold for the ${rule.alarmType || "current"} alert is invalid.` } as const;
     }
 
     const clearThreshold = Number(rule.clearThreshold);
     if (!Number.isFinite(clearThreshold)) {
-      return { error: `Invalid clear threshold for alarm ${rule.alarmType || "rule"}` } as const;
+      return { error: `The clearing threshold for the ${rule.alarmType || "current"} alert seems to be invalid.` } as const;
     }
 
     normalized.push({
@@ -122,7 +122,7 @@ export default function DeviceGroupsPage() {
 
   useEffect(() => {
     void load().catch((error) => {
-      setMessage(error instanceof Error ? error.message : "Load failed");
+      setMessage(error instanceof Error ? error.message : "Failed to load device groups");
     });
   }, []);
 
@@ -135,7 +135,8 @@ export default function DeviceGroupsPage() {
     try {
       parsedSpecs = JSON.parse(form.sharedSpecsJson || "{}");
     } catch {
-      setMessage("Invalid JSON for shared specs");
+      setMessage("The shared specs JSON format isn't quite right. Please double-check it.");
+      setSaveLoading(false);
       return;
     }
 
@@ -144,6 +145,7 @@ export default function DeviceGroupsPage() {
 
       if ("error" in normalizedAlarmRules) {
         setMessage(normalizedAlarmRules.error);
+        setSaveLoading(false);
         return;
       }
 
@@ -155,7 +157,7 @@ export default function DeviceGroupsPage() {
           description: form.description.trim() || undefined,
           alarmRules: normalizedAlarmRules,
         });
-        setMessage("Device group updated");
+        setMessage("InnoEco group updated successfully!");
       } else {
         await deviceGroupsAdminApi.createDeviceGroup({
           code: form.code.trim(),
@@ -164,14 +166,14 @@ export default function DeviceGroupsPage() {
           description: form.description.trim() || undefined,
           alarmRules: normalizedAlarmRules,
         });
-        setMessage("Device group created");
+        setMessage("New InnoEco group created successfully!");
       }
 
       setForm(createBlankForm());
       setEditingId(null);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Save failed");
+      setMessage(error instanceof Error ? error.message : "We couldn't save the device group right now.");
     } finally {
       setSaveLoading(false);
     }
@@ -181,10 +183,10 @@ export default function DeviceGroupsPage() {
     try {
       setDeleteLoadingId(id);
       await deviceGroupsAdminApi.deleteDeviceGroup(id);
-      setMessage("Device group deleted");
+      setMessage("InnoEco group removed successfully!");
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Delete failed");
+      setMessage(error instanceof Error ? error.message : "We couldn't remove the device group.");
     } finally {
       setDeleteLoadingId(null);
     }
@@ -210,8 +212,8 @@ export default function DeviceGroupsPage() {
             operator: rule.operator,
             threshold: String(rule.threshold),
             severity: rule.severity,
-                clearOperator: rule.clearOperator,
-                clearThreshold: String(rule.clearThreshold),
+            clearOperator: rule.clearOperator,
+            clearThreshold: String(rule.clearThreshold),
           }))
         : [],
     });
@@ -255,7 +257,7 @@ export default function DeviceGroupsPage() {
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
-      <Panel title="Device Groups" subtitle="Admin-managed groups for assigning one or many devices">
+      <Panel title="InnoEco Device Groups" subtitle="Organize your fleet by assigning devices to dedicated groups">
         <div className="overflow-x-auto">
           <table className="w-full min-w-220 text-left text-sm">
             <thead>
@@ -264,8 +266,8 @@ export default function DeviceGroupsPage() {
                 <th className="py-2 px-3">Name</th>
                 <th className="py-2 px-3">Shared Specs</th>
                 <th className="py-2 px-3">Description</th>
-                <th className="py-2 px-3">Alarm Rules</th>
-                <th className="py-2 px-3">Action</th>
+                <th className="py-2 px-3">Alert Rules</th>
+                <th className="py-2 px-3">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -312,17 +314,17 @@ export default function DeviceGroupsPage() {
         </div>
       </Panel>
 
-        <Panel title="Device Group Editor" subtitle="Open the popup editor to create or update a group, including alarm rules">
+        <Panel title="Group Actions" subtitle="Launch the editor to create or update an InnoEco group and its alert behaviors">
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white"
               onClick={openCreateModal}
             >
-              Create device group
+              Create Device Group
             </button>
             <p className="text-sm text-slate-600">
-              Use the popup editor for all create and update actions so alarm config stays readable.
+              Use the popup editor for all create and update actions to keep your configurations neatly organized.
             </p>
           </div>
         </Panel>
@@ -333,9 +335,9 @@ export default function DeviceGroupsPage() {
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">
-                  {editingId ? "Update device group" : "Create device group"}
+                  {editingId ? "Update InnoEco Group" : "Create InnoEco Group"}
                 </h3>
-                <p className="text-sm text-slate-500">Edit code, shared specs, and alarm rules in one popup.</p>
+                <p className="text-sm text-slate-500">Easily adjust the group code, shared specs, and alert rules all in one place.</p>
               </div>
               <button
                 type="button"
@@ -350,14 +352,14 @@ export default function DeviceGroupsPage() {
               <div className="grid gap-4 lg:grid-cols-2">
                 <input
                   className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Code (e.g. SMART_BIN_60L_V1)"
+                  placeholder="Code (e.g. INNOECO_BIN_60L_V1)"
                   value={form.code}
                   onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))}
                   required
                 />
                 <input
                   className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Name"
+                  placeholder="Friendly Name"
                   value={form.name}
                   onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
                   required
@@ -366,7 +368,7 @@ export default function DeviceGroupsPage() {
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Shared specs (JSON)</label>
+                  <label className="block text-sm font-medium text-slate-700">Shared Specs (JSON)</label>
                   <textarea
                     className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm"
                     placeholder='{"width":20, "height":30, "color":"blue"}'
@@ -380,7 +382,7 @@ export default function DeviceGroupsPage() {
                   <label className="block text-sm font-medium text-slate-700">Description</label>
                   <textarea
                     className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2"
-                    placeholder="Description"
+                    placeholder="Tell us a bit about this group..."
                     value={form.description}
                     onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                   />
@@ -390,9 +392,9 @@ export default function DeviceGroupsPage() {
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">Alarm config</p>
+                    <p className="text-sm font-semibold text-slate-800">Alert Configuration</p>
                     <p className="text-xs text-slate-500">
-                      Leave this section empty to clear alarm rules. Saved payload will send <span className="font-medium">alarmRules: []</span>.
+                      Leave this blank if you don't need alerts. Saving without rules will clear existing ones.
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -401,14 +403,14 @@ export default function DeviceGroupsPage() {
                       className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700"
                       onClick={addAlarmRule}
                     >
-                      Add rule
+                      Add Rule
                     </button>
                     <button
                       type="button"
                       className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
                       onClick={clearAlarmRules}
                     >
-                      Clear all
+                      Clear All
                     </button>
                   </div>
                 </div>
@@ -430,7 +432,7 @@ export default function DeviceGroupsPage() {
 
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">alarmType</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">Alarm Type</span>
                             <input
                               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                               value={rule.alarmType}
@@ -440,7 +442,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">operator</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">Operator</span>
                             <select
                               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                               value={rule.operator}
@@ -455,7 +457,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">threshold</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">Threshold</span>
                             <input
                               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                               value={rule.threshold}
@@ -466,7 +468,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">severity</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">Severity</span>
                             <select
                               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                               value={rule.severity}
@@ -481,7 +483,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">clearOperator</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">Clear Operator</span>
                             <select
                               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
                               value={rule.clearOperator}
@@ -496,7 +498,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">clearThreshold</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">Clear Threshold</span>
                             <input
                               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                               value={rule.clearThreshold}
@@ -510,7 +512,7 @@ export default function DeviceGroupsPage() {
                     ))
                   ) : (
                     <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
-                      No alarm rules yet. Add one if this device group should raise ThingsBoard alarms.
+                      No alert rules yet! Feel free to add some if this InnoEco group needs monitoring.
                     </div>
                   )}
                 </div>
@@ -518,7 +520,7 @@ export default function DeviceGroupsPage() {
 
               <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
                 <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" type="submit" disabled={saveLoading}>
-                  {saveLoading ? "Saving..." : editingId ? "Update device group" : "Create device group"}
+                  {saveLoading ? "Saving..." : editingId ? "Update Group" : "Create Group"}
                 </button>
                 <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeEditorModal}>
                   Cancel

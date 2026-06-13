@@ -48,7 +48,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
       const items: DeviceImportItem[] = [];
 
       if (rows.length === 0) {
-        setError("Tệp không chứa dữ liệu");
+        setError("Oops! This file looks empty.");
         setPreview([]);
         return;
       }
@@ -76,7 +76,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
       }
 
       if (items.length === 0) {
-        setError("Không đọc được dữ liệu hợp lệ. File cần 2 cột: MAC và Claim Code");
+        setError("We couldn't find any valid data. Please ensure your file has two columns: MAC and Claim Code.");
         setPreview([]);
         return;
       }
@@ -114,10 +114,10 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
         const previewMacs = failedMacs.slice(0, 10).join(", ");
         const suffix = failedMacs.length > 10 ? `, ... (+${failedMacs.length - 10})` : "";
         const detail = previewMacs ? `: ${previewMacs}${suffix}` : "";
-        emitToast(`Import xong nhưng có ${failed.length} MAC thất bại${detail}`, "error");
-        setError(`Có ${failed.length} MAC import thất bại`);
+        emitToast(`Import finished, but ${failed.length} devices failed to import${detail}.`, "error");
+        setError(`${failed.length} devices failed to import.`);
       } else {
-        emitToast(`Import thành công ${preview.length} thiết bị`, "success");
+        emitToast(`Successfully imported ${preview.length} InnoEco devices!`, "success");
         setError(null);
       }
 
@@ -135,7 +135,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
 
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-slate-700">Import devices (CSV / XLSX)</label>
+      <label className="block text-sm font-medium text-slate-700">Import InnoEco Devices (CSV / XLSX)</label>
       <div className="flex items-center gap-2">
         <input
           type="file"
@@ -143,18 +143,18 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
           onChange={(e) => handleFile(e.target.files)}
           className="text-sm"
         />
-        <span className="text-sm text-slate-500">{fileName ?? "No file chosen"}</span>
+        <span className="text-sm text-slate-500">{fileName ?? "No file selected yet"}</span>
       </div>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
       {preview.length > 0 ? (
         <div className="rounded-md border border-slate-200 p-2">
-          <div className="text-sm text-slate-600">Preview ({preview.length} items). First 200 shown.</div>
+          <div className="text-sm text-slate-600">Preview ({preview.length} devices). Showing the first 200.</div>
           <div className="mt-2 overflow-x-auto max-h-56">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-slate-600">
-                  <th className="py-1">MAC</th>
+                  <th className="py-1">MAC Address</th>
                   <th className="py-1">Claim Code</th>
                 </tr>
               </thead>
@@ -175,7 +175,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
               onClick={doImport}
               disabled={loading}
             >
-              {loading ? "Importing..." : "Import devices"}
+              {loading ? "Importing..." : "Import Devices"}
             </button>
             <button
               type="button"

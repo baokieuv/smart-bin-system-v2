@@ -25,7 +25,7 @@ export default function NotificationsPage() {
     try {
       setMarkingId(id);
       await notificationsAdminApi.markAsRead(id);
-      setMessage(`Notification ${id} marked as read`);
+      setMessage(`InnoEco alert marked as read!`);
       await load();
     } finally {
       setMarkingId(null);
@@ -36,7 +36,7 @@ export default function NotificationsPage() {
     try {
       setMarkAllLoading(true);
       await notificationsAdminApi.readAll();
-      setMessage("All notifications marked as read");
+      setMessage("All InnoEco alerts have been marked as read!");
       await load();
     } finally {
       setMarkAllLoading(false);
@@ -45,8 +45,8 @@ export default function NotificationsPage() {
 
   return (
     <Panel
-      title="Notifications"
-      subtitle="Admin alert center from notification feed"
+      title="InnoEco System Alerts"
+      subtitle="Stay updated and easily manage all your important system notifications in one place."
       action={
         <button
           type="button"
@@ -75,7 +75,7 @@ export default function NotificationsPage() {
                   disabled={markingId === item.id}
                   className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700"
                 >
-                  {markingId === item.id ? "Marking..." : "Mark read"}
+                  {markingId === item.id ? "Marking..." : "Mark as read"}
                 </button>
               ) : (
                 <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Read</span>
@@ -88,4 +88,3 @@ export default function NotificationsPage() {
     </Panel>
   );
 }
-

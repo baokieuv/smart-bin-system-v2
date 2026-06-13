@@ -43,7 +43,7 @@ export default function FirmwaresPage() {
 
   useEffect(() => {
     void load(page, size).catch((error) => {
-      setMessage(error instanceof Error ? error.message : "Load failed");
+      setMessage(error instanceof Error ? error.message : "Oops! We couldn't load your firmware packages.");
     });
   }, [load, page, size]);
 
@@ -52,12 +52,12 @@ export default function FirmwaresPage() {
     setMessage("");
 
     if (!file) {
-      setMessage("Please select a firmware file");
+      setMessage("Please select a firmware file to upload.");
       return;
     }
 
     if (!isValidFirmwareFile(file)) {
-      setMessage(`Invalid file type. Allowed: ${acceptedFilesText}`);
+      setMessage(`Invalid file type. Please use one of the following: ${acceptedFilesText}`);
       return;
     }
 
@@ -75,10 +75,10 @@ export default function FirmwaresPage() {
       console.log(`[FirmwareUpload] Upload successful`);
       setForm({ version: "", type: "ESP32", description: "" });
       setFile(null);
-      setMessage("Firmware uploaded");
+      setMessage("InnoEco update package uploaded successfully!");
       await load(page, size);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Upload failed";
+      const errorMsg = error instanceof Error ? error.message : "We couldn't upload the update package right now.";
       console.error(`[FirmwareUpload] Upload failed:`, error);
       setMessage(errorMsg);
     } finally {
@@ -104,10 +104,10 @@ export default function FirmwaresPage() {
     try {
       setDeleteLoadingId(id);
       await firmwaresAdminApi.deleteFirmware(id);
-      setMessage("Firmware deleted");
+      setMessage("Update package removed successfully!");
       await load(page, size);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Delete failed");
+      setMessage(error instanceof Error ? error.message : "We couldn't remove the package.");
     } finally {
       setDeleteLoadingId(null);
     }
@@ -116,11 +116,11 @@ export default function FirmwaresPage() {
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
       <Panel
-        title="Firmwares"
-        subtitle="Manage uploaded firmware packages (.bin and .exe)"
+        title="InnoEco Firmware Packages"
+        subtitle="Manage and distribute your uploaded system updates (.bin and .exe)"
         action={
           <button type="button" onClick={openUploadModal} className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white">
-            Upload firmware
+            Upload Update
           </button>
         }
       >
@@ -129,11 +129,11 @@ export default function FirmwaresPage() {
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
                 <th className="py-2 px-3 whitespace-nowrap">Version</th>
-                <th className="py-2 px-3 whitespace-nowrap">Type</th>
-                <th className="py-2 px-3 whitespace-nowrap">File URL</th>
+                <th className="py-2 px-3 whitespace-nowrap">Target Platform</th>
+                <th className="py-2 px-3 whitespace-nowrap">File Link</th>
                 <th className="py-2 px-3 whitespace-nowrap">Description</th>
-                <th className="py-2 px-3 whitespace-nowrap">Created Date</th>
-                <th className="py-2 px-3 whitespace-nowrap">Action</th>
+                <th className="py-2 px-3 whitespace-nowrap">Date Added</th>
+                <th className="py-2 px-3 whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -161,7 +161,7 @@ export default function FirmwaresPage() {
                       disabled={deleteLoadingId === item.id}
                       className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
                     >
-                      {deleteLoadingId === item.id ? "Deleting..." : "Delete"}
+                      {deleteLoadingId === item.id ? "Removing..." : "Remove"}
                     </button>
                   </td>
                 </tr>
@@ -171,7 +171,7 @@ export default function FirmwaresPage() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-          <div className="text-slate-600">Page {page} / {totalPages}</div>
+          <div className="text-slate-600">Page {page} of {totalPages}</div>
           <div className="flex items-center gap-2">
             <select
               className="rounded-lg border border-slate-200 px-2 py-1"
@@ -181,10 +181,10 @@ export default function FirmwaresPage() {
                 setSize(Number(e.target.value));
               }}
             >
-              <option value={10}>10 / page</option>
-              <option value={20}>20 / page</option>
-              <option value={50}>50 / page</option>
-              <option value={100}>100 / page</option>
+              <option value={10}>10 per page</option>
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+              <option value={100}>100 per page</option>
             </select>
             <button
               className="rounded-lg border border-slate-200 px-3 py-1 disabled:opacity-50"
@@ -192,7 +192,7 @@ export default function FirmwaresPage() {
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               type="button"
             >
-              Prev
+              Previous
             </button>
             <button
               className="rounded-lg border border-slate-200 px-3 py-1 disabled:opacity-50"
@@ -207,11 +207,11 @@ export default function FirmwaresPage() {
       </Panel>
 
       {showUploadModal ? (
-        <Modal title="Upload Firmware" subtitle="Upload a new firmware package" onClose={closeUploadModal}>
+        <Modal title="Upload InnoEco Update" subtitle="Add a new firmware package to your system repository" onClose={closeUploadModal}>
           <form onSubmit={onUpload} className="space-y-4">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Version (e.g. 1.0.3)"
+              placeholder="Version Number (e.g., 1.0.3)"
               value={form.version}
               onChange={(event) => setForm((v) => ({ ...v, version: event.target.value }))}
               required
@@ -223,13 +223,13 @@ export default function FirmwaresPage() {
               onChange={(event) => setForm((v) => ({ ...v, type: event.target.value }))}
               required
             >
-              <option value="ESP32">ESP32 (Bin)</option>
-              <option value="RASPBERRY_PI">RASPBERRY_PI (Desktop)</option>
+              <option value="ESP32">ESP32 (InnoEco Edge Node)</option>
+              <option value="RASPBERRY_PI">Raspberry Pi (InnoEco Master Hub)</option>
             </select>
 
             <textarea
               className="h-32 w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Description (optional)"
+              placeholder="Release notes or description (optional)"
               value={form.description}
               onChange={(event) => setForm((v) => ({ ...v, description: event.target.value }))}
             />
@@ -249,10 +249,10 @@ export default function FirmwaresPage() {
                 required
                 className="w-full text-sm"
               />
-              <p className="text-xs text-slate-500">Allowed file types: {acceptedFilesText}</p>
+              <p className="text-xs text-slate-500">Allowed formats: {acceptedFilesText}</p>
               {file && (
                 <p className="text-xs text-slate-600">
-                  Selected: {file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)
+                  Selected file: {file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)
                 </p>
               )}
             </div>
@@ -263,7 +263,7 @@ export default function FirmwaresPage() {
                 type="submit"
                 disabled={uploading}
               >
-                {uploading ? "Uploading..." : "Upload firmware"}
+                {uploading ? "Uploading..." : "Upload Update"}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeUploadModal}>
                 Cancel

@@ -42,10 +42,10 @@ export default function ProductsPage() {
         isPublished: true,
       });
       setForm({ name: "", price: "", categoryId: "", description: "" });
-      setMessage("Product created");
+      setMessage("Đã tạo sản phẩm");
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Create product failed");
+      setMessage(error instanceof Error ? error.message : "Không tạo được sản phẩm");
     } finally {
       setCreateLoading(false);
     }
@@ -66,10 +66,10 @@ export default function ProductsPage() {
     try {
       setDeleteLoadingId(id);
       await shopAdminApi.deleteProduct(id);
-      setMessage("Product deleted");
+      setMessage("Đã xóa sản phẩm");
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Delete failed");
+      setMessage(error instanceof Error ? error.message : "Không xóa được sản phẩm");
     } finally {
       setDeleteLoadingId(null);
     }
@@ -79,10 +79,10 @@ export default function ProductsPage() {
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
       <Panel
         title="Products"
-        subtitle="Maps directly to /shop listing and product detail pages"
+        subtitle="Hiển thị trên trang mua hàng và trang chi tiết sản phẩm"
         action={
           <button type="button" onClick={openCreateModal} className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white">
-            Create product
+            Tạo sản phẩm
           </button>
         }
       >
@@ -122,28 +122,28 @@ export default function ProductsPage() {
       </Panel>
 
       <div className="space-y-4">
-        <Panel title="Import Products">
+        <Panel title="Nhập sản phẩm">
           <ImportProductsPanel onImported={load} />
         </Panel>
 
-        <Panel title="Import Inventory">
+        <Panel title="Nhập tồn kho">
           <ImportInventoryPanel onImported={load} />
         </Panel>
       </div>
 
       {showCreateModal ? (
-        <Modal title="Create Product" subtitle="Add a new shop product" onClose={closeCreateModal}>
+        <Modal title="Tạo sản phẩm" subtitle="Thêm một sản phẩm mới" onClose={closeCreateModal}>
           <form onSubmit={createProduct} className="space-y-4">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Product name"
+              placeholder="Tên sản phẩm"
               value={form.name}
               onChange={(event) => setForm((v) => ({ ...v, name: event.target.value }))}
               required
             />
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Category ID"
+              placeholder="Mã danh mục"
               value={form.categoryId}
               onChange={(event) => setForm((v) => ({ ...v, categoryId: event.target.value }))}
             />
@@ -164,10 +164,10 @@ export default function ProductsPage() {
             />
             <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
               <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
-                {createLoading ? "Creating..." : "Create product"}
+                {createLoading ? "Đang tạo..." : "Tạo sản phẩm"}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeCreateModal}>
-                Cancel
+                Hủy
               </button>
               {message ? <p className="text-sm text-slate-600">{message}</p> : null}
             </div>

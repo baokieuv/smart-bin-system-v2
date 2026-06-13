@@ -24,7 +24,7 @@ export default function ImportProductsPanel({ onImported }: { onImported?: () =>
 
       const items: ProductImportItem[] = [];
       if (rows.length === 0) {
-        setError("Tệp không chứa dữ liệu");
+        setError("Tệp không có dữ liệu");
         setPreview([]);
         return;
       }
@@ -75,7 +75,7 @@ export default function ImportProductsPanel({ onImported }: { onImported?: () =>
   };
 
   const doImport = async () => {
-    if (preview.length === 0) return setError("No products to import");
+    if (preview.length === 0) return setError("Không có sản phẩm để nhập");
     setLoading(true);
     try {
     await shopAdminApi.importProducts({ products: preview.map((p) => ({ sku: p.sku || "", name: p.name, price: p.price ?? "0", categoryId: p.categoryId, description: p.description, imageUrl: p.imageUrl })) });
@@ -91,7 +91,7 @@ export default function ImportProductsPanel({ onImported }: { onImported?: () =>
 
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-slate-700">Import products (CSV / XLSX)</label>
+      <label className="block text-sm font-medium text-slate-700">Nhập sản phẩm (CSV / XLSX)</label>
       <div className="flex items-center gap-2">
         <input
           type="file"
@@ -99,18 +99,18 @@ export default function ImportProductsPanel({ onImported }: { onImported?: () =>
           onChange={(e) => handleFile(e.target.files)}
           className="text-sm"
         />
-        <span className="text-sm text-slate-500">{fileName ?? "No file chosen"}</span>
+        <span className="text-sm text-slate-500">{fileName ?? "Chưa chọn tệp"}</span>
       </div>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
       {preview.length > 0 ? (
         <div className="rounded-md border border-slate-200 p-2">
-          <div className="text-sm text-slate-600">Preview ({preview.length} items). First 200 shown.</div>
+          <div className="text-sm text-slate-600">Xem trước ({preview.length} dòng). Hiển thị 200 dòng đầu.</div>
           <div className="mt-2 overflow-x-auto max-h-56">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-slate-600">
-                  <th className="py-1">SKU</th>
+                  <th className="py-1">Mã hàng</th>
                   <th className="py-1">Name</th>
                   <th className="py-1">Price</th>
                   {/* <th className="py-1">Stock</th> */}
@@ -137,7 +137,7 @@ export default function ImportProductsPanel({ onImported }: { onImported?: () =>
               onClick={doImport}
               disabled={loading}
             >
-              {loading ? "Importing..." : "Import products"}
+              {loading ? "Đang nhập..." : "Nhập sản phẩm"}
             </button>
             <button
               type="button"
@@ -148,7 +148,7 @@ export default function ImportProductsPanel({ onImported }: { onImported?: () =>
                 setError(null);
               }}
             >
-              Cancel
+              Hủy
             </button>
           </div>
         </div>

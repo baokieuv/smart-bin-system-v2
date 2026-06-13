@@ -34,6 +34,7 @@ import org.springframework.util.StringUtils;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import com.smart_bin.core.common.DevicePermission;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -55,7 +56,6 @@ public class DeviceService {
     private final IamServiceClient iamServiceClient;
     private final KafkaService kafkaService;
     private final DeviceSecurityService securityService;
-    private final DeviceProfileRepository profileRepository;
     private final DeviceGroupRepository groupRepository;
     private final DeviceGroupService deviceGroupService;
     private final FirmwareMappingRepository mappingRepository;
@@ -110,6 +110,10 @@ public class DeviceService {
                 results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));
             }
 
+            if (item.latitude() != null) targetDevice.setLatitude(item.latitude());
+            if (item.longitude() != null) targetDevice.setLongitude(item.longitude());
+            if (item.description() != null) targetDevice.setDescription(item.description());
+
             targetDevice.setTenantId(tenantId);
             targetDevice.setDeviceGroup(defaultGroup);
 
@@ -132,7 +136,7 @@ public class DeviceService {
     }
 
     @Transactional
-    public String claimDevice(ClaimDeviceRequest request, String userId) {
+    public String claimDevice(ClaimDeviceRequest request, String userId, String tenantId) {
         String expectedCode = securityService.generateDeviceSecret(request.mac(), com.smart_bin.device_service.common.Constants.USER_CLAIM_KEY)
                 .substring(0, 6).toUpperCase();
 
@@ -142,24 +146,31 @@ public class DeviceService {
 
         Optional<Device> deviceOpt = repository.findByMac(request.mac());
 
-        return deviceOpt.map(device -> claimExistingDevice(device, request, userId))
-                .orElseGet(() -> createPendingDeviceForFutureProvision(request, userId));
+        return deviceOpt.map(device -> claimExistingDevice(device, request, userId, tenantId))
+                .orElseGet(() -> createPendingDeviceForFutureProvision(request, userId, tenantId));
     }
 
 //    @Cacheable(value = "device_list", key = "#keycloakId + ':' + #page + ':' + #size")
-    public PageResponseDto<DeviceDto> getListDevices(String keycloakId, int page, int size) {
+    public PageResponseDto<DeviceDto> getListDevices(String keycloakId, String tenantId, String permissions, int page, int size) {
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.VIEW_DEVICE.name());
+
         int pageIndex = (page > 0) ? page - 1 : 0;
         int pageSize = (size > 0) ? size : 10;
         Pageable pageable = PageRequest.of(pageIndex, pageSize);
 
-        Page<Device> devices = repository.findByUserIdAndActiveTrue(keycloakId, pageable);
+        Page<Device> devices;
 
+        if (Constants.DEFAULT_TENANT_ID.equals(tenantId)) {
+            devices = repository.findByUserIdAndActiveTrue(keycloakId, pageable);
+        } else {
+            devices = repository.findByTenantIdAndActiveTrue(tenantId, pageable);
+        }
         Page<DeviceDto> dtoPage = devices.map(mapper::toDto);
 
         return new PageResponseDto<>(dtoPage);
     }
 
-    public Page<DeviceDto> getAllDevicesForAdmin(int page, int size, String actorId, boolean isSuperAdmin) {
+    public Page<DeviceDto> getAllDevicesForAdmin(int page, int size, String actorId, String tenantId, boolean isSuperAdmin) {
         int pageIndex = (page > 0) ? page - 1 : 0;
         int pageSize = (size > 0) ? size : 10;
         Pageable pageable = PageRequest.of(pageIndex, pageSize);
@@ -171,15 +182,17 @@ public class DeviceService {
             devices = repository.findAllForAdminWithConfig(pageable);
         } else {
             // Nếu chỉ là ADMIN (Tenant) -> Chỉ lấy thiết bị do Tenant này sở hữu
-            devices = repository.findAllByTenantIdForAdminWithConfig(actorId, pageable);
+            devices = repository.findAllByTenantIdForAdminWithConfig(tenantId, pageable);
         }
 
         return devices.map(mapper::toDto);
     }
 
 //    @Cacheable(value = "device_detail", key = "#keycloakId + ':' + #deviceId")
-    public DeviceDto getDeviceDetail(String keycloakId, String deviceId){
-        Device device = getDeviceAndVerifyUserOwnership(deviceId, keycloakId);
+    public DeviceDto getDeviceDetail(String keycloakId, String tenantId, String deviceId, String permissions){
+        verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
+
+        Device device = getDeviceAndVerifyOwnership(deviceId, keycloakId, tenantId);
         return mapper.toDto(device);
     }
 
@@ -188,8 +201,10 @@ public class DeviceService {
             put = { @CachePut(value = "device_detail", key = "#keycloakId + ':' + #id") },
             evict = { @CacheEvict(value = "device_list", allEntries = true) }
     )
-    public DeviceDto updateDeviceByUser(String id, UpdateDeviceUserRequest request, String keycloakId) {
-        Device device = getDeviceAndVerifyUserOwnership(id, keycloakId);
+    public DeviceDto updateDeviceByUser(String id, UpdateDeviceUserRequest request, String keycloakId, String tenantId, String permissions) {
+        verifyPermission(permissions, DevicePermission.EDIT_DEVICE.name(), keycloakId, tenantId);
+
+        Device device = getDeviceAndVerifyOwnership(id, keycloakId, tenantId);
         Map<String, Object> tbAttributes = new HashMap<>();
         boolean isDbUpdated = false;
 
@@ -249,7 +264,7 @@ public class DeviceService {
 
     @Transactional
     public DeviceDto updateDeviceByTenant(String id, UpdateDeviceTenantRequest request, String tenantId) {
-        Device device = getDeviceAndVerifyTenantOwnership(id, tenantId);
+        Device device = getDeviceAndVerifyOwnership(id, tenantId, tenantId);
 
         if (request.groupId() != null) {
             if (request.groupId().trim().isEmpty()) {
@@ -361,15 +376,22 @@ public class DeviceService {
 
 
     @Transactional
-    public void deleteDevice(String id, String keycloakId){
-        Device device = getDeviceAndVerifyUserOwnership(id, keycloakId);
+    public void deleteDevice(String id, String keycloakId, String tenantId, String permissions) {
+        verifyPermission(permissions, DevicePermission.DELETE_DEVICE.name(), keycloakId, tenantId);
 
-        // Thiết bị của Tenant -> Trả về kho Tenant
-        device.setActive(device.getTenantId() != null); // Thiết bị tự do -> Tạm vô hiệu hóa
+        Device device = getDeviceAndVerifyOwnership(id, keycloakId, tenantId);
+
+        boolean isCustomTenant = !Constants.DEFAULT_TENANT_ID.equals(device.getTenantId());
+        device.setActive(isCustomTenant);
 
         device.setUserId(null);
         device.setState(DeviceState.PENDING);
         device.setClaimedAt(null);
+
+        if (!isCustomTenant) {
+            device.setDeviceGroup(null);
+        }
+
         repository.save(device);
 
         String redisKey = Constants.PENDING_DEVICE_PREFIX + keycloakId + ":" + device.getId();
@@ -407,14 +429,11 @@ public class DeviceService {
 
         securityService.verifySignatureWithDeviceKey(payload, signature, deviceSecret);
 
-        DeviceProfile profile = profileRepository.findByCodeAndActiveTrue(request.profileCode())
-                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_PROFILE_NOT_FOUND));
-
         boolean isNewDevice = existingDeviceOpt.isEmpty();
 
         Device device = isNewDevice
-                ? initializeNewDevice(request, profile)
-                : resetExistingDeviceForProvision(existingDeviceOpt.get(), request, profile);
+                ? initializeNewDevice(request)
+                : resetExistingDeviceForProvision(existingDeviceOpt.get(), request);
 
         device.setPublicKey(deviceSecret);
 
@@ -441,10 +460,11 @@ public class DeviceService {
         );
     }
 
-    public JsonNode getTelemetries(String id, String keycloakId, String keys, Long startTs, Long endTs) {
-        Device device = getDeviceAndVerifyUserOwnership(id, keycloakId);
+    public JsonNode getTelemetries(String id, String keycloakId, String tenantId, String permissions, String keys, Long startTs, Long endTs) {
+        verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
 
-        // Bảo mật: Nếu startTs cũ hơn lúc nhận máy, ép về mốc claimedAt
+        Device device = getDeviceAndVerifyOwnership(id, keycloakId, tenantId);
+
         if (device.getClaimedAt() != null) {
             if (startTs == null || startTs < device.getClaimedAt()) {
                 startTs = device.getClaimedAt();
@@ -480,37 +500,37 @@ public class DeviceService {
         return "Upload confirmed and saved.";
     }
 
-    private Device initializeNewDevice(DeviceProvisionRequest request, DeviceProfile profile) {
+    private Device initializeNewDevice(DeviceProvisionRequest request) {
         Device device = new Device();
         device.setMac(request.mac());
         device.setHwMetadata(request.hwMetadata());
         device.setState(DeviceState.ACTIVE);
         device.setStatus(DeviceStatus.OFFLINE);
-        device.setDeviceProfile(profile);
         return device;
     }
 
-    public JsonNode executeRpc(String deviceId, RpcRequest request, String actorId, UserRole role) {
+    public JsonNode executeRpc(String deviceId, RpcRequest request, String actorId, String tenantId, UserRole role, String permissions) {
+        verifyPermission(permissions, DevicePermission.CONTROL_DEVICE.name(), actorId, tenantId);
+
         RpcMethod rpcMethod = RpcMethod.fromMethodName(request.method());
         if (!rpcMethod.isAllowed(role)) {
             throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không có quyền thực thi lệnh hệ thống này!");
         }
 
-        Device device = getDeviceAndVerifyUserOwnership(deviceId, actorId);
+        Device device = getDeviceAndVerifyOwnership(deviceId, actorId, tenantId);
 
 //        boolean isTwoWay = method.equals("openLid") || method.equals("calibrateSensor");
 
         return thingsBoardService.sendRpcCommand(device.getDeviceId(), rpcMethod.getMethodName(), request.params(), false);
     }
 
-    private Device resetExistingDeviceForProvision(Device device, DeviceProvisionRequest request, DeviceProfile profile) {
+    private Device resetExistingDeviceForProvision(Device device, DeviceProvisionRequest request) {
         if (device.getPublicKey() != null && device.getState() == DeviceState.ACTIVE) {
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED, "Thiết bị này đã được kích hoạt trước đó.");
         }
         device.setHwMetadata(request.hwMetadata());
         device.setState(DeviceState.ACTIVE);
         device.setStatus(DeviceStatus.OFFLINE);
-        device.setDeviceProfile(profile);
         return device;
     }
 
@@ -598,29 +618,21 @@ public class DeviceService {
         }
     }
 
-    private Device getDeviceAndVerifyUserOwnership(String deviceIdStr, String actorId) {
+    private Device getDeviceAndVerifyOwnership(String deviceIdStr, String actorId, String tenantId) {
         UUID deviceId = parseUUID(deviceIdStr);
         Device device = repository.findByIdAndActiveTrue(deviceId)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
-        // Kiểm tra quyền của Normal User
-        if (!Objects.equals(actorId, device.getUserId()) &&
-                !Objects.equals(actorId, device.getTenantId()))
-        {
-            throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
-        }
-
-        return device;
-    }
-
-    private Device getDeviceAndVerifyTenantOwnership(String deviceIdStr, String tenantId) {
-        UUID deviceId = parseUUID(deviceIdStr);
-        Device device = repository.findByIdAndActiveTrue(deviceId)
-                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
-
-        // Kiểm tra quyền của Tenant
-        if (device.getTenantId() == null || !device.getTenantId().equals(tenantId)) {
-            throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
+        if (Constants.DEFAULT_TENANT_ID.equals(tenantId)) {
+            // Nếu là User cá nhân (Default Tenant) -> Chỉ được phép cấu hình máy của chính mình
+            if (!Objects.equals(actorId, device.getUserId())) {
+                throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
+            }
+        } else {
+            // Nếu là User thuộc Doanh nghiệp/Tổ chức (Custom Tenant) -> Có quyền với toàn bộ máy của Tenant
+            if (!Objects.equals(tenantId, device.getTenantId())) {
+                throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
+            }
         }
 
         return device;
@@ -660,26 +672,20 @@ public class DeviceService {
         return true;
     }
 
-    private String claimExistingDevice(Device device, ClaimDeviceRequest request, String userId) {
+    private String claimExistingDevice(Device device, ClaimDeviceRequest request, String userId, String tenantId) {
         if (device.getUserId() != null) {
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_CLAIMED);
         }
-
-        JsonNode userInfo = iamServiceClient.getUserById(userId, internalSecret);
-        String tenantId = userInfo.get("data").get("tenantId").asString();
 
         if (device.getTenantId() != null && !device.getTenantId().equals(tenantId)) {
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_CLAIMED);
         }
 
-        if (tenantId.equals(Constants.DEFAULT_TENANT_ID)) {
-            DeviceGroup defaultGroup = groupRepository.findByCodeAndActiveTrue(Constants.DEFAULT_GROUP_CODE)
-                    .orElse(null);
-            device.setDeviceGroup(defaultGroup);
+        DeviceGroup defaultGroup = deviceGroupService.getOrCreateDefaultGroupForTenant(tenantId);
+        device.setDeviceGroup(defaultGroup);
 
-            if (defaultGroup != null && defaultGroup.getTbProfileId() != null) {
-                thingsBoardService.assignProfileToDevice(device.getDeviceId(), defaultGroup.getTbProfileId());
-            }
+        if (defaultGroup.getTbProfileId() != null && device.getDeviceId() != null) {
+            thingsBoardService.assignProfileToDevice(device.getDeviceId(), defaultGroup.getTbProfileId());
         }
 
         device.setTenantId(tenantId);
@@ -708,26 +714,16 @@ public class DeviceService {
         return "Đã liên kết thiết bị thành công!";
     }
 
-    private String createPendingDeviceForFutureProvision(ClaimDeviceRequest request, String userId) {
+    private String createPendingDeviceForFutureProvision(ClaimDeviceRequest request, String userId, String tenantId) {
         try {
             Device device = new Device();
-
-            JsonNode userInfo = iamServiceClient.getUserById(userId, internalSecret);
-            String tenantId = userInfo.get("data").get("tenantId").asString();
 
             if (device.getTenantId() != null && !device.getTenantId().equals(tenantId)) {
                 throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_CLAIMED);
             }
 
-            if (tenantId.equals(Constants.DEFAULT_TENANT_ID)) {
-                DeviceGroup defaultGroup = groupRepository.findByCodeAndActiveTrue(Constants.DEFAULT_GROUP_CODE)
-                        .orElse(null);
-                device.setDeviceGroup(defaultGroup);
-
-                if (defaultGroup != null && defaultGroup.getTbProfileId() != null) {
-                    thingsBoardService.assignProfileToDevice(device.getDeviceId(), defaultGroup.getTbProfileId());
-                }
-            }
+            DeviceGroup defaultGroup = deviceGroupService.getOrCreateDefaultGroupForTenant(tenantId);
+            device.setDeviceGroup(defaultGroup);
 
             device.setMac(request.mac());
             device.setUserId(userId);
@@ -837,5 +833,15 @@ public class DeviceService {
         } while (devicePage.hasNext());
 
         log.info("Hoàn tất Job gán Firmware.");
+    }
+
+    private void verifyPermission(String actorId, String tenantId, String permissionsClaim, String requiredPermission) {
+        if (Objects.equals(actorId, tenantId)) {
+            return;
+        }
+
+        if (permissionsClaim == null || !permissionsClaim.contains(requiredPermission)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Bạn không có quyền thực hiện thao tác này (" + requiredPermission + ").");
+        }
     }
 }

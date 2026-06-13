@@ -160,7 +160,7 @@ class ApiConfig:
 class Esp32OtaConfig:
     """Serial + OTA settings shared by ESP32 transport and test scripts."""
 
-    com_port: str = _env_str("SMART_BIN_COM_PORT", "COM5")
+    com_port: str = _env_str("SMART_BIN_COM_PORT", "COM4")
     baud_rate: int = _env_int("SMART_BIN_BAUD_RATE", 115200)
     firmware_file: Path = field(
         default_factory=lambda: Path(

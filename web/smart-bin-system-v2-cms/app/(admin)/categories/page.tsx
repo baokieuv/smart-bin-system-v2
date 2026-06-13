@@ -36,10 +36,10 @@ export default function CategoriesPage() {
       await shopAdminApi.createCategory({ name, description, isActive: true });
       setName("");
       setDescription("");
-      setMessage("Category created");
+      setMessage("Đã tạo danh mục");
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Create failed");
+      setMessage(error instanceof Error ? error.message : "Không tạo được danh mục");
     } finally {
       setCreateLoading(false);
     }
@@ -62,10 +62,10 @@ export default function CategoriesPage() {
     try {
       setDeleteLoadingId(id);
       await shopAdminApi.deleteCategory(id);
-      setMessage("Category deleted");
+      setMessage("Đã xóa danh mục");
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Delete failed");
+      setMessage(error instanceof Error ? error.message : "Không xóa được danh mục");
     } finally {
       setDeleteLoadingId(null);
     }
@@ -73,13 +73,13 @@ export default function CategoriesPage() {
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
-      <Panel title="Categories" subtitle="Manage product grouping for public shop">
+      <Panel title="Danh mục" subtitle="Quản lý nhóm sản phẩm cho cửa hàng">
         <div className="overflow-x-auto">
           <table className="w-full min-w-140 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
                 <th className="py-2 px-3">Name</th>
-                <th className="py-2 px-3">Slug</th>
+                <th className="py-2 px-3">Mã thân thiện</th>
                 <th className="py-2 px-3">Description</th>
                 <th className="py-2 px-3">Action</th>
               </tr>
@@ -90,7 +90,7 @@ export default function CategoriesPage() {
                   <td className="py-2 px-3 font-medium text-foreground">{item.name}</td>
                   <td className="py-2 px-3 text-slate-600">{item.slug || "-"}</td>
                   <td className="py-2 px-3 text-slate-600">
-                    <div className="max-w-[28rem] max-h-20 overflow-auto whitespace-pre-wrap break-words">{item.description || "-"}</div>
+                    <div className="max-w-md max-h-20 overflow-auto whitespace-pre-wrap wrap-break-word">{item.description || "-"}</div>
                   </td>
                   <td className="py-2">
                     <button
@@ -111,44 +111,44 @@ export default function CategoriesPage() {
 
       <div className="space-y-4">
         <Panel
-          title="Category Actions"
-          subtitle="Open the popup editor to create a new category"
+          title="Thao tác với danh mục"
+          subtitle="Mở hộp thoại để tạo danh mục mới"
           action={
             <button
               type="button"
               onClick={openCreateCategory}
               className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white"
             >
-              Create category
+              Tạo danh mục
             </button>
           }
         >
-          <p className="text-sm text-slate-600">Use the popup editor for adding categories so the form stays comfortable to edit.</p>
+          <p className="text-sm text-slate-600">Dùng hộp thoại để thêm danh mục cho dễ nhập và dễ chỉnh sửa.</p>
         </Panel>
       </div>
 
       {showCreateModal ? (
-        <Modal title="Create Category" subtitle="Add a new shop category" onClose={closeCreateCategory}>
+        <Modal title="Tạo danh mục" subtitle="Thêm một nhóm sản phẩm mới" onClose={closeCreateCategory}>
           <form onSubmit={createCategory} className="space-y-4">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Category name"
+              placeholder="Tên danh mục"
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
             />
             <textarea
               className="h-40 w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Description"
+              placeholder="Mô tả"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
             <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
               <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white" type="submit">
-                {createLoading ? "Creating..." : "Create category"}
+                {createLoading ? "Đang tạo..." : "Tạo danh mục"}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeCreateCategory}>
-                Cancel
+                Hủy
               </button>
               {message ? <p className="text-sm text-slate-600">{message}</p> : null}
             </div>

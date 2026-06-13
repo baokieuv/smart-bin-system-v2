@@ -49,7 +49,7 @@ public class KeycloakService {
         this.restClient = RestClient.create();
     }
 
-    public String createUser(CreateUserRequest request) {
+    public String createUser(CreateUserRequest request, String tenantId) {
         UserRepresentation user = new UserRepresentation();
         user.setEnabled(false);
         user.setUsername(request.email());
@@ -69,6 +69,7 @@ public class KeycloakService {
 
         Map<String, List<String>> attributes = new HashMap<>();
         attributes.put("user_state", Collections.singletonList("PENDING"));
+        attributes.put("tenant_id", Collections.singletonList(tenantId));
         user.setAttributes(attributes);
 
         try (jakarta.ws.rs.core.Response response = keycloak.realm(realm).users().create(user)) {
@@ -116,6 +117,12 @@ public class KeycloakService {
                 String locationHeader = response.getHeaderString("Location");
                 String userId = locationHeader.substring(locationHeader.lastIndexOf('/') + 1);
                 updateRealmRole(userId, UserRole.ADMIN); // Gán role Tenant Admin
+
+                Map<String, String> attributes = new HashMap<>();
+                attributes.put("tenant_id", userId);
+                attributes.put("user_state", UserState.ACTIVE.name());
+                updateUserAttributes(userId, attributes);
+
                 return userId;
             } else if (response.getStatus() == 409) {
                 throw new ApiException(CoreErrorCode.BAD_REQUEST, "Email Tenant đã tồn tại trên Identity Provider");
@@ -124,8 +131,6 @@ public class KeycloakService {
             }
         }
     }
-
-    // ... (Các code cũ của KeycloakService) ...
 
     public String createSuperAdminAccount(String email, String password, String name) {
         UserRepresentation user = new UserRepresentation();
@@ -232,6 +237,36 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).update(user);
         } catch (Exception e) {
             log.error("Error updating attribute {} for user {} in Keycloak", key, userId, e);
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi cập nhật thông tin hệ thống.");
+        }
+    }
+
+    public void updateUserAttributes(String userId, Map<String, String> newAttributes) {
+        if (newAttributes == null || newAttributes.isEmpty()) {
+            return;
+        }
+
+        try {
+            UserRepresentation user = keycloak.realm(realm).users().get(userId).toRepresentation();
+
+            Map<String, List<String>> attributes = user.getAttributes() != null
+                    ? new HashMap<>(user.getAttributes())
+                    : new HashMap<>();
+
+            // Đưa toàn bộ dữ liệu mới vào
+            for (Map.Entry<String, String> entry : newAttributes.entrySet()) {
+                if (entry.getValue() == null) {
+                    attributes.remove(entry.getKey()); // Cho phép truyền null để xóa attribute
+                } else {
+                    attributes.put(entry.getKey(), Collections.singletonList(entry.getValue()));
+                }
+            }
+
+            user.setAttributes(attributes);
+
+           keycloak.realm(realm).users().get(userId).update(user);
+        } catch (Exception e) {
+            log.error("Error updating attributes for user {} in Keycloak", userId, e);
             throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi cập nhật thông tin hệ thống.");
         }
     }

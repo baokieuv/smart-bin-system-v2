@@ -48,7 +48,7 @@ class DeviceClient:
         # mac_num = hex(uuid.getnode()).replace('0x', '').zfill(12).upper()
         # return ':'.join(mac_num[i: i + 2] for i in range(0, 11, 2))
        
-        return "2A:C8:22:3C:FF:E8"
+        return "63:30:61:8D:B7:65"
 
     def get_claim_code(self) -> str:
         """Return the short claim code used by the device-link screen."""

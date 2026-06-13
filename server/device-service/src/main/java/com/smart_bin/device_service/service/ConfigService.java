@@ -201,11 +201,6 @@ public class ConfigService {
             finalConfig.putAll(device.getDeviceGroup().getSharedSpecs());
         }
 
-        // 3. Cấp Admin (Device Profile): Có quyền cao nhất, đè lên tất cả
-        if (device.getDeviceProfile() != null && device.getDeviceProfile().getSharedSpecs() != null) {
-            finalConfig.putAll(device.getDeviceProfile().getSharedSpecs());
-        }
-
         return finalConfig;
     }
 }
