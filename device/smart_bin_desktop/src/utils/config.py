@@ -79,7 +79,7 @@ class CameraConfig:
 @dataclass(frozen=True)
 class DetectionConfig:
     hand_img_size: int = _env_int("SMART_BIN_HAND_IMG_SIZE", 320)
-    hand_confidence: float = _env_float("SMART_BIN_HAND_CONF", 0.5)
+    hand_confidence: float = _env_float("SMART_BIN_HAND_CONF", 0.35)
     waste_group_confidence_threshold: float = _env_float("SMART_BIN_WASTE_GROUP_CONFIDENCE_THRESHOLD", 0.5)
     motion_threshold: int = _env_int("SMART_BIN_MOTION_THRESHOLD", 1600)
     stable_seconds: float = _env_float("SMART_BIN_STABLE_SECONDS", 0.8)

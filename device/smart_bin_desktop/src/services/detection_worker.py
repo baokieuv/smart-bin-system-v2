@@ -3,12 +3,12 @@ import uuid
 import logging
 from dataclasses import dataclass, field
 from typing import Final
-
+from picamera2 import Picamera2
 import cv2
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from src.models.trash_model import TrashData
-from src.services.inference_protocols import InferenceModel, InferenceModelFactory, YoloModelFactory
+from src.services.inference_protocols import InferenceModel, InferenceModelFactory, TFLiteModelFactory
 from src.utils.config import APP_CONFIG
 
 
@@ -31,15 +31,11 @@ CLASS_META: Final[dict[str, tuple[str, str, str]]] = {
 
 @dataclass
 class _DetectionState:
-    """Encapsulates the mutable state machine for the detection pipeline.
-
-    Separating state into a plain dataclass makes it easy to reset atomically
-    and reason about without hunting through the thread class.
-    """
     trash_falling: bool = False
     stable_since: float | None = None
     last_result_at: float = 0.0
     time_idle: float = field(default_factory=time.time)
+    motion_frames_count: int = 0  # <--- THÊM BIẾN NÀY ĐỂ ĐẾM FRAME CHUYỂN ĐỘNG
 
     def reset(self, now: float | None = None) -> None:
         ts = now if now is not None else time.time()
@@ -47,6 +43,7 @@ class _DetectionState:
         self.stable_since = None
         self.last_result_at = ts
         self.time_idle = ts
+        self.motion_frames_count = 0  # <--- RESET BỘ ĐẾM
 
     def mark_motion(self, now: float) -> None:
         self.time_idle = now
@@ -66,7 +63,6 @@ class _DetectionState:
 
     def in_cooldown(self, now: float) -> bool:
         return (now - self.last_result_at) < APP_CONFIG.detection.min_result_interval_seconds
-
 
 class DetectionWorker(QThread):
     """Background detection pipeline running on a dedicated QThread.
@@ -95,7 +91,7 @@ class DetectionWorker(QThread):
 
         self.model_hand_detection = hand_model
         self.model_trash_classification = trash_model
-        self.model_factory = model_factory or YoloModelFactory()
+        self.model_factory = model_factory or TFLiteModelFactory()
 
         self.images_dir = APP_CONFIG.paths.detection_images_dir
         self.images_dir.mkdir(parents=True, exist_ok=True)
@@ -107,6 +103,11 @@ class DetectionWorker(QThread):
 
         self._state = _DetectionState()
         self._last_state_log_at = 0.0
+
+        self.picam2 = Picamera2()
+        config = self.picam2.create_video_configuration({"size": (640, 640)})
+        self.picam2.configure(config)
+        self.picam2.start()
 
     # ------------------------------------------------------------------
     # QThread entry point
@@ -123,15 +124,19 @@ class DetectionWorker(QThread):
         self._run_loop()
 
     def _run_loop(self) -> None:
+        self.logger.info("=== Bắt đầu vòng lặp nhận diện ===")
         cfg = APP_CONFIG.detection
+        
         while self._is_running:
             if self._is_paused:
                 time.sleep(cfg.pause_sleep_seconds)
                 continue
 
-            ret, frame = self.cap.read()
-            if not ret:
-                self.logger.warning("Failed to read frame from camera")
+            frame = self.picam2.capture_array()
+            # Kiểm tra xem camera có trả về ảnh trống không
+            if frame is None or frame.size == 0:
+                self.logger.warning("Lỗi: Camera trả về frame rỗng!")
+                time.sleep(0.1)
                 continue
 
             # --- Gate 1: hand detection ---
@@ -140,8 +145,8 @@ class DetectionWorker(QThread):
                     frame, imgsz=cfg.hand_img_size, conf=cfg.hand_confidence, verbose=False
                 )
                 hand_detected = any(len(r.boxes) > 0 for r in results)
-            except Exception:
-                self.logger.exception("Hand detection failed")
+            except Exception as e:
+                self.logger.exception(f"Hand detection bị lỗi: {e}")
                 time.sleep(cfg.exception_sleep_seconds)
                 continue
 
@@ -153,29 +158,52 @@ class DetectionWorker(QThread):
             have_motion = motion_pixels > cfg.motion_threshold
 
             now = time.time()
-            self._log_pipeline_state(now, hand_detected, have_motion, motion_pixels)
+            self.logger.info(
+                f"[THÔNG SỐ] Pixel chuyển động: {motion_pixels}/{cfg.motion_threshold} -> Motion: {have_motion}"
+            )
 
-            # Start a new detection cycle only when the hand detector agrees
-            # with motion, or when motion continues after a cycle has already started.
-            if hand_detected and have_motion:
-                self._state.mark_motion(now)
+            # --- Logic State Machine (CÓ LỌC NHIỄU FRAME) ---
+
+            # 1. NẾU CÓ CHUYỂN ĐỘNG
+            if have_motion:
+                self._state.motion_frames_count += 1
+                
+                # Yêu cầu ít nhất 3 frame liên tiếp có chuyển động (Chống nhiễu ánh sáng/lỗi camera)
+                if self._state.motion_frames_count >= 5:
+                    if not self._state.trash_falling:
+                        self.logger.info("[STATE 1] -> XÁC NHẬN CÓ RÁC RƠI (Đã đủ 3 frame chuyển động liên tục).")
+                        self._state.trash_falling = True
+                    else:
+                        self.logger.info("[STATE 2] -> Rác vẫn đang rơi...")
+                    
+                    self._state.stable_since = None
+                else:
+                    self.logger.info(f"[LỌC NHIỄU] -> Đang đếm frame chuyển động: {self._state.motion_frames_count}/3")
+                
                 continue
 
-            if self._state.trash_falling and have_motion:
-                self._state.mark_motion(now)
-                continue
+            # 2. NẾU MẤT CHUYỂN ĐỘNG
+            else:
+                # Reset bộ đếm lập tức nếu có 1 frame mất chuyển động (loại trừ nhiễu 1-2 frame)
+                self._state.motion_frames_count = 0 
+                
+                if self._state.trash_falling:
+                    if self._state.stable_since is None:
+                        self.logger.info("[STATE 3] -> Đã hết chuyển động! Bắt đầu đếm ngược thời gian chờ ổn định.")
+                    self._state.start_stability_window(now)
 
-            if self._state.trash_falling:
-                self._state.start_stability_window(now)
-
+            # 3. KIỂM TRA THỜI GIAN ỔN ĐỊNH
             if not self._state.should_classify(now):
+                if self._state.trash_falling:
+                    thoi_gian_doi = now - self._state.stable_since
+                    self.logger.info(f"[STATE 4] -> Đang chờ rác nằm yên... ({thoi_gian_doi:.2f}s / {cfg.stable_seconds}s)")
                 continue
 
             # --- Gate 3: cooldown ---
             if self._state.in_cooldown(now):
-                time.sleep(cfg.pause_sleep_seconds)
                 continue
 
+            self.logger.info("[STATE 5] -> VƯỢT QUA CÁC ĐIỀU KIỆN! GỌI MODEL CLASSIFICATION NGAY BÂY GIỜ!")
             # --- Classify ---
             self._run_classification(frame, now)
 
@@ -257,10 +285,13 @@ class DetectionWorker(QThread):
             hand_path = APP_CONFIG.paths.hand_model_path
             trash_path = APP_CONFIG.paths.trash_model_path
 
-            if self.model_hand_detection is None:
-                self.model_hand_detection = self.model_factory.create_hand_detector(hand_path)
-            if self.model_trash_classification is None:
-                self.model_trash_classification = self.model_factory.create_trash_classifier(trash_path)
+            self.model_hand_detection = self.model_factory.create_hand_detector(hand_path)
+            self.model_trash_classification = self.model_factory.create_trash_classifier(trash_path)
+
+            # if self.model_hand_detection is None:
+            #     self.model_hand_detection = self.model_factory.create_hand_detector(hand_path)
+            # if self.model_trash_classification is None:
+            #     self.model_trash_classification = self.model_factory.create_trash_classifier(trash_path)
 
             self.logger.info("Models loaded hand=%s trash=%s", hand_path.name, trash_path.name)
 
