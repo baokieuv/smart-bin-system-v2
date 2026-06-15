@@ -64,6 +64,7 @@ class ActuatorRepository:
         self._serial_conn: serial.Serial | None = None
         self._serial_lock = Lock()
 
+        self._discovered_port: str | None = None  # Cache the COM port after successful handshake
         self._command_queue: Queue[CommandTask] = Queue()
         self._queue_stop = Event()
         self._queue_worker: Thread | None = None
@@ -84,20 +85,23 @@ class ActuatorRepository:
 
     def _open_serial(self) -> serial.Serial:
         try:
+            target_port = self._get_active_port() 
+            
             ser = serial.Serial(
-                self.com_port, 
+                target_port, 
                 self.baud_rate, 
                 timeout=1.0,
                 write_timeout=2.0,
             )
-            self.logger.info("Serial opened successfully: port=%s baud=%s", self.com_port, self.baud_rate)
+            
+            self.logger.info("Serial opened successfully: port=%s baud=%s", target_port, self.baud_rate)
             ser.setDTR(False)
             ser.setRTS(False)
             time.sleep(1.5)
             ser.reset_input_buffer()
             return ser
         except serial.SerialException as exc:
-            self.logger.error("Failed to open serial port %s: %s", self.com_port, exc)
+            self.logger.error("Failed to open serial port %s: %s", target_port, exc)
             raise
 
     @contextmanager
@@ -124,6 +128,49 @@ class ActuatorRepository:
                 except Exception as exc:
                     self.logger.warning("Error closing serial port: %s", exc)
             self._serial_conn = None
+            
+    def _find_and_handshake_port(self) -> str | None:
+        """Dò tìm cổng COM bằng cách gửi lệnh kiểm tra và chờ ACK."""
+        import serial.tools.list_ports
+        
+        # 1. Lấy tất cả cổng đang có
+        ports = serial.tools.list_ports.comports()
+        
+        for port in ports:
+            self.logger.info("Đang kiểm tra cổng: %s", port.device)
+            try:
+                with serial.Serial(port.device, self.baud_rate, timeout=3.0, write_timeout=3.0) as ser:
+                    ser.setDTR(False)
+                    ser.setRTS(False)
+                    time.sleep(1.5)
+                    ser.reset_input_buffer()
+
+                    # Gửi lệnh test (ở đây dùng lệnh unblock_lid theo logic cũ của bạn)
+                    ser.write(self._create_frame(self.config.cmd_unblock_lid))
+                    
+                    # Chờ phản hồi
+                    time.sleep(1)
+                    if ser.in_waiting > 0:
+                        buffer = ser.read(ser.in_waiting)
+                        cmd, payload, _ = self._extract_valid_frame(bytearray(buffer))
+                        
+                        if cmd == self.config.cmd_ack:
+                            self.logger.info("Tìm thấy thiết bị tại: %s", port.device)
+                            self._discovered_port = port.device # Lưu lại để dùng sau
+                            return port.device
+            except Exception as e:
+                self.logger.debug("Cổng %s không phản hồi: %s", port.device, e)
+        return None
+    
+    def _get_active_port(self) -> str:
+        """Lấy cổng đã lưu hoặc thực hiện dò tìm nếu chưa có."""
+        if self._discovered_port:
+            return self._discovered_port
+        
+        port = self._find_and_handshake_port()
+        if not port:
+            raise RuntimeError("Không tìm thấy thiết bị ESP32 nào trên cổng COM!")
+        return port
 
     # ------------------------------------------------------------------
     # Frame encoding / decoding
