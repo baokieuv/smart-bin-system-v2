@@ -8,6 +8,7 @@ import Modal from "@/components/ui/modal";
 import Panel from "@/components/ui/panel";
 import { authApi } from "@/services/api/auth";
 import { usersApi } from "@/services/api/users";
+import { useLanguage } from "@/lib/language";
 import { getCroppedImg } from "@/utils/cropImage";
 import type { UserDto } from "@/types/user";
 
@@ -27,7 +28,7 @@ const readFileAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => resolve(String(reader.result ?? "")));
-    reader.addEventListener("error", () => reject(new Error("Unable to read selected image.")));
+    reader.addEventListener("error", () => reject(new Error("FILE_READ_ERROR")));
     reader.readAsDataURL(file);
   });
 
@@ -52,6 +53,7 @@ const extractUploadUrl = (data: unknown) => {
 export default function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const CropperComponent = Cropper;
+  const { t, language, setLanguage, languageLabels } = useLanguage();
   const [profile, setProfile] = useState<UserDto | null>(null);
   const [profileMessage, setProfileMessage] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
@@ -80,8 +82,9 @@ export default function SettingsPage() {
     };
 
     void load().catch((error) => {
-      setProfileMessage(error instanceof Error ? error.message : "We couldn't load your profile details right now.");
+      setProfileMessage(error instanceof Error ? error.message : (t as any)("errorLoadProfile"));
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openProfileModal = () => {
@@ -124,7 +127,11 @@ export default function SettingsPage() {
       setZoom(1);
       setCroppedAreaPixels(null);
     } catch (error) {
-      setProfileMessage(error instanceof Error ? error.message : "We couldn't load the selected avatar.");
+      if (error instanceof Error && error.message === "FILE_READ_ERROR") {
+        setProfileMessage((t as any)("errorReadImage"));
+      } else {
+        setProfileMessage(error instanceof Error ? error.message : (t as any)("errorLoadAvatar"));
+      }
     }
   };
 
@@ -137,7 +144,7 @@ export default function SettingsPage() {
     try {
       const croppedBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
       if (!croppedBlob) {
-        throw new Error("Unable to crop the selected image.");
+        throw new Error((t as any)("errorCropImage"));
       }
 
       const croppedFile = new File([croppedBlob], "avatar.jpg", { type: "image/jpeg" });
@@ -149,7 +156,7 @@ export default function SettingsPage() {
 
       const avatarUrl = extractUploadUrl(uploadResponse.data);
       if (!avatarUrl) {
-        throw new Error("We couldn't resolve the uploaded avatar URL.");
+        throw new Error((t as any)("errorResolveAvatarUrl"));
       }
 
       const updateResponse = await usersApi.update({
@@ -161,10 +168,10 @@ export default function SettingsPage() {
         ...updateResponse.data,
         avatarUrl: updateResponse.data.avatarUrl ? withAvatarCacheBuster(updateResponse.data.avatarUrl) : undefined,
       });
-      setProfileMessage("Avatar updated successfully.");
+      setProfileMessage(t("avatarUpdated"));
       setImageSrc(null);
     } catch (error) {
-      setProfileMessage(error instanceof Error ? error.message : "We couldn't update your avatar right now.");
+      setProfileMessage(error instanceof Error ? error.message : (t as any)("errorUpdateAvatar"));
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -189,10 +196,10 @@ export default function SettingsPage() {
       });
       localStorage.setItem("admin_name", response.data.name || profile.name.trim());
       localStorage.setItem("admin_email", response.data.email || profile.email);
-      setProfileMessage("Profile updated successfully!");
+      setProfileMessage(t("profileUpdated"));
       setShowProfileModal(false);
     } catch (error) {
-      setProfileMessage(error instanceof Error ? error.message : "Oops! We couldn't update your profile.");
+      setProfileMessage(error instanceof Error ? error.message : (t as any)("errorUpdateProfile"));
     } finally {
       setProfileLoading(false);
     }
@@ -203,7 +210,7 @@ export default function SettingsPage() {
     setPasswordMessage("");
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setPasswordMessage("Oops! Your new passwords don't match.");
+      setPasswordMessage((t as any)("errorPasswordsNotMatch"));
       return;
     }
 
@@ -217,29 +224,29 @@ export default function SettingsPage() {
       });
 
       setPasswordForm(emptyPasswordForm);
-      setPasswordMessage("Your password has been changed successfully!");
+      setPasswordMessage(t("passwordChanged"));
     } catch (error) {
-      setPasswordMessage(error instanceof Error ? error.message : "We couldn't change your password right now.");
+      setPasswordMessage(error instanceof Error ? error.message : (t as any)("errorChangePassword"));
     } finally {
       setPasswordLoading(false);
     }
   };
 
-  const fullName = profile?.name?.trim() || "Unnamed User";
+  const fullName = profile?.name?.trim() || (t as any)("unnamedUser");
   const userInitial = (profile?.name || profile?.email || "U").slice(0, 1).toUpperCase();
 
   return (
     <div className="space-y-4">
-      <Panel title="InnoEco Settings" subtitle="Manage your profile details, avatar, and security preferences">
+      <Panel title={(t as any)("settingsTitle")} subtitle={t("manageProfile")}>
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-1">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Account</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{(t as any)("accountLabel")}</p>
             <div className="mt-3 flex items-center gap-3">
               <button
                 type="button"
                 onClick={openAvatarPicker}
                 className="relative h-16 w-16 overflow-hidden rounded-full border border-slate-300 bg-white text-lg font-semibold text-slate-700"
-                aria-label="Change avatar"
+                aria-label={t("changeAvatar")}
               >
                 {profile?.avatarUrl ? (
                   <Image src={profile.avatarUrl} alt={fullName} fill className="object-cover" sizes="64px" />
@@ -250,7 +257,7 @@ export default function SettingsPage() {
 
               <div>
                 <p className="text-lg font-semibold text-foreground">{profile?.email || "-"}</p>
-                <p className="text-sm text-slate-600">{role ? role.replaceAll("_", " ") : "Loading role..."}</p>
+                <p className="text-sm text-slate-600">{role ? role.replaceAll("_", " ") : t("loadingRole")}</p>
               </div>
             </div>
 
@@ -260,78 +267,95 @@ export default function SettingsPage() {
                 onClick={openAvatarPicker}
                 className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110"
               >
-                Change Avatar
+                {t("changeAvatar")}
               </button>
               <button
                 type="button"
                 onClick={openProfileModal}
                 className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
               >
-                Edit Profile
+                {t("editProfile")}
               </button>
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Profile Info</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{t("profileInfo")}</p>
             <p className="mt-2 text-lg font-semibold text-foreground">{fullName}</p>
-            <p className="mt-1 text-sm text-slate-600">Keep your workspace identity up to date.</p>
+            <p className="mt-1 text-sm text-slate-600">{t("profileInfoDescription")}</p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Security</p>
-            <p className="mt-2 text-lg font-semibold text-foreground">Stay secure</p>
-            <p className="mt-1 text-sm text-slate-600">Update your password to keep your InnoEco dashboard safe.</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{t("security")}</p>
+            <p className="mt-2 text-lg font-semibold text-foreground">{t("staySecure")}</p>
+            <p className="mt-1 text-sm text-slate-600">{t("securityDescription")}</p>
           </div>
         </div>
       </Panel>
 
+      {/* <Panel title={t("chooseLanguage")} subtitle={t("languageDescription")}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-700">{t("currentLanguage")}</p>
+            <p className="text-sm text-slate-600">{languageLabels[language]}</p>
+          </div>
+          <select
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm outline-none sm:max-w-xs"
+            value={language}
+            onChange={(event) => setLanguage(event.target.value === "vi" ? "vi" : "en")}
+          >
+            <option value="en">{languageLabels.en}</option>
+            <option value="vi">{languageLabels.vi}</option>
+          </select>
+        </div>
+      </Panel> */}
+
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel
-          title="Update Profile"
-          subtitle="Edit your display name and avatar"
+          title={t("updateProfile")}
+          subtitle={t("editYourDetails")}
           action={
             <button type="button" onClick={openProfileModal} className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-3 py-2 text-xs font-semibold text-white">
-              Edit Profile
+              {t("editProfile")}
             </button>
           }
         >
-          <p className="text-sm text-slate-600">Launch the editor to update your personal details.</p>
+          <p className="text-sm text-slate-600">{(t as any)("launchEditor")}</p>
         </Panel>
 
         <Panel
-          title="Change Password"
-          subtitle="Update your login password"
+          title={t("changePassword")}
+          subtitle={t("updateLoginPassword")}
           action={
             <button type="button" onClick={openPasswordModal} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700">
-              Change Password
+              {t("changePassword")}
             </button>
           }
         >
-          <p className="text-sm text-slate-600">Open the security panel to set a new password.</p>
+          <p className="text-sm text-slate-600">{(t as any)("openSecurityPanel")}</p>
         </Panel>
       </div>
 
       {showProfileModal ? (
-        <Modal title="Update Profile" subtitle="Edit your display name" onClose={closeProfileModal}>
+        <Modal title={t("updateProfile")} subtitle={t("editYourDetails")} onClose={closeProfileModal}>
           <form className="space-y-4" onSubmit={updateProfile}>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Full Name</label>
+              <label className="block text-sm font-medium text-slate-700">{t("fullName")}</label>
               <input
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                 value={profile?.name || ""}
                 onChange={(event) => setProfile((current) => (current ? { ...current, name: event.target.value } : current))}
-                placeholder="Your full name"
+                placeholder={(t as any)("yourFullName")}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">Email Address</label>
+              <label className="block text-sm font-medium text-slate-700">{t("emailAddress")}</label>
               <input
                 readOnly
                 className="mt-2 w-full rounded-xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-slate-600 outline-none"
                 value={profile?.email || ""}
-                placeholder="admin@innoeco.com"
+                placeholder={(t as any)("adminEmail")}
               />
             </div>
 
@@ -341,10 +365,10 @@ export default function SettingsPage() {
                 disabled={profileLoading}
                 className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {profileLoading ? "Saving..." : "Save Profile"}
+                {profileLoading ? t("saving") : t("saveProfile")}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm" onClick={closeProfileModal}>
-                Cancel
+                {t("cancel")}
               </button>
               {profileMessage ? <p className="text-sm text-slate-700">{profileMessage}</p> : null}
             </div>
@@ -353,38 +377,38 @@ export default function SettingsPage() {
       ) : null}
 
       {showPasswordModal ? (
-        <Modal title="Change Password" subtitle="Update your login password securely" onClose={closePasswordModal}>
+        <Modal title={t("changePassword")} subtitle={t("updateLoginPassword")} onClose={closePasswordModal}>
           <form className="space-y-4" onSubmit={changePassword}>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Current Password</label>
+              <label className="block text-sm font-medium text-slate-700">{t("currentPassword")}</label>
               <input
                 type="password"
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                 value={passwordForm.currentPassword}
                 onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))}
-                placeholder="Enter current password"
+                placeholder={(t as any)("enterCurrentPassword")}
               />
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-slate-700">New Password</label>
+                <label className="block text-sm font-medium text-slate-700">{t("newPassword")}</label>
                 <input
                   type="password"
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                   value={passwordForm.newPassword}
                   onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))}
-                  placeholder="Enter new password"
+                  placeholder={(t as any)("enterNewPassword")}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700">Confirm New Password</label>
+                <label className="block text-sm font-medium text-slate-700">{t("confirmNewPassword")}</label>
                 <input
                   type="password"
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                   value={passwordForm.confirmPassword}
                   onChange={(event) => setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))}
-                  placeholder="Confirm new password"
+                  placeholder={t("confirmPassword")}
                 />
               </div>
             </div>
@@ -395,10 +419,10 @@ export default function SettingsPage() {
                 disabled={passwordLoading}
                 className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {passwordLoading ? "Updating..." : "Update Password"}
+                {passwordLoading ? (t as any)("updating") : t("changePassword")}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm" onClick={closePasswordModal}>
-                Cancel
+                {t("cancel")}
               </button>
               {passwordMessage ? <p className="text-sm text-slate-700">{passwordMessage}</p> : null}
             </div>
@@ -409,7 +433,7 @@ export default function SettingsPage() {
       {imageSrc ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
-            <h3 className="text-lg font-bold text-slate-900">Update Avatar</h3>
+            <h3 className="text-lg font-bold text-slate-900">{t("updateAvatar")}</h3>
 
             <div className="relative mt-4 h-72 w-full overflow-hidden rounded-lg bg-slate-100">
               <CropperComponent
@@ -425,7 +449,7 @@ export default function SettingsPage() {
             </div>
 
             <div className="mt-4">
-              <label className="mb-1 block text-sm font-semibold text-slate-700">Zoom</label>
+              <label className="mb-1 block text-sm font-semibold text-slate-700">{t("zoom")}</label>
               <input
                 type="range"
                 min={1}
@@ -444,7 +468,7 @@ export default function SettingsPage() {
                 className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                 disabled={isUploadingAvatar}
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="button"
@@ -452,7 +476,7 @@ export default function SettingsPage() {
                 className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
                 disabled={isUploadingAvatar}
               >
-                {isUploadingAvatar ? "Updating..." : "Save Avatar"}
+                {isUploadingAvatar ? (t as any)("updating") : t("updateAvatarButton")}
               </button>
             </div>
           </div>

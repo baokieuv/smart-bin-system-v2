@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { GoogleOAuthProvider } from "@react-oauth/google";
+import { LanguageProvider } from "@/lib/language";
 
 type ProvidersProps = {
   children: ReactNode;
@@ -10,9 +11,11 @@ type ProvidersProps = {
 export function Providers({ children }: ProvidersProps) {
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
+  const content = <LanguageProvider>{children}</LanguageProvider>;
+
   if (!clientId) {
-    return <>{children}</>;
+    return content;
   }
 
-  return <GoogleOAuthProvider clientId={clientId}>{children}</GoogleOAuthProvider>;
+  return <GoogleOAuthProvider clientId={clientId}>{content}</GoogleOAuthProvider>;
 }

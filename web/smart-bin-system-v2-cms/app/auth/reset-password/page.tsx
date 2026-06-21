@@ -8,9 +8,12 @@ import { Input } from "@/components/ui/input";
 import { StatusMessage } from "@/components/ui/status-message";
 import { getRecaptchaToken } from "@/lib/recaptcha";
 import { authApi } from "@/services/api/auth";
+import { useLanguage } from "@/lib/language";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const { t, language, setLanguage, languageLabels } = useLanguage();
+  
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -24,15 +27,17 @@ export default function ResetPasswordPage() {
       const captcha = await getRecaptchaToken("RESET_PASSWORD");
       const response = await authApi.resetPassword(email, captcha);
       setStatus("success");
-      setMessage(response.data || "If the email is valid, password reset instructions have been sent.");
+      // Sử dụng API response hoặc fallback dịch thuật
+      setMessage(response.data || t("resetPasswordSuccessFallback"));
     } catch {
       setStatus("error");
-      setMessage("An error occurred. Please try again later.");
+      setMessage(t("resetPasswordError"));
     }
   };
 
   return (
-    <AuthShell title="Reset Password" description="Enter your account email and we will send a password reset link.">
+    <AuthShell title={t("resetPasswordTitle")} description={t("resetPasswordDesc")}>
+      
       {status === "success" ? (
         <div className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
@@ -40,25 +45,33 @@ export default function ResetPasswordPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-900">Check your inbox</h3>
+          <h3 className="text-lg font-semibold text-slate-900">{t("checkYourInbox")}</h3>
           <p className="mt-2 text-sm text-slate-600">{message}</p>
-          <Button onClick={() => router.push("/auth/login")} className="mt-6 w-full" size="lg">Back to Login</Button>
+          <Button onClick={() => router.push("/auth/login")} className="mt-6 w-full" size="lg">
+            {t("backToLogin")}
+          </Button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
           {status === "error" ? <StatusMessage tone="error">{message}</StatusMessage> : null}
 
           <div>
-            <label className="mb-1 block text-sm font-semibold text-slate-700">Email</label>
-            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required />
+            <label className="mb-1 block text-sm font-semibold text-slate-700">{t("emailAddress")}</label>
+            <Input 
+              type="email" 
+              value={email} 
+              onChange={(event) => setEmail(event.target.value)} 
+              placeholder="hello@innoeco.com" 
+              required 
+            />
           </div>
 
           <Button type="submit" disabled={status === "loading"} className="w-full" size="lg">
-            {status === "loading" ? "Sending..." : "Send Reset Link"}
+            {status === "loading" ? t("sending") : t("sendResetLink")}
           </Button>
 
           <button type="button" onClick={() => router.push("/auth/login")} className="w-full text-sm font-medium text-slate-600 transition hover:text-slate-900">
-            Back to Login
+            {t("backToLogin")}
           </button>
         </form>
       )}

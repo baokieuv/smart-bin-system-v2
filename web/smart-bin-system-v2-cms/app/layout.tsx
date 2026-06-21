@@ -3,6 +3,7 @@ import Script from "next/script";
 import { IBM_Plex_Mono, Manrope } from "next/font/google";
 import "mapbox-gl/dist/mapbox-gl.css";
 import ToastHost from "@/components/ui/toast-host";
+import { LanguageSwitcher } from "@/components/ui/language-switcher"; // Import component mới
 import "./globals.css";
 import { Providers } from "@/app/providers";
 
@@ -31,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="en" // Ghi chú: Thẻ lang thực tế sẽ được context update động ở phía client
       className={`${manrope.variable} ${ibmPlexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full font-sans">
@@ -42,9 +43,12 @@ export default function RootLayout({
           />
         ) : null}
         <ToastHost />
-        <Providers>{children}</Providers>
+        <Providers>
+          {/* Nhúng nút chuyển ngôn ngữ toàn cục tại đây */}
+          <LanguageSwitcher />
+          {children}
+        </Providers>
       </body>
     </html>
   );
 }
-

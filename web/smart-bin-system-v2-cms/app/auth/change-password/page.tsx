@@ -9,9 +9,12 @@ import { PasswordVisibilityButton } from "@/components/ui/password-visibility-bu
 import { StatusMessage } from "@/components/ui/status-message";
 import { PASSWORD_MIN_LENGTH, getPasswordRules, getPasswordStrengthScore, isPasswordStrongEnough } from "@/lib/password-policy";
 import { authApi } from "@/services/api/auth";
+import { useLanguage } from "@/lib/language";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
+  const { t, language, setLanguage, languageLabels } = useLanguage();
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -22,24 +25,24 @@ export default function ChangePasswordPage() {
   const [error, setError] = useState("");
 
   const strength = getPasswordStrengthScore(newPassword);
-  const passwordRules = getPasswordRules(newPassword);
+  const passwordRules = getPasswordRules(newPassword, t);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
 
     if (currentPassword === newPassword) {
-      setError("The new password must be different from the current password.");
+      setError((t as any)("newPasswordSameAsCurrent"));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("Password confirmation does not match.");
+      setError((t as any)("passwordMismatch"));
       return;
     }
 
     if (!isPasswordStrongEnough(newPassword)) {
-      setError(`The new password must be at least ${PASSWORD_MIN_LENGTH} characters and include an uppercase letter, a number, and a special character.`);
+      setError((t as any)("passwordTooWeak"));
       return;
     }
 
@@ -51,12 +54,13 @@ export default function ChangePasswordPage() {
     } catch (err) {
       setStatus("error");
       const message = err instanceof Error ? err.message : "";
-      setError(message || "Current password is incorrect or an unexpected error occurred.");
+      setError(message || (t as any)("changePasswordError"));
     }
   };
 
   return (
-    <AuthShell title="Change Password" description="Update your password regularly to keep your account secure.">
+    <AuthShell title={t("changePassword")} description={(t as any)("changePasswordDesc")}>
+
       {status === "success" ? (
         <div className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
@@ -64,35 +68,58 @@ export default function ChangePasswordPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-900">Password changed</h3>
-          <p className="mt-2 text-sm text-slate-600">Your account password has been updated successfully.</p>
-          <Button onClick={() => router.push("/dashboard")} className="mt-6 w-full" size="lg">Back to Dashboard</Button>
+          <h3 className="text-lg font-semibold text-slate-900">{t("passwordChanged")}</h3>
+          <p className="mt-2 text-sm text-slate-600">{(t as any)("passwordUpdatedSuccess")}</p>
+          <Button onClick={() => router.push("/dashboard")} className="mt-6 w-full" size="lg">
+            {(t as any)("backToAccountHome")}
+          </Button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
           {error ? <StatusMessage tone="error">{error}</StatusMessage> : null}
 
           <div>
-            <label className="mb-1 block text-sm font-semibold text-slate-700">Current Password</label>
+            <label className="mb-1 block text-sm font-semibold text-slate-700">{t("currentPassword")}</label>
             <div className="relative">
-              <Input type={showCurrent ? "text" : "password"} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Enter current password" className="pr-10" required />
+              <Input 
+                type={showCurrent ? "text" : "password"} 
+                value={currentPassword} 
+                onChange={(event) => setCurrentPassword(event.target.value)} 
+                placeholder={t("enterCurrentPassword")} 
+                className="pr-10" 
+                required 
+              />
               <PasswordVisibilityButton open={showCurrent} onToggle={() => setShowCurrent((value) => !value)} />
             </div>
           </div>
 
           <div className="border-t border-slate-200 pt-4">
             <div className="mb-4">
-              <label className="mb-1 block text-sm font-semibold text-slate-700">New Password</label>
+              <label className="mb-1 block text-sm font-semibold text-slate-700">{t("newPassword")}</label>
               <div className="relative">
-                <Input type={showNew ? "text" : "password"} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Minimum 8 characters" className="pr-10" required />
+                <Input 
+                  type={showNew ? "text" : "password"} 
+                  value={newPassword} 
+                  onChange={(event) => setNewPassword(event.target.value)} 
+                  placeholder={(t as any)("min8Chars")} 
+                  className="pr-10" 
+                  required 
+                />
                 <PasswordVisibilityButton open={showNew} onToggle={() => setShowNew((value) => !value)} />
               </div>
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-semibold text-slate-700">Confirm New Password</label>
+              <label className="mb-1 block text-sm font-semibold text-slate-700">{t("confirmNewPassword")}</label>
               <div className="relative">
-                <Input type={showConfirm ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter new password" className="pr-10" required />
+                <Input 
+                  type={showConfirm ? "text" : "password"} 
+                  value={confirmPassword} 
+                  onChange={(event) => setConfirmPassword(event.target.value)} 
+                  placeholder={(t as any)("reEnterNewPassword")} 
+                  className="pr-10" 
+                  required 
+                />
                 <PasswordVisibilityButton open={showConfirm} onToggle={() => setShowConfirm((value) => !value)} />
               </div>
             </div>
@@ -112,13 +139,23 @@ export default function ChangePasswordPage() {
               </div>
             ))}
             <p className={`text-xs ${strength <= 1 ? "text-rose-600" : strength === 2 ? "text-amber-600" : strength === 3 ? "text-cyan-700" : "text-emerald-700"}`}>
-              Strength: {strength === 0 ? "" : strength === 1 ? "Weak" : strength === 2 ? "Fair" : strength === 3 ? "Good" : "Strong"}
+              {(t as any)("passwordStrength")}: {
+                strength === 0 ? "" : 
+                strength === 1 ? (t as any)("strengthWeak") : 
+                strength === 2 ? (t as any)("strengthFair") : 
+                strength === 3 ? (t as any)("strengthGood") : 
+                (t as any)("strengthStrong")
+              }
             </p>
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button type="button" onClick={() => router.push("/dashboard")} variant="secondary" className="flex-1" size="lg">Cancel</Button>
-            <Button type="submit" disabled={status === "loading"} className="flex-1" size="lg">{status === "loading" ? "Saving..." : "Change Password"}</Button>
+            <Button type="button" onClick={() => router.push("/dashboard")} variant="secondary" className="flex-1" size="lg">
+              {t("cancel")}
+            </Button>
+            <Button type="submit" disabled={status === "loading"} className="flex-1" size="lg">
+              {status === "loading" ? t("saving") : t("changePassword")}
+            </Button>
           </div>
         </form>
       )}

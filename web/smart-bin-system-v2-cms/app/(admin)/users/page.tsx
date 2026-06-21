@@ -6,35 +6,37 @@ import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { getRecaptchaToken } from "@/lib/recaptcha";
 import { usersAdminApi } from "@/services/api/users-admin";
+import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 import type { CreateUserRequest } from "@/types/auth";
 import type { UserDto } from "@/types/user";
 
 const states: UserDto["state"][] = ["ACTIVE", "PENDING", "SUSPENDED", "DELETED"];
 
-const DEVICE_PERMISSIONS = [
-  { key: "VIEW_DEVICE", label: "View Devices", description: "Can view device details and telemetry (Default)" },
-  { key: "EDIT_DEVICE", label: "Edit Devices", description: "Can update device configurations and settings" },
-  { key: "DELETE_DEVICE", label: "Delete Devices", description: "Can remove devices from the system" },
-  { key: "CONTROL_DEVICE", label: "Control Devices", description: "Can execute RPC commands (e.g., Open/Close Lid)" },
+// Sử dụng hàm để gọi t()
+const getDevicePermissions = (t: any) => [
+  { key: "VIEW_DEVICE", label: t("permViewDevices"), description: t("permViewDevicesDesc") },
+  { key: "EDIT_DEVICE", label: t("permEditDevices"), description: t("permEditDevicesDesc") },
+  { key: "DELETE_DEVICE", label: t("permDeleteDevices"), description: t("permDeleteDevicesDesc") },
+  { key: "CONTROL_DEVICE", label: t("permControlDevices"), description: t("permControlDevicesDesc") },
 ];
 
-const formatStateLabel = (state: UserDto["state"]) => {
+const formatStateLabel = (state: UserDto["state"], t: any) => {
   switch (state) {
     case "ACTIVE":
-      return "Active";
+      return t("stateActive");
     case "PENDING":
-      return "Pending";
+      return t("statePending");
     case "SUSPENDED":
-      return "Suspended";
+      return t("stateSuspended");
     case "DELETED":
-      return "Deleted";
+      return t("stateDeleted");
     default:
       return state;
   }
 };
 
-const formatPermissionsLabel = (perms?: string[]) => {
-  if (!perms || perms.length === 0) return "View";
+const formatPermissionsLabel = (perms: string[] | undefined, t: any) => {
+  if (!perms || perms.length === 0) return t("permViewDefault");
   return perms
     .map((p) => p.split('_')[0])
     .map((p) => p.charAt(0) + p.slice(1).toLowerCase())
@@ -48,6 +50,8 @@ const emptyCreateUserForm = {
 };
 
 export default function UsersPage() {
+  const { t } = useLanguage(); // GỌI HOOK
+  
   const [users, setUsers] = useState<UserDto[]>([]);
   const [message, setMessage] = useState("");
   const [currentEmail, setCurrentEmail] = useState<string | null>(null);
@@ -64,6 +68,8 @@ export default function UsersPage() {
   const [permissionsForm, setPermissionsForm] = useState<string[]>([]);
   const [isUpdatingPerms, setIsUpdatingPerms] = useState(false);
 
+  const devicePermissionsList = getDevicePermissions(t as any);
+
   const load = async () => {
     const response = await usersAdminApi.getUsers({ page: 1, size: 100 });
     setUsers(unwrapListPayload(response.data));
@@ -71,20 +77,22 @@ export default function UsersPage() {
 
   useEffect(() => {
     void load().catch((error) => {
-      setMessage(error instanceof Error ? error.message : "Oops! We couldn't load the user list.");
+      setMessage(error instanceof Error ? error.message : (t as any)("loadUserListError"));
     });
     const email = typeof window !== "undefined" ? localStorage.getItem("admin_email") : null;
     setCurrentEmail(email);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const updateState = async (id: string, state: UserDto["state"]) => {
     try {
       setUpdatingUserId(id);
       await usersAdminApi.updateUserState(id, state);
-      setMessage(`User status successfully updated to ${formatStateLabel(state)}!`);
+      const successMsg = (t as any)("userStatusUpdateSuccess").replace("{state}", formatStateLabel(state, t as any));
+      setMessage(successMsg);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "We couldn't update the user's status right now.");
+      setMessage(error instanceof Error ? error.message : (t as any)("userStatusUpdateError"));
     } finally {
       setUpdatingUserId(null);
     }
@@ -117,12 +125,12 @@ export default function UsersPage() {
       };
 
       await usersAdminApi.createUser(request);
-      setMessage("New InnoEco user created successfully!");
+      setMessage((t as any)("userCreatedSuccess"));
       setIsCreateOpen(false);
       setCreateForm(emptyCreateUserForm);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "We couldn't create the user at this time.");
+      setMessage(error instanceof Error ? error.message : (t as any)("userCreateError"));
     } finally {
       setIsSubmitting(false);
     }
@@ -158,14 +166,13 @@ export default function UsersPage() {
     setMessage("");
     
     try {
-      // Giả sử service của bạn đã có hàm updateUserPermissions
-      // Nếu API gộp chung vào updateUser, hãy sửa lại thành: usersAdminApi.updateUser(...)
       await usersAdminApi.updateUserPermissions(selectedUserForPerms.id, permissionsForm);
-      setMessage(`Permissions successfully updated for ${selectedUserForPerms.name}!`);
+      const successMsg = (t as any)("permsUpdateSuccess").replace("{name}", selectedUserForPerms.name);
+      setMessage(successMsg);
       setIsPermsOpen(false);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "We couldn't update the permissions right now.");
+      setMessage(error instanceof Error ? error.message : (t as any)("permsUpdateError"));
     } finally {
       setIsUpdatingPerms(false);
     }
@@ -178,15 +185,15 @@ export default function UsersPage() {
   return (
     <div className="space-y-4">
       <Panel
-        title="InnoEco Users"
-        subtitle="Manage user accounts, access states, and device permissions"
+        title={(t as any)("innoecoUsers")}
+        subtitle={(t as any)("manageUsersSubtitle")}
         action={
           <button
             type="button"
             onClick={openCreateUser}
             className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110"
           >
-            Add User
+            {(t as any)("addUserBtn")}
           </button>
         }
       >
@@ -194,12 +201,12 @@ export default function UsersPage() {
           <table className="w-full min-w-240 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">Avatar</th>
-                <th className="py-2">Full Name</th>
-                <th className="py-2">Email Address</th>
-                <th className="py-2">Permissions</th>
-                <th className="py-2">Status</th>
-                <th className="py-2">Action</th>
+                <th className="py-2">{(t as any)("avatarCol")}</th>
+                <th className="py-2">{t("fullName")}</th>
+                <th className="py-2">{t("emailAddress")}</th>
+                <th className="py-2">{(t as any)("permissionsCol")}</th>
+                <th className="py-2">{(t as any)("statusCol")}</th>
+                <th className="py-2">{(t as any)("actionCol")}</th>
               </tr>
             </thead>
             <tbody>
@@ -226,11 +233,11 @@ export default function UsersPage() {
                     <td className="py-2 font-medium text-foreground">{user.name.trim()}</td>
                     <td className="py-2 text-slate-600">{user.email}</td>
                     <td className="py-2 text-slate-600">
-                      <span className="truncate max-w-[120px] inline-block" title={formatPermissionsLabel(user.devicePermissions)}>
-                        {formatPermissionsLabel(user.devicePermissions)}
+                      <span className="truncate max-w-30 inline-block" title={formatPermissionsLabel(user.devicePermissions, t as any)}>
+                        {formatPermissionsLabel(user.devicePermissions, t as any)}
                       </span>
                     </td>
-                    <td className="py-2 text-slate-600">{formatStateLabel(user.state)}</td>
+                    <td className="py-2 text-slate-600">{formatStateLabel(user.state, t as any)}</td>
                     <td className="py-2">
                       {isSelf ? (
                         <span className="text-slate-500">-</span>
@@ -244,7 +251,7 @@ export default function UsersPage() {
                           >
                             {states.map((state) => (
                               <option key={state} value={state}>
-                                {formatStateLabel(state)}
+                                {formatStateLabel(state, t as any)}
                               </option>
                             ))}
                           </select>
@@ -253,7 +260,7 @@ export default function UsersPage() {
                             onClick={() => openPermissionsModal(user)}
                             className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition"
                           >
-                            Manage
+                            {(t as any)("manageBtn")}
                           </button>
                         </div>
                       )}
@@ -285,33 +292,33 @@ export default function UsersPage() {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-semibold text-foreground">Add New User</h3>
-                <p className="mt-1 text-sm text-slate-600">Provide the user's basic details. The system will handle authentication automatically.</p>
+                <h3 className="text-xl font-semibold text-foreground">{(t as any)("addNewUserTitle")}</h3>
+                <p className="mt-1 text-sm text-slate-600">{(t as any)("addNewUserDesc")}</p>
               </div>
               <button
                 type="button"
                 onClick={closeCreateUser}
                 className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 transition hover:bg-slate-100"
               >
-                Close
+                {(t as any)("closeBtn")}
               </button>
             </div>
 
             <div className="mt-5 grid gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700">Email Address</label>
+                <label className="block text-sm font-medium text-slate-700">{t("emailAddress")}</label>
                 <input
                   type="email"
                   required
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                   value={createForm.email}
                   onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
-                  placeholder="user@innoeco.com"
+                  placeholder={(t as any)("userEmailPlaceholder")}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Password</label>
+                <label className="block text-sm font-medium text-slate-700">{t("passwordLabel")}</label>
                 <input
                   type="password"
                   required
@@ -319,19 +326,19 @@ export default function UsersPage() {
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                   value={createForm.password}
                   onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
-                  placeholder="At least 8 characters"
+                  placeholder={(t as any)("min8Chars")}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Full Name</label>
+                <label className="block text-sm font-medium text-slate-700">{t("fullName")}</label>
                 <input
                   type="text"
                   required
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                   value={createForm.name}
                   onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))}
-                  placeholder="e.g. Jane Doe"
+                  placeholder={(t as any)("egJaneDoe")}
                 />
               </div>
             </div>
@@ -342,14 +349,14 @@ export default function UsersPage() {
                 onClick={closeCreateUser}
                 className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
                 className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmitting ? "Creating..." : "Create User"}
+                {isSubmitting ? t("creating") : (t as any)("createUserBtn")}
               </button>
             </div>
           </form>
@@ -371,9 +378,9 @@ export default function UsersPage() {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-semibold text-foreground">Device Permissions</h3>
+                <h3 className="text-xl font-semibold text-foreground">{(t as any)("devicePermsTitle")}</h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  Update access controls for <span className="font-semibold text-slate-800">{selectedUserForPerms.name}</span>.
+                  {(t as any)("updateAccessControlsFor")} <span className="font-semibold text-slate-800">{selectedUserForPerms.name}</span>.
                 </p>
               </div>
               <button
@@ -381,12 +388,12 @@ export default function UsersPage() {
                 onClick={closePermissionsModal}
                 className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 transition hover:bg-slate-100"
               >
-                Close
+                {(t as any)("closeBtn")}
               </button>
             </div>
 
             <div className="mt-5 space-y-3">
-              {DEVICE_PERMISSIONS.map((perm) => {
+              {devicePermissionsList.map((perm) => {
                 const isRequired = perm.key === "VIEW_DEVICE";
                 const isChecked = permissionsForm.includes(perm.key);
                 
@@ -425,14 +432,14 @@ export default function UsersPage() {
                   onClick={closePermissionsModal}
                   className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
-                  Cancel
+                  {t("cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdatingPerms}
                   className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isUpdatingPerms ? "Saving..." : "Save Permissions"}
+                  {isUpdatingPerms ? t("saving") : (t as any)("savePermsBtn")}
                 </button>
               </div>
             </div>

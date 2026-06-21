@@ -7,26 +7,33 @@ import { useEffect, useMemo, useState } from "react";
 import { extractRolesFromAccessToken, getCmsAccessRole, hasCmsAdminAccess } from "@/lib/auth-session";
 import { authApi } from "@/services/api/auth";
 import { ApiError } from "@/lib/api-client";
+// Import thêm TranslationKey để fix lỗi type cho mảng navItems
+import { useLanguage, type TranslationKey } from "@/lib/language";
 
-const navItems = [
-  { href: "/dashboard", label: "Overview", roles: ["super_admin", "admin", "user"] },
-  { href: "/tenants", label: "Partners", roles: ["super_admin"] },
-  // { href: "/categories", label: "Categories", roles: ["super_admin"] },
-  // { href: "/products", label: "Products", roles: ["super_admin"] },
-  // { href: "/orders", label: "Orders", roles: ["super_admin"] },
-  { href: "/users", label: "Users", roles: ["super_admin", "admin"] },
-  { href: "/device-groups", label: "Device Groups", roles: ["admin"] },
-  // { href: "/device-profiles", label: "Device Profiles", roles: ["super_admin"] },
-  { href: "/devices", label: "Devices", roles: ["super_admin", "admin", "user"] },
-  { href: "/firmwares", label: "Update Packages", roles: ["super_admin"] },
-  { href: "/firmware-mappings", label: "Update Routing", roles: ["super_admin"] },
-  { href: "/notifications", label: "System Alerts", roles: ["super_admin", "admin", "user"] },
-  { href: "/settings", label: "Settings", roles: ["super_admin", "admin", "user"] },
+// Định nghĩa kiểu dữ liệu chặt chẽ cho mảng điều hướng
+type NavItem = {
+  href: string;
+  key: TranslationKey;
+  roles: string[];
+};
+
+const navItems: NavItem[] = [
+  { href: "/dashboard", key: "overview", roles: ["super_admin", "admin", "user"] },
+  { href: "/tenants", key: "partners", roles: ["super_admin"] },
+  { href: "/users", key: "users", roles: ["super_admin", "admin"] },
+  { href: "/device-groups", key: "deviceGroups", roles: ["admin"] },
+  { href: "/devices", key: "devices", roles: ["super_admin", "admin", "user"] },
+  { href: "/firmwares", key: "updatePackages", roles: ["super_admin"] },
+  { href: "/firmware-mappings", key: "updateRouting", roles: ["super_admin"] },
+  { href: "/notifications", key: "systemAlerts", roles: ["super_admin", "admin", "user"] },
+  { href: "/settings", key: "settings", roles: ["super_admin", "admin", "user"] },
 ];
 
 export default function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useLanguage();
+  
   const [email, setEmail] = useState<string>("");
   const [role, setRole] = useState<"super_admin" | "admin" | "user" | null>(null);
 
@@ -110,8 +117,8 @@ export default function AdminShell({ children }: { children: ReactNode }) {
 
   const title = useMemo(() => {
     const hit = navItems.find((item) => pathname.startsWith(item.href));
-    return hit?.label || "Admin Hub";
-  }, [pathname]);
+    return hit ? t(hit.key) : t("adminHub");
+  }, [pathname, t]);
 
   const logout = () => {
     localStorage.removeItem("access_token");
@@ -131,11 +138,11 @@ export default function AdminShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-sky-50 text-foreground">
       <div className="mx-auto grid min-h-screen max-w-350 grid-cols-1 gap-4 p-4 lg:grid-cols-[280px_1fr]">
         <aside className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#0b2d45_0%,#134b6f_100%)] p-5 text-white shadow-[0_20px_45px_rgba(14,41,65,0.38)]">
-          <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">InnoEco</p>
-          <h1 className="mt-2 text-2xl font-semibold">Admin Hub</h1>
-          <p className="mt-1 text-sm text-cyan-100/85">Manage your fleet, partners, and system settings securely.</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">{t("appName")}</p>
+          <h1 className="mt-2 text-2xl font-semibold">{t("adminHub")}</h1>
+          <p className="mt-1 text-sm text-cyan-100/85">{t("adminHubDescription")}</p>
 
-          <nav className="mt-6 space-y-1">
+          <nav className="mt-8 space-y-1">
             {visibleNavItems.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
@@ -144,29 +151,31 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                   href={item.href}
                   className={`block rounded-xl px-3 py-2 text-sm font-medium transition ${active ? "bg-white text-slate-900" : "text-cyan-100 hover:bg-white/15"}`}
                 >
-                  {item.label}
+                  {t(item.key)}
                 </Link>
               );
             })}
           </nav>
 
           <div className="mt-8 rounded-xl border border-white/20 bg-white/8 p-3 text-sm">
-            <p className="text-cyan-100">Signed in as</p>
+            <p className="text-cyan-100">{t("signedInAs")}</p>
             <p className="font-semibold text-white">{email}</p>
-            <p className="mt-1 text-xs uppercase tracking-[0.16em] text-cyan-100/80">{role === "super_admin" ? "Full Access" : "Limited Access"}</p>
+            <p className="mt-1 text-xs uppercase tracking-[0.16em] text-cyan-100/80">
+              {role === "super_admin" ? t("fullAccess") : t("limitedAccess")}
+            </p>
             <button
               type="button"
               onClick={logout}
               className="mt-3 w-full rounded-lg border border-white/30 px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.12em] text-white transition hover:bg-white/15"
             >
-              Sign Out
+              {t("signOut")}
             </button>
           </div>
         </aside>
 
         <main className="rounded-2xl border border-slate-200 bg-white/60 p-4 shadow-[0_16px_35px_rgba(36,80,130,0.12)] backdrop-blur lg:p-6">
           <header className="mb-4 rounded-2xl border border-slate-200 bg-white px-5 py-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-600">InnoEco Workspace</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-600">{t("appName")} {(t as any)("workspace")}</p>
             <h2 className="text-2xl font-semibold">{title}</h2>
           </header>
           {children}

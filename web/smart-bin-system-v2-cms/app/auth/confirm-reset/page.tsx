@@ -9,10 +9,13 @@ import { PasswordVisibilityButton } from "@/components/ui/password-visibility-bu
 import { StatusMessage } from "@/components/ui/status-message";
 import { PASSWORD_MIN_LENGTH, getPasswordRules, getPasswordStrengthScore, isPasswordStrongEnough } from "@/lib/password-policy";
 import { authApi } from "@/services/api/auth";
+import { useLanguage } from "@/lib/language";
 
 function ConfirmResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t, language, setLanguage, languageLabels } = useLanguage();
+
   const token = searchParams.get("token") || "";
   const isInvalidToken = !token;
 
@@ -24,7 +27,7 @@ function ConfirmResetPasswordForm() {
   const [error, setError] = useState("");
 
   const strength = getPasswordStrengthScore(newPassword);
-  const passwordRules = getPasswordRules(newPassword);
+  const passwordRules = getPasswordRules(newPassword, t);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -32,17 +35,17 @@ function ConfirmResetPasswordForm() {
 
     if (!token) {
       setStatus("error");
-      setError("The password reset link is invalid. Please request a new one.");
+      setError((t as any)("invalidResetLink"));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("Password confirmation does not match.");
+      setError((t as any)("passwordMismatch"));
       return;
     }
 
     if (!isPasswordStrongEnough(newPassword)) {
-      setError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters and include an uppercase letter, a number, and a special character.`);
+      setError((t as any)("passwordTooWeak"));
       return;
     }
 
@@ -53,12 +56,13 @@ function ConfirmResetPasswordForm() {
       setStatus("success");
     } catch {
       setStatus("error");
-      setError("The token is invalid or has expired. Please request a new password reset link.");
+      setError((t as any)("resetLinkExpired"));
     }
   };
 
   return (
-    <AuthShell title="Set New Password" description="Choose a strong password to secure your account.">
+    <AuthShell title={(t as any)("setNewPasswordTitle")} description={(t as any)("setNewPasswordDesc")}>
+  
       {status === "success" ? (
         <div className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
@@ -66,26 +70,48 @@ function ConfirmResetPasswordForm() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-slate-900">Password updated</h3>
-          <p className="mt-2 text-sm text-slate-600">Your password has been reset successfully.</p>
-          <Button onClick={() => router.push("/auth/login")} className="mt-6 w-full" size="lg">Go to Login</Button>
+          <h3 className="text-lg font-semibold text-slate-900">{(t as any)("passwordUpdated")}</h3>
+          <p className="mt-2 text-sm text-slate-600">{(t as any)("passwordResetSuccess")}</p>
+          <Button onClick={() => router.push("/auth/login")} className="mt-6 w-full" size="lg">
+            {(t as any)("goToLogin")}
+          </Button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
-          {(error || isInvalidToken) ? <StatusMessage tone="error">{error || "The password reset link is invalid. Please request a new one."}</StatusMessage> : null}
+          {(error || isInvalidToken) ? (
+            <StatusMessage tone="error">
+              {error || (t as any)("invalidResetLink")}
+            </StatusMessage>
+          ) : null}
 
           <div>
-            <label className="mb-1 block text-sm font-semibold text-slate-700">New Password</label>
+            <label className="mb-1 block text-sm font-semibold text-slate-700">{t("newPassword")}</label>
             <div className="relative">
-              <Input type={showNew ? "text" : "password"} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Minimum 8 characters" className="pr-10" required disabled={isInvalidToken} />
+              <Input 
+                type={showNew ? "text" : "password"} 
+                value={newPassword} 
+                onChange={(event) => setNewPassword(event.target.value)} 
+                placeholder={(t as any)("min8Chars")} 
+                className="pr-10" 
+                required 
+                disabled={isInvalidToken} 
+              />
               <PasswordVisibilityButton open={showNew} onToggle={() => setShowNew((value) => !value)} />
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-semibold text-slate-700">Confirm Password</label>
+            <label className="mb-1 block text-sm font-semibold text-slate-700">{t("confirmPassword")}</label>
             <div className="relative">
-              <Input type={showConfirm ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter password" className="pr-10" required disabled={isInvalidToken} />
+              <Input 
+                type={showConfirm ? "text" : "password"} 
+                value={confirmPassword} 
+                onChange={(event) => setConfirmPassword(event.target.value)} 
+                placeholder={(t as any)("reEnterPassword")} 
+                className="pr-10" 
+                required 
+                disabled={isInvalidToken} 
+              />
               <PasswordVisibilityButton open={showConfirm} onToggle={() => setShowConfirm((value) => !value)} />
             </div>
           </div>
@@ -104,16 +130,22 @@ function ConfirmResetPasswordForm() {
               </div>
             ))}
             <p className={`text-xs ${strength <= 1 ? "text-rose-600" : strength === 2 ? "text-amber-600" : strength === 3 ? "text-cyan-700" : "text-emerald-700"}`}>
-              Strength: {strength === 0 ? "" : strength === 1 ? "Weak" : strength === 2 ? "Fair" : strength === 3 ? "Good" : "Strong"}
+              {(t as any)("passwordStrength")}: {
+                strength === 0 ? "" : 
+                strength === 1 ? (t as any)("strengthWeak") : 
+                strength === 2 ? (t as any)("strengthFair") : 
+                strength === 3 ? (t as any)("strengthGood") : 
+                (t as any)("strengthStrong")
+              }
             </p>
           </div>
 
           <Button type="submit" disabled={status === "loading" || isInvalidToken} className="w-full" size="lg">
-            {status === "loading" ? "Processing..." : "Reset Password"}
+            {status === "loading" ? (t as any)("processing") : (t as any)("resetPasswordBtn")}
           </Button>
 
           <button type="button" onClick={() => router.push("/auth/login")} className="w-full text-sm font-medium text-slate-600 transition hover:text-slate-900">
-            Back to Login
+            {(t as any)("backToLogin")}
           </button>
         </form>
       )}
@@ -123,7 +155,13 @@ function ConfirmResetPasswordForm() {
 
 export default function ConfirmResetPasswordPage() {
   return (
-    <Suspense fallback={<AuthShell title="Set New Password" description="Choose a strong password to secure your account."><div className="text-center text-sm text-slate-600">Loading reset link...</div></AuthShell>}>
+    <Suspense 
+      fallback={
+        <AuthShell title="Set New Password" description="Choose a strong password to secure your account.">
+          <div className="text-center text-sm text-slate-600">Loading reset link...</div>
+        </AuthShell>
+      }
+    >
       <ConfirmResetPasswordForm />
     </Suspense>
   );

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Panel from "@/components/ui/panel";
 import DeviceLocationMap from "@/components/layout/device-location-map";
 import { unwrapListPayload, getListCount } from "@/lib/admin-utils";
@@ -13,6 +14,7 @@ import { notificationsAdminApi } from "@/services/api/notifications-admin";
 import { usersAdminApi } from "@/services/api/users-admin";
 import { tenantsAdminApi } from "@/services/api/tenants-admin";
 import { usersApi } from "@/services/api/users";
+import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 import type { DeviceDto } from "@/types/device";
 import type { NotificationDto } from "@/types/notification";
 import type { BaseResponse, PagedPayload } from "@/types/core";
@@ -46,6 +48,9 @@ const resolveCmsRole = (candidateRole?: string | null) => {
 };
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { t } = useLanguage(); // GỌI HOOK
+  
   const [role, setRole] = useState<"super_admin" | "admin" | "user" | null>(null);
   const [stats, setStats] = useState<Stats>({
     users: 0,
@@ -109,7 +114,7 @@ export default function DashboardPage() {
         }
       } catch (loadError) {
         if (cancelled) return;
-        setError(loadError instanceof Error ? loadError.message : "Oops! We couldn't load your dashboard right now.");
+        setError(loadError instanceof Error ? loadError.message : (t as any)("dashboardLoadErrorUser"));
         setMapDevices([]);
       }
     };
@@ -143,7 +148,7 @@ export default function DashboardPage() {
         });
         setMapDevices(deviceList);
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Oops! We couldn't load your dashboard statistics right now.");
+        setError(loadError instanceof Error ? loadError.message : (t as any)("dashboardLoadErrorAdmin"));
       }
     };
 
@@ -166,20 +171,20 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [role]);
+  }, [role, t]);
 
   if (role === "user") {
     const deviceCount = mapDevices.length;
     const onlineCount = mapDevices.filter((device) => String(device.status).toUpperCase() === "ONLINE").length;
     const offlineCount = deviceCount - onlineCount;
-    const fullName = userProfile?.name?.trim() || "Your account";
+    const fullName = userProfile?.name?.trim() || (t as any)("yourAccount");
 
     return (
       <div className="space-y-4">
         {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-          <Panel title="My Account" subtitle="Avatar and profile overview">
+          <Panel title={(t as any)("myAccount")} subtitle={(t as any)("profileOverview")}>
             <div className="flex flex-col items-center text-center">
               <div className="relative h-24 w-24 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
                 {userProfile?.avatarUrl ? (
@@ -201,26 +206,32 @@ export default function DashboardPage() {
                 href="/settings"
                 className="mt-4 rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110"
               >
-                Edit Profile
+                {(t as any)("editProfile")}
               </Link>
             </div>
           </Panel>
 
-          <Panel title="My Devices" subtitle="Live device map and location overview">
+          <Panel title={(t as any)("myDevices")} subtitle={(t as any)("myDevicesSubtitle")}>
             <div style={{ height: 520 }}>
-              <DeviceLocationMap devices={mapDevices} className="w-full" />
+              <DeviceLocationMap
+                devices={mapDevices}
+                className="w-full h-full"
+                onDeviceClick={(device) => {
+                  router.push(`/devices?deviceId=${encodeURIComponent(device.id)}`);
+                }}
+              />
             </div>
           </Panel>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <Panel title="My Devices">
+          <Panel title={(t as any)("myDevices")}>
             <p className="text-3xl font-semibold text-foreground">{deviceCount}</p>
           </Panel>
-          <Panel title="Online">
+          <Panel title={(t as any)("onlineStatus")}>
             <p className="text-3xl font-semibold text-foreground">{onlineCount}</p>
           </Panel>
-          <Panel title="Offline">
+          <Panel title={(t as any)("offlineStatus")}>
             <p className="text-3xl font-semibold text-foreground">{offlineCount}</p>
           </Panel>
         </div>
@@ -228,38 +239,38 @@ export default function DashboardPage() {
     );
   }
 
+  // Chuyển mảng cards sang dùng object id để filter an toàn thay vì label
   const cards = [
-    { label: "Active Users", value: stats.users },
-    { label: "InnoEco Devices", value: stats.devices },
-    { label: "Partner Organizations", value: stats.tenants },
-    { label: "Unread Alerts", value: stats.unreadNotifications },
+    { id: "users", label: (t as any)("activeUsers"), value: stats.users },
+    { id: "devices", label: (t as any)("innoecoDevices"), value: stats.devices },
+    { id: "tenants", label: (t as any)("partnerOrganizations"), value: stats.tenants },
+    { id: "alerts", label: (t as any)("unreadAlerts"), value: stats.unreadNotifications },
   ].filter((card) => {
     if (role === "admin") {
-      return ["Active Users", "InnoEco Devices", "Unread Alerts"].includes(card.label);
+      return ["users", "devices", "alerts"].includes(card.id);
     }
-
     return true;
   });
 
   const notes = [
     {
-      title: "InnoEco Store",
-      body: "Manage product listings, categories, and the overall lifecycle of items visible to your customers.",
+      title: (t as any)("noteStoreTitle"),
+      body: (t as any)("noteStoreBody"),
       visibleTo: ["super_admin"],
     },
     {
-      title: "Orders & Fulfillment",
-      body: "Keep track of customer orders from the moment they check out to successful delivery.",
+      title: (t as any)("noteOrdersTitle"),
+      body: (t as any)("noteOrdersBody"),
       visibleTo: ["super_admin"],
     },
     {
-      title: "InnoEco Fleet Status",
-      body: "Easily monitor the health, location, and telemetry of all connected InnoEco devices.",
+      title: (t as any)("noteFleetTitle"),
+      body: (t as any)("noteFleetBody"),
       visibleTo: ["super_admin", "admin"],
     },
     {
-      title: "System Alerts",
-      body: "Stay on top of important updates, user activities, and centralized alerts in real-time.",
+      title: (t as any)("noteAlertsTitle"),
+      body: (t as any)("noteAlertsBody"),
       visibleTo: ["super_admin", "admin"],
     },
   ].filter((item) => item.visibleTo.includes(role ?? "admin"));
@@ -270,19 +281,19 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => (
-          <Panel key={card.label} title={card.label}>
+          <Panel key={card.id} title={card.label}>
             <p className="text-3xl font-semibold text-foreground">{card.value}</p>
           </Panel>
         ))}
       </div>
 
-      <Panel title="InnoEco Device Map" subtitle="Real-time locations of your deployed InnoEco devices">
+      <Panel title={(t as any)("deviceMapTitle")} subtitle={(t as any)("deviceMapSubtitle")}>
         <div style={{ height: 520 }}>
-          <DeviceLocationMap devices={mapDevices} className="w-full" />
+          <DeviceLocationMap devices={mapDevices} className="w-full h-full" />
         </div>
       </Panel>
 
-      <Panel title="Operational Guidelines" subtitle="A quick overview of how platform data is managed within your admin hub">
+      <Panel title={(t as any)("operationalGuidelines")} subtitle={(t as any)("operationalGuidelinesSubtitle")}>
         <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-2">
           {notes.map((item) => (
             <div key={item.title} className="rounded-xl border border-slate-200 bg-slate-50 p-3">

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import { useLanguage } from '@/lib/language'; // IMPORT HOOK NGÔN NGỮ
 
 export type LocationValue = {
   latitude: number;
@@ -24,8 +26,8 @@ type LocationPickerMapProps = {
 };
 
 const FALLBACK_CENTER = {
-  lat: 21.0285,
-  lng: 105.8542,
+  lat: 21.0056, 
+  lng: 105.8434,
 };
 
 export function LocationPickerMap({
@@ -36,6 +38,8 @@ export function LocationPickerMap({
   defaultZoom = 11,
 }: LocationPickerMapProps) {
   const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+  const { t } = useLanguage(); // GỌI HOOK
+  
   const [addressQuery, setAddressQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -57,7 +61,7 @@ export function LocationPickerMap({
     );
 
     if (!response.ok) {
-      throw new Error('Address lookup failed');
+      throw new Error((t as any)('addressLookupFailed'));
     }
 
     const result = (await response.json()) as {
@@ -78,7 +82,7 @@ export function LocationPickerMap({
       })
       .filter((item): item is AddressSuggestion => item !== null)
       .slice(0, 3);
-  }, [accessToken]);
+  }, [accessToken, t]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -217,7 +221,7 @@ export function LocationPickerMap({
       if (mappedSuggestions.length === 0) {
         setSuggestions([]);
         setHighlightedSuggestionIndex(-1);
-        setHelperMessage('No matching address found. Please try another keyword.');
+        setHelperMessage((t as any)('noMatchingAddress'));
         return;
       }
 
@@ -229,7 +233,7 @@ export function LocationPickerMap({
     } catch {
       setSuggestions([]);
       setHighlightedSuggestionIndex(-1);
-      setHelperMessage('Cannot search this address right now.');
+      setHelperMessage((t as any)('cannotSearchAddress'));
     } finally {
       setIsSearching(false);
     }
@@ -237,7 +241,7 @@ export function LocationPickerMap({
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
-      setHelperMessage('Geolocation is not supported by this browser.');
+      setHelperMessage((t as any)('geolocationNotSupported'));
       return;
     }
 
@@ -252,11 +256,11 @@ export function LocationPickerMap({
         const latitude = Number(position.coords.latitude.toFixed(6));
         const longitude = Number(position.coords.longitude.toFixed(6));
         applyLocation(longitude, latitude);
-        setHelperMessage('Using your current location.');
+        setHelperMessage((t as any)('usingCurrentLocation'));
         setIsLocating(false);
       },
       () => {
-        setHelperMessage('Cannot access your current location. Please allow location permission.');
+        setHelperMessage((t as any)('cannotAccessLocation'));
         setIsLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10000 },
@@ -267,7 +271,7 @@ export function LocationPickerMap({
     return (
       <div className={className ?? ''}>
         <div className="flex h-full w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-center text-xs text-slate-600">
-          Missing NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN.
+          {(t as any)('missingMapboxToken')}
         </div>
       </div>
     );
@@ -332,7 +336,7 @@ export function LocationPickerMap({
                 setHighlightedSuggestionIndex(-1);
               }
             }}
-            placeholder="Search address (house number, street...)"
+            placeholder={(t as any)('searchAddressPlaceholder')}
             className="h-8 flex-1 rounded-md border border-slate-300 px-2 text-xs text-slate-700 outline-none focus:border-emerald-500"
           />
           <button
@@ -342,18 +346,18 @@ export function LocationPickerMap({
             }}
             disabled={isSearching || !addressQuery.trim()}
             className="h-8 rounded-md bg-emerald-600 px-2.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-            title="Search address"
-            aria-label="Search address"
+            title={(t as any)('searchAddressTooltip')}
+            aria-label={(t as any)('searchAddressTooltip')}
           >
-            {isSearching ? '...' : 'Find'}
+            {isSearching ? '...' : (t as any)('findAddressBtn')}
           </button>
           <button
             type="button"
             onClick={handleUseCurrentLocation}
             disabled={isLocating}
             className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed"
-            title="Use current location"
-            aria-label="Use current location"
+            title={(t as any)('useCurrentLocationTooltip')}
+            aria-label={(t as any)('useCurrentLocationTooltip')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3" />

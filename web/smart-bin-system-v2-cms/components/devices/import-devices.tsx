@@ -4,8 +4,15 @@ import { useState } from "react";
 import * as XLSX from "xlsx";
 import { emitToast } from "@/lib/toast";
 import { devicesAdminApi } from "@/services/api/devices-admin";
+import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 
-type DeviceImportItem = { mac: string; claimCode: string };
+type DeviceImportItem = { 
+  mac: string; 
+  claimCode: string;
+  name?: string;
+  lat?: number;
+  lon?: number;
+};
 
 type ImportResultItem = { mac?: unknown; status?: unknown; message?: unknown };
 
@@ -30,6 +37,8 @@ const extractImportResults = (data: unknown): ImportResultItem[] => {
 };
 
 export default function ImportDevicesPanel({ onImported }: { onImported?: () => void }) {
+  const { t } = useLanguage(); // GỌI HOOK
+  
   const [fileName, setFileName] = useState<string | null>(null);
   const [preview, setPreview] = useState<DeviceImportItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +57,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
       const items: DeviceImportItem[] = [];
 
       if (rows.length === 0) {
-        setError("Oops! This file looks empty.");
+        setError((t as any)("importEmptyFile"));
         setPreview([]);
         return;
       }
@@ -57,26 +66,45 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
       if (rows.length > 0 && typeof rows[0] === "object" && !Array.isArray(rows[0])) {
         const first = rows[0] as Record<string, unknown>;
         const keys = Object.keys(first);
+        
+        // Regex để tìm tên cột tương ứng
         const macKey = keys.find((k) => /mac|ma[cC]|mac_address|macaddress/.test(k.toLowerCase()));
         const claimCodeKey = keys.find((k) => /claim[_\s-]?code|claimcode|activation[_\s-]?code|code[_\s-]?claim/.test(k.toLowerCase()));
+        const nameKey = keys.find((k) => /name|device[_\s-]?name/.test(k.toLowerCase()));
+        const latKey = keys.find((k) => /lat|latitude/.test(k.toLowerCase()));
+        const lonKey = keys.find((k) => /lon|lng|longitude/.test(k.toLowerCase()));
 
         for (const r of rows as Record<string, unknown>[]) {
-          const mac = macKey ? String((r as Record<string, unknown>)[macKey] ?? "").trim() : "";
-          const claimCode = claimCodeKey ? String((r as Record<string, unknown>)[claimCodeKey] ?? "").trim() : "";
-          if (mac && claimCode) items.push({ mac, claimCode });
+          const mac = macKey ? String(r[macKey] ?? "").trim() : "";
+          const claimCode = claimCodeKey ? String(r[claimCodeKey] ?? "").trim() : "";
+          const name = nameKey ? String(r[nameKey] ?? "").trim() : undefined;
+          
+          const rawLat = latKey ? r[latKey] : undefined;
+          const rawLon = lonKey ? r[lonKey] : undefined;
+          
+          const lat = rawLat !== undefined && rawLat !== "" && !isNaN(Number(rawLat)) ? Number(rawLat) : undefined;
+          const lon = rawLon !== undefined && rawLon !== "" && !isNaN(Number(rawLon)) ? Number(rawLon) : undefined;
+
+          if (mac && claimCode) {
+            items.push({ mac, claimCode, name, lat, lon });
+          }
         }
       } else {
-        // Rows are arrays, treat as [mac, claimCode]
+        // Rows are arrays (Fallback cho file không có header chuẩn)
         for (const r of rows as unknown[]) {
           const arr = Array.isArray(r) ? (r as unknown[]) : Object.values(r as Record<string, unknown>);
           const mac = String(arr[0] ?? "").trim();
           const claimCode = String(arr[1] ?? "").trim();
-          if (mac && claimCode) items.push({ mac, claimCode });
+          const name = arr[2] ? String(arr[2]).trim() : undefined;
+          const lat = arr[3] && !isNaN(Number(arr[3])) ? Number(arr[3]) : undefined;
+          const lon = arr[4] && !isNaN(Number(arr[4])) ? Number(arr[4]) : undefined;
+          
+          if (mac && claimCode) items.push({ mac, claimCode, name, lat, lon });
         }
       }
 
       if (items.length === 0) {
-        setError("We couldn't find any valid data. Please ensure your file has two columns: MAC and Claim Code.");
+        setError((t as any)("importInvalidData"));
         setPreview([]);
         return;
       }
@@ -95,13 +123,16 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
   };
 
   const doImport = async () => {
-    if (preview.length === 0) return setError("No devices to import");
+    if (preview.length === 0) return setError((t as any)("importNoDevices"));
     setLoading(true);
     try {
       const response = await devicesAdminApi.importDevices({
         devices: preview.map((p) => ({
           mac: p.mac,
           claimCode: p.claimCode,
+          name: p.name,
+          latitude: p.lat,
+          longitude: p.lon,
         })),
       });
 
@@ -114,10 +145,13 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
         const previewMacs = failedMacs.slice(0, 10).join(", ");
         const suffix = failedMacs.length > 10 ? `, ... (+${failedMacs.length - 10})` : "";
         const detail = previewMacs ? `: ${previewMacs}${suffix}` : "";
-        emitToast(`Import finished, but ${failed.length} devices failed to import${detail}.`, "error");
-        setError(`${failed.length} devices failed to import.`);
+        
+        const failedMsg = (t as any)("importFailedPartial").replace("{count}", String(failed.length));
+        emitToast(`${failedMsg} ${detail}`, "error");
+        setError(failedMsg);
       } else {
-        emitToast(`Successfully imported ${preview.length} InnoEco devices!`, "success");
+        const successMsg = (t as any)("importSuccess").replace("{count}", String(preview.length));
+        emitToast(successMsg, "success");
         setError(null);
       }
 
@@ -135,7 +169,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
 
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-slate-700">Import InnoEco Devices (CSV / XLSX)</label>
+      <label className="block text-sm font-medium text-slate-700">{(t as any)("importLabel")}</label>
       <div className="flex items-center gap-2">
         <input
           type="file"
@@ -143,26 +177,34 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
           onChange={(e) => handleFile(e.target.files)}
           className="text-sm"
         />
-        <span className="text-sm text-slate-500">{fileName ?? "No file selected yet"}</span>
+        <span className="text-sm text-slate-500">{fileName ?? (t as any)("noFileSelected")}</span>
       </div>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
       {preview.length > 0 ? (
         <div className="rounded-md border border-slate-200 p-2">
-          <div className="text-sm text-slate-600">Preview ({preview.length} devices). Showing the first 200.</div>
+          <div className="text-sm text-slate-600">
+            {(t as any)("importPreviewText").replace("{count}", String(preview.length))}
+          </div>
           <div className="mt-2 overflow-x-auto max-h-56">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-max">
               <thead>
                 <tr className="text-left text-slate-600">
-                  <th className="py-1">MAC Address</th>
-                  <th className="py-1">Claim Code</th>
+                  <th className="py-1 pr-4">{(t as any)("deviceName")}</th>
+                  <th className="py-1 pr-4">{(t as any)("macAddress")}</th>
+                  <th className="py-1 pr-4">{(t as any)("claimCode")}</th>
+                  <th className="py-1 pr-4">{(t as any)("latitude")}</th>
+                  <th className="py-1">{(t as any)("longitude")}</th>
                 </tr>
               </thead>
               <tbody>
                 {preview.slice(0, 200).map((p, idx) => (
                   <tr key={idx} className="border-t border-slate-100">
-                    <td className="py-1 font-medium">{p.mac}</td>
-                    <td className="py-1 text-slate-600">{p.claimCode}</td>
+                    <td className="py-1 pr-4 text-slate-800">{p.name || "-"}</td>
+                    <td className="py-1 pr-4 font-medium">{p.mac}</td>
+                    <td className="py-1 pr-4 text-slate-600">{p.claimCode}</td>
+                    <td className="py-1 pr-4 text-slate-500">{p.lat ?? "-"}</td>
+                    <td className="py-1 text-slate-500">{p.lon ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -171,22 +213,22 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
           <div className="mt-2 flex gap-2">
             <button
               type="button"
-              className="rounded-xl bg-sky-700 px-3 py-1 text-sm font-semibold text-white"
+              className="rounded-xl bg-sky-700 px-3 py-1 text-sm font-semibold text-white hover:bg-sky-800 transition-colors"
               onClick={doImport}
               disabled={loading}
             >
-              {loading ? "Importing..." : "Import Devices"}
+              {loading ? (t as any)("importing") : (t as any)("importDevicesBtn")}
             </button>
             <button
               type="button"
-              className="rounded-xl border border-slate-200 px-3 py-1 text-sm"
+              className="rounded-xl border border-slate-200 px-3 py-1 text-sm hover:bg-slate-50 transition-colors"
               onClick={() => {
                 setPreview([]);
                 setFileName(null);
                 setError(null);
               }}
             >
-              Cancel
+              {t("cancel")}
             </button>
           </div>
         </div>
