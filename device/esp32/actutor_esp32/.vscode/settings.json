@@ -1,8 +1,7 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
   "idf.openOcdConfigs": [
-    "interface/ftdi/esp32_devkitj_v1.cfg",
-    "target/esp32s3.cfg"
+    "board/esp32s3-bridge.cfg"
   ],
   "idf.currentSetup": "d:\\Embedded\\ESP\\esp\\v5.3\\esp-idf",
   "idf.customExtraVars": {
