@@ -96,7 +96,11 @@ class DetectionWorker(QThread):
         self.images_dir = APP_CONFIG.paths.detection_images_dir
         self.images_dir.mkdir(parents=True, exist_ok=True)
 
-        self.cap: cv2.VideoCapture | None = None
+        self.cap = cv2.VideoCapture(1, cv2.CAP_V4L2)
+
+        if not self.cap.isOpened():
+            self.logger.error("Camera not avaialble", )
+
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
             history=50, varThreshold=100, detectShadows=False
         )
@@ -104,10 +108,10 @@ class DetectionWorker(QThread):
         self._state = _DetectionState()
         self._last_state_log_at = 0.0
 
-        self.picam2 = Picamera2()
-        config = self.picam2.create_video_configuration({"size": (640, 640)})
-        self.picam2.configure(config)
-        self.picam2.start()
+        # self.picam2 = Picamera2()
+        # config = self.picam2.create_video_configuration({"size": (640, 640)})
+        # self.picam2.configure(config)
+        # self.picam2.start()
 
     # ------------------------------------------------------------------
     # QThread entry point
@@ -132,7 +136,9 @@ class DetectionWorker(QThread):
                 time.sleep(cfg.pause_sleep_seconds)
                 continue
 
-            frame = self.picam2.capture_array()
+            # frame = self.picam2.capture_array()
+            ret, frame = self.cap.read()
+
             # Kiểm tra xem camera có trả về ảnh trống không
             if frame is None or frame.size == 0:
                 self.logger.warning("Lỗi: Camera trả về frame rỗng!")
@@ -158,9 +164,9 @@ class DetectionWorker(QThread):
             have_motion = motion_pixels > cfg.motion_threshold
 
             now = time.time()
-            self.logger.info(
-                f"[THÔNG SỐ] Pixel chuyển động: {motion_pixels}/{cfg.motion_threshold} -> Motion: {have_motion}"
-            )
+            # self.logger.info(
+            #     f"[THÔNG SỐ] Pixel chuyển động: {motion_pixels}/{cfg.motion_threshold} -> Motion: {have_motion}"
+            # )
 
             # --- Logic State Machine (CÓ LỌC NHIỄU FRAME) ---
 
@@ -171,14 +177,14 @@ class DetectionWorker(QThread):
                 # Yêu cầu ít nhất 3 frame liên tiếp có chuyển động (Chống nhiễu ánh sáng/lỗi camera)
                 if self._state.motion_frames_count >= 5:
                     if not self._state.trash_falling:
-                        self.logger.info("[STATE 1] -> XÁC NHẬN CÓ RÁC RƠI (Đã đủ 3 frame chuyển động liên tục).")
+                        # self.logger.info("[STATE 1] -> XÁC NHẬN CÓ RÁC RƠI (Đã đủ 3 frame chuyển động liên tục).")
                         self._state.trash_falling = True
-                    else:
-                        self.logger.info("[STATE 2] -> Rác vẫn đang rơi...")
+                    # else:
+                        # self.logger.info("[STATE 2] -> Rác vẫn đang rơi...")
                     
                     self._state.stable_since = None
-                else:
-                    self.logger.info(f"[LỌC NHIỄU] -> Đang đếm frame chuyển động: {self._state.motion_frames_count}/3")
+                # else:
+                    # self.logger.info(f"[LỌC NHIỄU] -> Đang đếm frame chuyển động: {self._state.motion_frames_count}/3")
                 
                 continue
 
@@ -188,22 +194,22 @@ class DetectionWorker(QThread):
                 self._state.motion_frames_count = 0 
                 
                 if self._state.trash_falling:
-                    if self._state.stable_since is None:
-                        self.logger.info("[STATE 3] -> Đã hết chuyển động! Bắt đầu đếm ngược thời gian chờ ổn định.")
+                    # if self._state.stable_since is None:
+                        # self.logger.info("[STATE 3] -> Đã hết chuyển động! Bắt đầu đếm ngược thời gian chờ ổn định.")
                     self._state.start_stability_window(now)
 
             # 3. KIỂM TRA THỜI GIAN ỔN ĐỊNH
             if not self._state.should_classify(now):
                 if self._state.trash_falling:
                     thoi_gian_doi = now - self._state.stable_since
-                    self.logger.info(f"[STATE 4] -> Đang chờ rác nằm yên... ({thoi_gian_doi:.2f}s / {cfg.stable_seconds}s)")
+                    # self.logger.info(f"[STATE 4] -> Đang chờ rác nằm yên... ({thoi_gian_doi:.2f}s / {cfg.stable_seconds}s)")
                 continue
 
             # --- Gate 3: cooldown ---
             if self._state.in_cooldown(now):
                 continue
 
-            self.logger.info("[STATE 5] -> VƯỢT QUA CÁC ĐIỀU KIỆN! GỌI MODEL CLASSIFICATION NGAY BÂY GIỜ!")
+            # self.logger.info("[STATE 5] -> VƯỢT QUA CÁC ĐIỀU KIỆN! GỌI MODEL CLASSIFICATION NGAY BÂY GIỜ!")
             # --- Classify ---
             self._run_classification(frame, now)
 
