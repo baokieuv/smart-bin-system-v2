@@ -1,12 +1,12 @@
 server:
-  port: ${NOTI_SERVICE_PORT:8080}
+  port: ${NOTI_SERVICE_PORT:2107}
 
 spring:
   application:
     name: noti-service
 
   datasource:
-    url: ${NOTI_DB_URL:jdbc:mariadb://localhost:3306/smart-bin-noti}
+    url: ${NOTI_DB_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
     username: ${NOTI_DB_USER:admin}
     password: ${NOTI_DB_PASS:admin}
     driver-class-name: org.mariadb.jdbc.Driver

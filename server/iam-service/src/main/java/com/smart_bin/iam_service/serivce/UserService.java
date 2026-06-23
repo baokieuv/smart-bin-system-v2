@@ -275,13 +275,15 @@ public class UserService {
         }
 
         boolean needSyncKeycloakInfo = false;
-        boolean needSyncKeycloakState = false;
+        Map<String, String> attributesToUpdate = new HashMap<>();
 
+        // 1. Cập nhật Tên
         if (request.name() != null && !request.name().isBlank()) {
             targetUser.setName(request.name().trim());
             needSyncKeycloakInfo = true;
         }
 
+        // 2. Cập nhật Avatar URL
         if (request.avatarUrl() != null && !request.avatarUrl().isBlank()) {
             if (!request.avatarUrl().startsWith("https://s3.kvbhust.id.vn")) {
                 throw new ApiException(UserErrorCode.INVALID_AVATAR_URL);
@@ -289,6 +291,7 @@ public class UserService {
             targetUser.setAvatarUrl(request.avatarUrl());
         }
 
+        // 3. Cập nhật Trạng thái (State)
         if (request.state() != null && targetUser.getState() != request.state()) {
             UserState newState = request.state();
 
@@ -303,25 +306,27 @@ public class UserService {
             }
 
             targetUser.setState(newState);
-            needSyncKeycloakState = true;
+            attributesToUpdate.put("user_state", newState.name());
         }
 
-        User savedUser = userRepository.save(targetUser);
-
-        if (needSyncKeycloakInfo) {
-            keycloakService.updateUserInfo(targetUser.getKeycloakId(), targetUser.getName());
-        }
-
-        Map<String, String> attributesToUpdate = new HashMap<>();
-        if (needSyncKeycloakState) {
-            attributesToUpdate.put("user_state", targetUser.getState().name());
-        }
-
+        // 4. Cập nhật Quyền (Permissions) vào Entity và chuẩn bị cho Keycloak
         if (request.devicePermissions() != null) {
+            // Lưu vào Database
+            targetUser.setDevicePermissions(request.devicePermissions());
+
+            // Chuẩn bị chuỗi sync lên Keycloak
             String permsStr = request.devicePermissions().stream()
                     .map(Enum::name)
                     .collect(Collectors.joining(","));
             attributesToUpdate.put("device_permissions", permsStr);
+        }
+
+        // 5. Lưu xuống Database sau khi đã map tất cả dữ liệu thay đổi
+        User savedUser = userRepository.save(targetUser);
+
+        // 6. Đồng bộ các thông tin thay đổi lên Keycloak
+        if (needSyncKeycloakInfo) {
+            keycloakService.updateUserInfo(targetUser.getKeycloakId(), targetUser.getName());
         }
 
         if (!attributesToUpdate.isEmpty()) {

@@ -36,7 +36,7 @@ public class Device extends BaseEntity {
     private DeviceState state;
 
     @Enumerated(EnumType.STRING)
-    private DeviceStatus status;
+    private DeviceStatus status = DeviceStatus.OFFLINE;
 
     @Column(columnDefinition = "TEXT")
     private String publicKey;

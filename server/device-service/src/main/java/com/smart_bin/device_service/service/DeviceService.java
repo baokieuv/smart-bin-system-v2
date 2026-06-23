@@ -116,6 +116,7 @@ public class DeviceService {
 
             targetDevice.setTenantId(tenantId);
             targetDevice.setDeviceGroup(defaultGroup);
+            targetDevice.setName(item.name() != null ? item.name() : "SmartBin-" + mac.replace(":", "").replace("-", ""));
 
             syncWithThingsBoard(targetDevice, mac);
 
