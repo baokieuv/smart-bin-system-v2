@@ -107,24 +107,6 @@ services:
     networks:
       - smart_bin_network
 
-  thingsboard-setup:
-    image: "thingsboard/tb-node:4.2.0"
-    container_name: thingsboard_setup
-    restart: "no" # Chỉ chạy 1 lần lúc khởi tạo
-    environment:
-      TB_SERVICE_ID: tb-ce-setup
-      DATABASE_TS_TYPE: sql 
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thingsboard
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER} 
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD} 
-      INSTALL_TB: "true"
-      LOAD_DEMO: "true"
-    depends_on:
-      - postgres
-    networks:
-      - smart_bin_network
-
-  # Cập nhật lại thingsboard-ce
   thingsboard-ce:
     restart: always
     image: "thingsboard/tb-node:4.2.0"
@@ -148,8 +130,6 @@ services:
     depends_on:
       postgres:
         condition: service_started
-      thingsboard-setup:
-        condition: service_completed_successfully
     networks:
       - smart_bin_network
 
