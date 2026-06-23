@@ -1,5 +1,6 @@
 package com.smart_bin.device_service.repository;
 
+import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.entity.Device;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -51,17 +52,17 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
     @Query("SELECT d FROM Device d WHERE d.active = true " +
             "AND (:targetTenantId IS NULL OR d.tenantId = :targetTenantId) " +
             "AND (:targetUserId IS NULL OR d.userId = :targetUserId) " +
-            "AND (:name IS NULL OR d.name LIKE %:name%) " +
+            "AND (:name IS NULL OR LOWER(d.name) LIKE LOWER(CONCAT('%', :name, '%'))) " + // Tối ưu: Search không phân biệt hoa thường
             "AND (:mac IS NULL OR d.mac = :mac) " +
             "AND (:state IS NULL OR d.state = :state) " +
-            "AND (:groupId IS NULL OR d.groupId = :groupId)")
+            "AND (:groupId IS NULL OR d.deviceGroup.id = :groupId)") // Đã FIX: gọi vào d.deviceGroup.id
     Page<Device> searchDevices(
             @Param("targetTenantId") String targetTenantId,
             @Param("targetUserId") String targetUserId,
             @Param("name") String name,
             @Param("mac") String mac,
-            @Param("state") String state,
-            @Param("groupId") String groupId,
+            @Param("state") DeviceState state,
+            @Param("groupId") UUID groupId,
             Pageable pageable
     );
 }

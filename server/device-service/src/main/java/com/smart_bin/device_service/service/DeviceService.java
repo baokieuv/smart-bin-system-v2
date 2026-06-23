@@ -176,7 +176,7 @@ public class DeviceService {
         }
 
         Page<Device> devices = repository.searchDevices(
-                targetTenantId, targetUserId, name, mac, state, groupId, pageable
+                targetTenantId, targetUserId, name, mac, DeviceState.valueOf(state), UUID.fromString(groupId), pageable
         );
 
         return devices.map(mapper::toDto);
