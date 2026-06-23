@@ -61,7 +61,7 @@ export function LocationPickerMap({
     );
 
     if (!response.ok) {
-      throw new Error((t as any)('addressLookupFailed'));
+      throw new Error(t('addressLookupFailed'));
     }
 
     const result = (await response.json()) as {
@@ -221,7 +221,7 @@ export function LocationPickerMap({
       if (mappedSuggestions.length === 0) {
         setSuggestions([]);
         setHighlightedSuggestionIndex(-1);
-        setHelperMessage((t as any)('noMatchingAddress'));
+        setHelperMessage(t('noMatchingAddress'));
         return;
       }
 
@@ -233,7 +233,7 @@ export function LocationPickerMap({
     } catch {
       setSuggestions([]);
       setHighlightedSuggestionIndex(-1);
-      setHelperMessage((t as any)('cannotSearchAddress'));
+      setHelperMessage(t('cannotSearchAddress'));
     } finally {
       setIsSearching(false);
     }
@@ -241,7 +241,7 @@ export function LocationPickerMap({
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
-      setHelperMessage((t as any)('geolocationNotSupported'));
+      setHelperMessage(t('geolocationNotSupported'));
       return;
     }
 
@@ -256,11 +256,11 @@ export function LocationPickerMap({
         const latitude = Number(position.coords.latitude.toFixed(6));
         const longitude = Number(position.coords.longitude.toFixed(6));
         applyLocation(longitude, latitude);
-        setHelperMessage((t as any)('usingCurrentLocation'));
+        setHelperMessage(t('usingCurrentLocation'));
         setIsLocating(false);
       },
       () => {
-        setHelperMessage((t as any)('cannotAccessLocation'));
+        setHelperMessage(t('cannotAccessLocation'));
         setIsLocating(false);
       },
       { enableHighAccuracy: true, timeout: 10000 },
@@ -271,7 +271,7 @@ export function LocationPickerMap({
     return (
       <div className={className ?? ''}>
         <div className="flex h-full w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-center text-xs text-slate-600">
-          {(t as any)('missingMapboxToken')}
+          {t('missingMapboxToken')}
         </div>
       </div>
     );
@@ -336,7 +336,7 @@ export function LocationPickerMap({
                 setHighlightedSuggestionIndex(-1);
               }
             }}
-            placeholder={(t as any)('searchAddressPlaceholder')}
+            placeholder={t('searchAddressPlaceholder')}
             className="h-8 flex-1 rounded-md border border-slate-300 px-2 text-xs text-slate-700 outline-none focus:border-emerald-500"
           />
           <button
@@ -346,18 +346,18 @@ export function LocationPickerMap({
             }}
             disabled={isSearching || !addressQuery.trim()}
             className="h-8 rounded-md bg-emerald-600 px-2.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-            title={(t as any)('searchAddressTooltip')}
-            aria-label={(t as any)('searchAddressTooltip')}
+            title={t('searchAddressTooltip')}
+            aria-label={t('searchAddressTooltip')}
           >
-            {isSearching ? '...' : (t as any)('findAddressBtn')}
+            {isSearching ? '...' : t('findAddressBtn')}
           </button>
           <button
             type="button"
             onClick={handleUseCurrentLocation}
             disabled={isLocating}
             className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed"
-            title={(t as any)('useCurrentLocationTooltip')}
-            aria-label={(t as any)('useCurrentLocationTooltip')}
+            title={t('useCurrentLocationTooltip')}
+            aria-label={t('useCurrentLocationTooltip')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3" />

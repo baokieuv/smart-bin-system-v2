@@ -46,7 +46,7 @@ export default function FirmwaresPage() {
 
   useEffect(() => {
     void load(page, size).catch((error) => {
-      setMessage(error instanceof Error ? error.message : (t as any)("loadFirmwaresError"));
+      setMessage(error instanceof Error ? error.message : t("loadFirmwaresError"));
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, page, size]);
@@ -56,12 +56,12 @@ export default function FirmwaresPage() {
     setMessage("");
 
     if (!file) {
-      setMessage((t as any)("selectFirmwareFile"));
+      setMessage(t("selectFirmwareFile"));
       return;
     }
 
     if (!isValidFirmwareFile(file)) {
-      setMessage(`${(t as any)("invalidFileType")} ${acceptedFilesText}`);
+      setMessage(`${t("invalidFileType")} ${acceptedFilesText}`);
       return;
     }
 
@@ -79,10 +79,10 @@ export default function FirmwaresPage() {
       console.log(`[FirmwareUpload] Upload successful`);
       setForm({ version: "", type: "ESP32", description: "" });
       setFile(null);
-      setMessage((t as any)("uploadFirmwareSuccess"));
+      setMessage(t("uploadFirmwareSuccess"));
       await load(page, size);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : (t as any)("uploadFirmwareError");
+      const errorMsg = error instanceof Error ? error.message : t("uploadFirmwareError");
       console.error(`[FirmwareUpload] Upload failed:`, error);
       setMessage(errorMsg);
     } finally {
@@ -108,10 +108,10 @@ export default function FirmwaresPage() {
     try {
       setDeleteLoadingId(id);
       await firmwaresAdminApi.deleteFirmware(id);
-      setMessage((t as any)("removePackageSuccess"));
+      setMessage(t("removePackageSuccess"));
       await load(page, size);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : (t as any)("removePackageError"));
+      setMessage(error instanceof Error ? error.message : t("removePackageError"));
     } finally {
       setDeleteLoadingId(null);
     }
@@ -120,11 +120,11 @@ export default function FirmwaresPage() {
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
       <Panel
-        title={(t as any)("firmwarePackagesTitle")}
-        subtitle={(t as any)("firmwarePackagesSubtitle")}
+        title={t("firmwarePackagesTitle")}
+        subtitle={t("firmwarePackagesSubtitle")}
         action={
           <button type="button" onClick={openUploadModal} className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-700">
-            {(t as any)("uploadUpdateBtn")}
+            {t("uploadUpdateBtn")}
           </button>
         }
       >
@@ -132,12 +132,12 @@ export default function FirmwaresPage() {
           <table className="w-full min-w-200 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2 px-3 whitespace-nowrap">{(t as any)("versionCol")}</th>
-                <th className="py-2 px-3 whitespace-nowrap">{(t as any)("targetPlatformCol")}</th>
-                <th className="py-2 px-3 whitespace-nowrap">{(t as any)("fileLinkCol")}</th>
-                <th className="py-2 px-3 whitespace-nowrap">{(t as any)("descriptionCol")}</th>
-                <th className="py-2 px-3 whitespace-nowrap">{(t as any)("dateAddedCol")}</th>
-                <th className="py-2 px-3 whitespace-nowrap">{(t as any)("actions")}</th>
+                <th className="py-2 px-3 whitespace-nowrap">{t("versionCol")}</th>
+                <th className="py-2 px-3 whitespace-nowrap">{t("targetPlatformCol")}</th>
+                <th className="py-2 px-3 whitespace-nowrap">{t("fileLinkCol")}</th>
+                <th className="py-2 px-3 whitespace-nowrap">{t("descriptionCol")}</th>
+                <th className="py-2 px-3 whitespace-nowrap">{t("dateAddedCol")}</th>
+                <th className="py-2 px-3 whitespace-nowrap">{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -165,7 +165,7 @@ export default function FirmwaresPage() {
                       disabled={deleteLoadingId === item.id}
                       className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition disabled:opacity-50"
                     >
-                      {deleteLoadingId === item.id ? (t as any)("removingBtn") : (t as any)("removeBtn")}
+                      {deleteLoadingId === item.id ? t("removingBtn") : t("removeBtn")}
                     </button>
                   </td>
                 </tr>
@@ -176,7 +176,7 @@ export default function FirmwaresPage() {
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
           <div className="text-slate-600">
-            {(t as any)("pageText")} {page} {(t as any)("ofText")} {totalPages}
+            {t("pageText")} {page} {t("ofText")} {totalPages}
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -189,7 +189,7 @@ export default function FirmwaresPage() {
             >
               {[10, 20, 50, 100].map((val) => (
                 <option key={val} value={val}>
-                  {val} {(t as any)("perPage")}
+                  {val} {t("perPage")}
                 </option>
               ))}
             </select>
@@ -199,7 +199,7 @@ export default function FirmwaresPage() {
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               type="button"
             >
-              {(t as any)("previousBtn")}
+              {t("previousBtn")}
             </button>
             <button
               className="rounded-lg border border-slate-200 px-3 py-1 transition hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -207,18 +207,18 @@ export default function FirmwaresPage() {
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               type="button"
             >
-              {(t as any)("nextBtn")}
+              {t("nextBtn")}
             </button>
           </div>
         </div>
       </Panel>
 
       {showUploadModal ? (
-        <Modal title={(t as any)("uploadModalTitle")} subtitle={(t as any)("uploadModalSubtitle")} onClose={closeUploadModal}>
+        <Modal title={t("uploadModalTitle")} subtitle={t("uploadModalSubtitle")} onClose={closeUploadModal}>
           <form onSubmit={onUpload} className="space-y-4">
             <input
               className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-sky-500 transition"
-              placeholder={(t as any)("versionPlaceholder")}
+              placeholder={t("versionPlaceholder")}
               value={form.version}
               onChange={(event) => setForm((v) => ({ ...v, version: event.target.value }))}
               required
@@ -230,13 +230,13 @@ export default function FirmwaresPage() {
               onChange={(event) => setForm((v) => ({ ...v, type: event.target.value }))}
               required
             >
-              <option value="ESP32">{(t as any)("esp32Option")}</option>
-              <option value="RASPBERRY_PI">{(t as any)("piOption")}</option>
+              <option value="ESP32">{t("esp32Option")}</option>
+              <option value="RASPBERRY_PI">{t("piOption")}</option>
             </select>
 
             <textarea
               className="h-32 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-sky-500 transition"
-              placeholder={(t as any)("releaseNotesPlaceholder")}
+              placeholder={t("releaseNotesPlaceholder")}
               value={form.description}
               onChange={(event) => setForm((v) => ({ ...v, description: event.target.value }))}
             />
@@ -256,10 +256,10 @@ export default function FirmwaresPage() {
                 required
                 className="w-full text-sm"
               />
-              <p className="text-xs text-slate-500">{(t as any)("allowedFormats")} {acceptedFilesText}</p>
+              <p className="text-xs text-slate-500">{t("allowedFormats")} {acceptedFilesText}</p>
               {file && (
                 <p className="text-xs text-slate-600">
-                  {(t as any)("selectedFileText")} {file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)
+                  {t("selectedFileText")} {file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)
                 </p>
               )}
             </div>
@@ -270,7 +270,7 @@ export default function FirmwaresPage() {
                 type="submit"
                 disabled={uploading}
               >
-                {uploading ? (t as any)("uploading") : (t as any)("uploadUpdateBtn")}
+                {uploading ? t("uploading") : t("uploadUpdateBtn")}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm transition hover:bg-slate-200" onClick={closeUploadModal}>
                 {t("cancel")}

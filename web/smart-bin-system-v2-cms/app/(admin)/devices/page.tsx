@@ -11,12 +11,12 @@ import { devicesAdminApi } from "@/services/api/devices-admin";
 import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
 import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
 import { usersAdminApi } from "@/services/api/users-admin";
-import type { DeviceDto } from "@/types/device";
+import type { DeviceDto, TelemetryPayload } from "@/types/device";
 import type { FirmwareDto } from "@/types/firmware";
 import type { UserDto } from "@/types/user";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
+import { useLanguage, type TranslationKey } from "@/lib/language"; 
 
 type RpcMethodOption = {
   method: string;
@@ -25,8 +25,7 @@ type RpcMethodOption = {
   description: string;
 };
 
-// Hàm trả về mảng option RPC đã được dịch
-const getRpcMethodOptions = (t: any): RpcMethodOption[] => [
+const getRpcMethodOptions = (t: (key: TranslationKey) => string): RpcMethodOption[] => [
   { method: "openLid", label: t("rpcOpenLid"), type: "TWO_WAY", description: t("rpcOpenLidDesc") },
   { method: "closeLid", label: t("rpcCloseLid"), type: "TWO_WAY", description: t("rpcCloseLidDesc") },
   { method: "lockBin", label: t("rpcLockBin"), type: "TWO_WAY", description: t("rpcLockBinDesc") },
@@ -40,7 +39,7 @@ const getRpcMethodOptions = (t: any): RpcMethodOption[] => [
   { method: "triggerOtaUpdate", label: t("rpcTriggerOtaUpdate"), type: "ONE_WAY", description: t("rpcTriggerOtaUpdateDesc") },
 ];
 
-const getRpcMethodOption = (method: string, t: any) => {
+const getRpcMethodOption = (method: string, t: (key: TranslationKey) => string) => {
   const options = getRpcMethodOptions(t);
   return options.find((option) => option.method === method) ?? options[0];
 };
@@ -111,17 +110,20 @@ const toLocationKey = (latitude?: number, longitude?: number) => {
   return `${Number(latitude).toFixed(6)},${Number(longitude).toFixed(6)}`;
 };
 
-const toCoordinateText = (latitude?: number, longitude?: number, t?: any) => {
+const toCoordinateText = (latitude?: number, longitude?: number, t?: (key: TranslationKey) => string) => {
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return t ? t("locationUnavailable") : "Location unavailable";
   return `${Number(latitude).toFixed(6)}, ${Number(longitude).toFixed(6)}`;
 };
 
-export default function DevicesPage() {
+// ==========================================
+// 1. EXTRACTED COMPONENT LOGIC
+// ==========================================
+function DevicesPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-  const { t } = useLanguage(); // GỌI HOOK TẠI ĐÂY
+  const { t } = useLanguage(); 
 
   const [devices, setDevices] = useState<DeviceDto[]>([]);
   const [firmwares, setFirmwares] = useState<FirmwareDto[]>([]);
@@ -153,7 +155,6 @@ export default function DevicesPage() {
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [selectedDevice, setSelectedDevice] = useState<DeviceDto | null>(null);
 
-  // Edit & Details State
   const [selectedDeviceDetails, setSelectedDeviceDetails] = useState<DeviceDto | null>(null);
   const [editDeviceLoading, setEditDeviceLoading] = useState(false);
   const [editDeviceMessage, setEditDeviceMessage] = useState("");
@@ -165,7 +166,6 @@ export default function DevicesPage() {
     fullThreshold: "",
   });
 
-  // Telemetry state (Integrated into Details Modal)
   const [telemetryLoading, setTelemetryLoading] = useState(false);
   const [telemetryHistory, setTelemetryHistory] = useState<Array<{ timestamp: number; fillLevel: number | null; throwCount: number | null; battery: number | null }>>([]);
   const [telemetryMessage, setTelemetryMessage] = useState("");
@@ -178,8 +178,7 @@ export default function DevicesPage() {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showControlModal, setShowControlModal] = useState(false);
   
-  // Khởi tạo method đầu tiên
-  const initialRpcMethod = getRpcMethodOptions(t as any)[0].method;
+  const initialRpcMethod = getRpcMethodOptions(t)[0].method;
   const [selectedRpcMethod, setSelectedRpcMethod] = useState(initialRpcMethod);
   const [rpcParamsText, setRpcParamsText] = useState(getDefaultRpcParams(initialRpcMethod));
   const [rpcMessage, setRpcMessage] = useState("");
@@ -214,7 +213,7 @@ export default function DevicesPage() {
   );
 
   const availableRpcOptions = useMemo(() => {
-    const rpcMethodOptions = getRpcMethodOptions(t as any);
+    const rpcMethodOptions = getRpcMethodOptions(t);
     if (role === "user") {
       const allowedMethods = ["openLid", "closeLid", "lockBin", "unlockBin", "forceSync"];
       return rpcMethodOptions.filter((option) => allowedMethods.includes(option.method));
@@ -242,7 +241,7 @@ export default function DevicesPage() {
   const formatTimeShort = (ts: number) =>
     new Date(ts).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-  const buildTelemetryHistory = useCallback((telemetries: Record<string, Array<{ ts: number; value: string }>>) => {
+  const buildTelemetryHistory = useCallback((telemetries: TelemetryPayload) => {
     const binKeys = ['bin1', 'bin2', 'bin3', 'bin4'];
     const binPoints = binKeys.flatMap((k) => telemetries[k] ?? []);
     const totalPoints = telemetries['total_waste_count'] ?? [];
@@ -333,7 +332,7 @@ export default function DevicesPage() {
 
   useEffect(() => {
     void loadFirmwares().catch(() => {
-      setConfigMessage((t as any)("loadFirmwareListError"));
+      setConfigMessage(t("loadFirmwareListError"));
     });
     void (async () => {
       try {
@@ -369,17 +368,17 @@ export default function DevicesPage() {
     event.preventDefault();
 
     if (!selectedDeviceIds.length) {
-      setAssignMessage((t as any)("selectDeviceFirst"));
+      setAssignMessage(t("selectDeviceFirst"));
       return;
     }
 
     if (assignMode === "group" && !assignGroupId) {
-      setAssignMessage((t as any)("chooseTargetGroup"));
+      setAssignMessage(t("chooseTargetGroup"));
       return;
     }
 
     if (assignMode === "user" && !assignUserId) {
-      setAssignMessage((t as any)("chooseTargetUser"));
+      setAssignMessage(t("chooseTargetUser"));
       return;
     }
 
@@ -396,7 +395,7 @@ export default function DevicesPage() {
         });
 
         const updatedCount = response.data?.length ?? selectedDevices.length;
-        setAssignMessage((t as any)("assignGroupSuccess").replace("{count}", String(updatedCount)));
+        setAssignMessage(t("assignGroupSuccess").replace("{count}", String(updatedCount)));
       } else {
         const response = await devicesAdminApi.assignDevicesToUser({
           userId: assignUserId,
@@ -408,13 +407,13 @@ export default function DevicesPage() {
         const failedCount = results.length - successCount;
         
         if (failedCount > 0) {
-          const msg = (t as any)("assignUserSuccessPartial")
+          const msg = t("assignUserSuccessPartial")
             .replace("{successCount}", String(successCount))
             .replace("{total}", String(results.length))
             .replace("{failedCount}", String(failedCount));
           setAssignMessage(msg);
         } else {
-          setAssignMessage((t as any)("assignUserSuccess").replace("{count}", String(successCount)));
+          setAssignMessage(t("assignUserSuccess").replace("{count}", String(successCount)));
         }
       }
 
@@ -423,7 +422,7 @@ export default function DevicesPage() {
       setAssignUserId("");
       await load(page, size);
     } catch (error) {
-      setAssignMessage(error instanceof Error ? error.message : (t as any)("assignmentFailed"));
+      setAssignMessage(error instanceof Error ? error.message : t("assignmentFailed"));
     } finally {
       setAssignLoading(false);
     }
@@ -437,22 +436,22 @@ export default function DevicesPage() {
     const normalizedName = form.name.trim();
 
     if (!MAC_PATTERN.test(normalizedMac)) {
-      setMessage((t as any)("invalidMacFormat"));
+      setMessage(t("invalidMacFormat"));
       return;
     }
 
     if (!CLAIM_CODE_PATTERN.test(normalizedClaimCode)) {
-      setMessage((t as any)("invalidClaimCode"));
+      setMessage(t("invalidClaimCode"));
       return;
     }
 
     if (!normalizedName) {
-      setMessage((t as any)("deviceNameRequired"));
+      setMessage(t("deviceNameRequired"));
       return;
     }
 
     if (!addLocation) {
-      setMessage((t as any)("invalidLocationSelected"));
+      setMessage(t("invalidLocationSelected"));
       return;
     }
 
@@ -469,7 +468,7 @@ export default function DevicesPage() {
       });
 
       if (!claimResponse.success || !claimResponse.data) {
-        setMessage(claimResponse.message || (t as any)("addDeviceError"));
+        setMessage(claimResponse.message || t("addDeviceError"));
         return;
       }
 
@@ -489,7 +488,7 @@ export default function DevicesPage() {
         });
 
         if (!updateResponse.success) {
-          setMessage(updateResponse.message || (t as any)("deviceConfigFailed"));
+          setMessage(updateResponse.message || t("deviceConfigFailed"));
           return;
         }
       }
@@ -503,11 +502,11 @@ export default function DevicesPage() {
         pollingInterval: "",
         fullThreshold: "",
       });
-      setMessage((t as any)("deviceAddedSuccess"));
+      setMessage(t("deviceAddedSuccess"));
       setShowQuickAddModal(false);
       await load(page, size);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : (t as any)("addDeviceError"));
+      setMessage(error instanceof Error ? error.message : t("addDeviceError"));
     } finally {
       setCreateLoading(false);
     }
@@ -564,16 +563,16 @@ export default function DevicesPage() {
 
       if (!response || !response.success || !response.data) {
         setTelemetryHistory([]);
-        setTelemetryMessage(response?.message || (t as any)("noTelemetryData"));
+        setTelemetryMessage(response?.message || t("noTelemetryData"));
         return;
       }
 
-      const history = buildTelemetryHistory(response.data as any);
+      const history = buildTelemetryHistory(response.data as TelemetryPayload);
       setTelemetryHistory(history);
-      if (history.length === 0) setTelemetryMessage((t as any)("noTelemetryPoints"));
+      if (history.length === 0) setTelemetryMessage(t("noTelemetryPoints"));
     } catch (err) {
       setTelemetryHistory([]);
-      setTelemetryMessage(err instanceof Error ? err.message : (t as any)("loadTelemetryError"));
+      setTelemetryMessage(err instanceof Error ? err.message : t("loadTelemetryError"));
     } finally {
       setTelemetryLoading(false);
     }
@@ -595,9 +594,9 @@ export default function DevicesPage() {
           return;
         }
 
-        setMessage((t as any)("loadDeviceError"));
+        setMessage(t("loadDeviceError"));
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : (t as any)("loadDeviceError"));
+        setMessage(error instanceof Error ? error.message : t("loadDeviceError"));
       }
     },
     [devices, openDeviceDetails, t],
@@ -618,7 +617,7 @@ export default function DevicesPage() {
 
     const loc = parseCoordinatePair(editDeviceForm.latitude, editDeviceForm.longitude);
     if (!loc && (editDeviceForm.latitude || editDeviceForm.longitude)) {
-      setEditDeviceMessage((t as any)("provideValidCoordinates"));
+      setEditDeviceMessage(t("provideValidCoordinates"));
       setEditDeviceLoading(false);
       return;
     }
@@ -634,7 +633,7 @@ export default function DevicesPage() {
         additionalAttributes: {},
       });
 
-      setEditDeviceMessage((t as any)("deviceDetailsUpdated"));
+      setEditDeviceMessage(t("deviceDetailsUpdated"));
       await load(page, size);
       
       setSelectedDeviceDetails(current => 
@@ -648,7 +647,7 @@ export default function DevicesPage() {
         } : null
       );
     } catch (error) {
-      setEditDeviceMessage(error instanceof Error ? error.message : (t as any)("updateDeviceDetailsError"));
+      setEditDeviceMessage(error instanceof Error ? error.message : t("updateDeviceDetailsError"));
     } finally {
       setEditDeviceLoading(false);
     }
@@ -690,7 +689,7 @@ export default function DevicesPage() {
       const fallbackDesktop = getLatestFirmware(firmwares.length > 0 ? firmwares : await loadFirmwares(), "RASPBERRY_PI")?.id || "";
       setConfigForm({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop });
       setConfigInitial({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop });
-      setConfigMessage(error instanceof Error ? error.message : (t as any)("loadCurrentConfigError"));
+      setConfigMessage(error instanceof Error ? error.message : t("loadCurrentConfigError"));
     } finally {
       setConfigLoading(false);
       setConfigFetchingId(null);
@@ -734,7 +733,7 @@ export default function DevicesPage() {
       try {
         parsedParams = JSON.parse(rpcParamsText);
       } catch {
-        setRpcMessage((t as any)("invalidJsonParams"));
+        setRpcMessage(t("invalidJsonParams"));
         return;
       }
     }
@@ -750,9 +749,9 @@ export default function DevicesPage() {
       });
 
       setRpcResponseText(JSON.stringify(response.data ?? response, null, 2));
-      setRpcMessage(response.message || (t as any)("commandSentSuccess"));
+      setRpcMessage(response.message || t("commandSentSuccess"));
     } catch (error) {
-      setRpcMessage(error instanceof Error ? error.message : (t as any)("sendCommandError"));
+      setRpcMessage(error instanceof Error ? error.message : t("sendCommandError"));
     } finally {
       setRpcLoading(false);
     }
@@ -773,7 +772,7 @@ export default function DevicesPage() {
     if (!selectedDevice) return;
 
     if (!isConfigDirty) {
-      setConfigMessage((t as any)("noChangesDetected"));
+      setConfigMessage(t("noChangesDetected"));
       return;
     }
 
@@ -810,9 +809,9 @@ export default function DevicesPage() {
           : current
       );
       setConfigInitial(configForm);
-      setConfigMessage((t as any)("targetVersionsUpdated"));
+      setConfigMessage(t("targetVersionsUpdated"));
     } catch (error) {
-      setConfigMessage(error instanceof Error ? error.message : (t as any)("saveConfigError"));
+      setConfigMessage(error instanceof Error ? error.message : t("saveConfigError"));
     } finally {
       setConfigLoading(false);
     }
@@ -828,7 +827,7 @@ export default function DevicesPage() {
 
       try {
         if (!mapboxToken) {
-          setLocationTextByKey((current) => ({ ...current, [key]: toCoordinateText(latitude, longitude, t as any) }));
+          setLocationTextByKey((current) => ({ ...current, [key]: toCoordinateText(latitude, longitude, t) }));
           return;
         }
 
@@ -837,7 +836,7 @@ export default function DevicesPage() {
         );
 
         if (!response.ok) {
-          setLocationTextByKey((current) => ({ ...current, [key]: toCoordinateText(latitude, longitude, t as any) }));
+          setLocationTextByKey((current) => ({ ...current, [key]: toCoordinateText(latitude, longitude, t) }));
           return;
         }
 
@@ -848,10 +847,10 @@ export default function DevicesPage() {
 
         setLocationTextByKey((current) => ({
           ...current,
-          [key]: placeName || toCoordinateText(latitude, longitude, t as any),
+          [key]: placeName || toCoordinateText(latitude, longitude, t),
         }));
       } catch {
-        setLocationTextByKey((current) => ({ ...current, [key]: toCoordinateText(latitude, longitude, t as any) }));
+        setLocationTextByKey((current) => ({ ...current, [key]: toCoordinateText(latitude, longitude, t) }));
       } finally {
         setLoadingLocationKeys((current) => ({ ...current, [key]: false }));
       }
@@ -888,23 +887,23 @@ export default function DevicesPage() {
     const key = toLocationKey(lat, lng);
     const isResolving = key ? Boolean(loadingLocationKeys[key]) : false;
     const text = key ? locationTextByKey[key] : "";
-    return isResolving ? (t as any)("resolvingAddress") : (text || toCoordinateText(lat, lng, t as any));
+    return isResolving ? t("resolvingAddress") : (text || toCoordinateText(lat, lng, t));
   };
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
-      <Panel title={(t as any)("devicesTitle")} subtitle={(t as any)("devicesSubtitle")}>
+      <Panel title={t("devicesTitle")} subtitle={t("devicesSubtitle")}>
         <div className="max-w-full overflow-x-auto">
           <table className="w-full min-w-300 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                  {canAssignDevices ? <th className="w-10 py-2 px-3 whitespace-nowrap">{(t as any)("selectCol")}</th> : null}
-                  <th className="py-2 px-3 whitespace-nowrap">{(t as any)("deviceName")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{(t as any)("macAddress")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{(t as any)("locationCol")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{(t as any)("groupCol")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{(t as any)("statusCol")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{(t as any)("actions")}</th>
+                  {canAssignDevices ? <th className="w-10 py-2 px-3 whitespace-nowrap">{t("selectCol")}</th> : null}
+                  <th className="py-2 px-3 whitespace-nowrap">{t("deviceName")}</th>
+                  <th className="py-2 px-3 whitespace-nowrap">{t("macAddress")}</th>
+                  <th className="py-2 px-3 whitespace-nowrap">{t("locationCol")}</th>
+                  <th className="py-2 px-3 whitespace-nowrap">{t("groupCol")}</th>
+                  <th className="py-2 px-3 whitespace-nowrap">{t("statusCol")}</th>
+                  <th className="py-2 px-3 whitespace-nowrap">{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -949,7 +948,7 @@ export default function DevicesPage() {
                       onClick={() => openDeviceDetails(device)}
                       className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                     >
-                      {(t as any)("detailsBtn")}
+                      {t("detailsBtn")}
                     </button>
                     {canConfigureFirmware ? (
                       <button
@@ -958,7 +957,7 @@ export default function DevicesPage() {
                         disabled={configLoading || configFetchingId === device.id}
                         className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:opacity-50"
                       >
-                        {configFetchingId === device.id ? t("loading") : (t as any)("configureBtn")}
+                        {configFetchingId === device.id ? t("loading") : t("configureBtn")}
                       </button>
                     ) : null}
                   </td>
@@ -970,7 +969,7 @@ export default function DevicesPage() {
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
           <div className="text-slate-600">
-            {(t as any)("pageText")} {page} {(t as any)("ofText")} {totalPages}
+            {t("pageText")} {page} {t("ofText")} {totalPages}
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -981,10 +980,10 @@ export default function DevicesPage() {
                 setSize(Number(e.target.value));
               }}
             >
-              <option value={10}>10 {(t as any)("perPage")}</option>
-              <option value={20}>20 {(t as any)("perPage")}</option>
-              <option value={50}>50 {(t as any)("perPage")}</option>
-              <option value={100}>100 {(t as any)("perPage")}</option>
+              <option value={10}>10 {t("perPage")}</option>
+              <option value={20}>20 {t("perPage")}</option>
+              <option value={50}>50 {t("perPage")}</option>
+              <option value={100}>100 {t("perPage")}</option>
             </select>
             <button
               className="rounded-lg border border-slate-200 px-3 py-1 disabled:opacity-50"
@@ -992,7 +991,7 @@ export default function DevicesPage() {
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               type="button"
             >
-              {(t as any)("previousBtn")}
+              {t("previousBtn")}
             </button>
             <button
               className="rounded-lg border border-slate-200 px-3 py-1 disabled:opacity-50"
@@ -1000,7 +999,7 @@ export default function DevicesPage() {
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               type="button"
             >
-              {(t as any)("nextBtn")}
+              {t("nextBtn")}
             </button>
           </div>
         </div>
@@ -1008,18 +1007,18 @@ export default function DevicesPage() {
 
       <div className="space-y-4">
         {canAssignDevices ? (
-          <Panel title={(t as any)("assignDevicesTitle")} subtitle={(t as any)("assignDevicesSubtitle")}>
+          <Panel title={t("assignDevicesTitle")} subtitle={t("assignDevicesSubtitle")}>
             <form className="space-y-4" onSubmit={assignSelectedDevices}>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="font-semibold text-foreground">
-                      {(t as any)("selectedDevicesCount").replace("{count}", String(selectedDeviceIds.length))}
+                      {t("selectedDevicesCount").replace("{count}", String(selectedDeviceIds.length))}
                     </p>
                     <p>
                       {selectedDeviceIds.length > 0
-                        ? (t as any)("devicesQueued").replace("{count}", String(selectedDeviceIds.length))
-                        : (t as any)("selectDevicesToStart")}
+                        ? t("devicesQueued").replace("{count}", String(selectedDeviceIds.length))
+                        : t("selectDevicesToStart")}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -1029,7 +1028,7 @@ export default function DevicesPage() {
                       className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
                       disabled={devices.length === 0}
                     >
-                      {(t as any)("selectAllBtn")}
+                      {t("selectAllBtn")}
                     </button>
                     <button
                       type="button"
@@ -1037,7 +1036,7 @@ export default function DevicesPage() {
                       className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
                       disabled={selectedDeviceIds.length === 0}
                     >
-                      {(t as any)("clearBtn")}
+                      {t("clearBtn")}
                     </button>
                   </div>
                 </div>
@@ -1053,20 +1052,20 @@ export default function DevicesPage() {
                       : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
                   }`}
                 >
-                  <div className="text-sm font-semibold">{(t as any)("assignToGroup")}</div>
-                  <div className="mt-1 text-xs">{(t as any)("assignToGroupDesc")}</div>
+                  <div className="text-sm font-semibold">{t("assignToGroup")}</div>
+                  <div className="mt-1 text-xs">{t("assignToGroupDesc")}</div>
                 </button>
               </div>
 
               {assignMode === "group" ? (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">{(t as any)("targetGroupLabel")}</label>
+                  <label className="block text-sm font-medium text-slate-700">{t("targetGroupLabel")}</label>
                   <select
                     className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2"
                     value={assignGroupId}
                     onChange={(event) => setAssignGroupId(event.target.value)}
                   >
-                    <option value="">{(t as any)("selectGroupPlaceholder")}</option>
+                    <option value="">{t("selectGroupPlaceholder")}</option>
                     {deviceGroups.map((group) => (
                       <option key={group.id} value={group.id}>
                         {group.code} - {group.name}
@@ -1076,13 +1075,13 @@ export default function DevicesPage() {
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">{(t as any)("targetUserLabel")}</label>
+                  <label className="block text-sm font-medium text-slate-700">{t("targetUserLabel")}</label>
                   <select
                     className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2"
                     value={assignUserId}
                     onChange={(event) => setAssignUserId(event.target.value)}
                   >
-                    <option value="">{(t as any)("selectUserPlaceholder")}</option>
+                    <option value="">{t("selectUserPlaceholder")}</option>
                     {sortedUsers.map((user) => (
                       <option key={user.id} value={user.keycloakId}>
                         {user.name} - {user.email} {user.state !== "ACTIVE" ? `(${user.state})` : ""}
@@ -1098,7 +1097,7 @@ export default function DevicesPage() {
                   type="submit"
                   disabled={assignLoading || selectedDeviceIds.length === 0 || (assignMode === "group" ? !assignGroupId : !assignUserId)}
                 >
-                  {assignLoading ? (t as any)("processing") : (t as any)("applyAssignmentBtn")}
+                  {assignLoading ? t("processing") : t("applyAssignmentBtn")}
                 </button>
                 {assignMessage ? <p className="text-sm text-slate-600">{assignMessage}</p> : null}
               </div>
@@ -1106,108 +1105,108 @@ export default function DevicesPage() {
           </Panel>
         ) : null}
 
-        <Panel title={(t as any)("bulkImportTitle")}>
+        <Panel title={t("bulkImportTitle")}>
           <ImportDevicesPanel onImported={() => void load(page, size)} />
         </Panel>
 
         <Panel
-          title={(t as any)("quickAddTitle")}
-          subtitle={(t as any)("quickAddSubtitle")}
+          title={t("quickAddTitle")}
+          subtitle={t("quickAddSubtitle")}
           action={
             <button type="button" onClick={openQuickAddModal} className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white">
-              {(t as any)("addDeviceBtn")}
+              {t("addDeviceBtn")}
             </button>
           }
         >
-          <p className="text-sm text-slate-600">{(t as any)("quickAddDesc")}</p>
+          <p className="text-sm text-slate-600">{t("quickAddDesc")}</p>
         </Panel>
       </div>
 
       {/* Device Details & Edit Modal */}
       {selectedDeviceDetails ? (
-        <Modal title={(t as any)("deviceDetailsTitle")} subtitle={(t as any)("deviceDetailsSubtitle")} onClose={closeDeviceDetails} widthClassName="w-[min(1100px,98vw)]">
+        <Modal title={t("deviceDetailsTitle")} subtitle={t("deviceDetailsSubtitle")} onClose={closeDeviceDetails} widthClassName="w-[min(1100px,98vw)]">
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Left Column: Read-Only Info & Telemetry */}
             <div className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3 text-sm text-slate-700">
-                <h4 className="font-semibold text-slate-900 border-b border-slate-200 pb-2">{(t as any)("systemInfoLabel")}</h4>
+                <h4 className="font-semibold text-slate-900 border-b border-slate-200 pb-2">{t("systemInfoLabel")}</h4>
                 <div className="grid grid-cols-2 gap-2">
-                  <span className="font-medium text-slate-900">{(t as any)("macAddress")}:</span> 
+                  <span className="font-medium text-slate-900">{t("macAddress")}:</span> 
                   <span>{selectedDeviceDetails.mac}</span>
                   
-                  <span className="font-medium text-slate-900">{(t as any)("groupCol")}:</span> 
+                  <span className="font-medium text-slate-900">{t("groupCol")}:</span> 
                   <span>{selectedDeviceDetails.groupCode || "-"}</span>
                   
-                  <span className="font-medium text-slate-900">{(t as any)("statusCol")}:</span> 
+                  <span className="font-medium text-slate-900">{t("statusCol")}:</span> 
                   <span className="capitalize">{selectedDeviceDetails.status || "offline"}</span>
                   
-                  <span className="font-medium text-slate-900">{(t as any)("accountState")}:</span> 
+                  <span className="font-medium text-slate-900">{t("accountState")}:</span> 
                   <span>{selectedDeviceDetails.state || "-"}</span>
 
-                  <span className="font-medium text-slate-900">{(t as any)("locationCol")}:</span> 
+                  <span className="font-medium text-slate-900">{t("locationCol")}:</span> 
                   <span className="truncate" title={
                     (() => {
                       const key = toLocationKey(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude);
                       const isResolving = key ? Boolean(loadingLocationKeys[key]) : false;
                       const text = key ? locationTextByKey[key] : "";
-                      return isResolving ? (t as any)("resolvingAddress") : (text || toCoordinateText(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude, t as any));
+                      return isResolving ? t("resolvingAddress") : (text || toCoordinateText(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude, t));
                     })()
                   }>
                     {(() => {
                       const key = toLocationKey(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude);
                       const isResolving = key ? Boolean(loadingLocationKeys[key]) : false;
                       const text = key ? locationTextByKey[key] : "";
-                      return isResolving ? (t as any)("resolvingAddress") : (text || toCoordinateText(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude, t as any));
+                      return isResolving ? t("resolvingAddress") : (text || toCoordinateText(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude, t));
                     })()}
                   </span>
                   
-                  <span className="font-medium text-slate-900">{(t as any)("claimedAtLabel")}:</span> 
+                  <span className="font-medium text-slate-900">{t("claimedAtLabel")}:</span> 
                   <span>{selectedDeviceDetails.claimedAt || "-"}</span>
                   
-                  <span className="font-medium text-slate-900">{(t as any)("createdDateLabel")}:</span> 
+                  <span className="font-medium text-slate-900">{t("createdDateLabel")}:</span> 
                   <span>{selectedDeviceDetails.createdDate || "-"}</span>
                 </div>
               </div>
               
               <div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-2">{(t as any)("deviceTelemetryLabel")}</h4>
+                <h4 className="text-sm font-semibold text-slate-900 mb-2">{t("deviceTelemetryLabel")}</h4>
                 <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
                   {telemetryLoading ? (
-                    <div className="py-4 text-center text-slate-500">{(t as any)("loadingTelemetry")}</div>
+                    <div className="py-4 text-center text-slate-500">{t("loadingTelemetry")}</div>
                   ) : telemetryMessage ? (
                     <div className="py-4 text-center text-sm text-slate-600">{telemetryMessage}</div>
                   ) : (
                     <div className="space-y-3">
                       <div className="grid grid-cols-3 gap-3">
                         <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">{(t as any)("latestFillLevel")}</div>
+                          <div className="text-xs text-slate-500">{t("latestFillLevel")}</div>
                           <div className="mt-1 text-lg font-semibold text-foreground">
                             {telemetryHistory.length > 0 && telemetryHistory[0].fillLevel !== null ? `${telemetryHistory[0].fillLevel}%` : "-"}
                           </div>
                         </div>
                         <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">{(t as any)("latestThrows")}</div>
+                          <div className="text-xs text-slate-500">{t("latestThrows")}</div>
                           <div className="mt-1 text-lg font-semibold text-foreground">
                             {telemetryHistory.length > 0 && telemetryHistory[0].throwCount !== null ? telemetryHistory[0].throwCount : "-"}
                           </div>
                         </div>
                         <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">{(t as any)("latestBattery")}</div>
+                          <div className="text-xs text-slate-500">{t("latestBattery")}</div>
                           <div className="mt-1 text-lg font-semibold text-foreground">
                             {telemetryHistory.length > 0 && telemetryHistory[0].battery !== null ? `${telemetryHistory[0].battery}%` : "-"}
                           </div>
                         </div>
                       </div>
 
-                      <div className="text-xs font-semibold text-slate-900 mt-2 mb-1">{(t as any)("recentHistoryLabel")}</div>
+                      <div className="text-xs font-semibold text-slate-900 mt-2 mb-1">{t("recentHistoryLabel")}</div>
                       <div className="max-h-40 overflow-auto border border-slate-100 rounded-lg">
                         <table className="w-full text-left text-xs">
                           <thead className="bg-slate-50 sticky top-0">
                             <tr className="text-slate-500">
-                              <th className="py-1.5 px-3 font-medium">{(t as any)("timeCol")}</th>
-                              <th className="py-1.5 px-3 font-medium">{(t as any)("fillLevelCol")}</th>
-                              <th className="py-1.5 px-3 font-medium">{(t as any)("throwsCol")}</th>
-                              <th className="py-1.5 px-3 font-medium">{(t as any)("batteryCol")}</th> 
+                              <th className="py-1.5 px-3 font-medium">{t("timeCol")}</th>
+                              <th className="py-1.5 px-3 font-medium">{t("fillLevelCol")}</th>
+                              <th className="py-1.5 px-3 font-medium">{t("throwsCol")}</th>
+                              <th className="py-1.5 px-3 font-medium">{t("batteryCol")}</th> 
                             </tr>
                           </thead>
                           <tbody>
@@ -1228,20 +1227,20 @@ export default function DevicesPage() {
               </div>
 
               <div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-2">{(t as any)("firmwareStatusLabel")}</h4>
+                <h4 className="text-sm font-semibold text-slate-900 mb-2">{t("firmwareStatusLabel")}</h4>
                 <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4 text-sm text-slate-700">
                   <div>
-                    <p className="font-semibold text-slate-900 mb-1">{(t as any)("edgeNodeLabel")}</p>
+                    <p className="font-semibold text-slate-900 mb-1">{t("edgeNodeLabel")}</p>
                     <div className="flex items-center justify-between text-xs">
-                      <span>{(t as any)("currentLabel")} <span className="font-mono">{selectedDeviceDetails.binVersion || (t as any)("unknownVersion")}</span></span>
-                      <span>{(t as any)("targetLabel")} <span className="font-mono">{selectedDeviceDetails.targetBinVersion || (t as any)("notSetVersion")}</span></span>
+                      <span>{t("currentLabel")} <span className="font-mono">{selectedDeviceDetails.binVersion || t("unknownVersion")}</span></span>
+                      <span>{t("targetLabel")} <span className="font-mono">{selectedDeviceDetails.targetBinVersion || t("notSetVersion")}</span></span>
                     </div>
                   </div>
                   <div className="border-t border-slate-100 pt-3">
-                    <p className="font-semibold text-slate-900 mb-1">{(t as any)("masterHubLabel")}</p>
+                    <p className="font-semibold text-slate-900 mb-1">{t("masterHubLabel")}</p>
                     <div className="flex items-center justify-between text-xs">
-                      <span>{(t as any)("currentLabel")} <span className="font-mono">{selectedDeviceDetails.desktopVersion || (t as any)("unknownVersion")}</span></span>
-                      <span>{(t as any)("targetLabel")} <span className="font-mono">{selectedDeviceDetails.targetDesktopVersion || (t as any)("notSetVersion")}</span></span>
+                      <span>{t("currentLabel")} <span className="font-mono">{selectedDeviceDetails.desktopVersion || t("unknownVersion")}</span></span>
+                      <span>{t("targetLabel")} <span className="font-mono">{selectedDeviceDetails.targetDesktopVersion || t("notSetVersion")}</span></span>
                     </div>
                   </div>
                 </div>
@@ -1251,10 +1250,10 @@ export default function DevicesPage() {
             {/* Right Column: Editable Form */}
             <form onSubmit={saveDeviceDetails} className="space-y-4 flex flex-col h-full">
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 flex-1">
-                <h4 className="font-semibold text-slate-900 border-b border-slate-200 pb-2 mb-3 text-sm">{(t as any)("editableConfigLabel")}</h4>
+                <h4 className="font-semibold text-slate-900 border-b border-slate-200 pb-2 mb-3 text-sm">{t("editableConfigLabel")}</h4>
                 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("deviceName")}</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("deviceName")}</label>
                   <input
                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                     placeholder="Smart Bin 01"
@@ -1266,25 +1265,25 @@ export default function DevicesPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("pollingIntervalLabel")}</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("pollingIntervalLabel")}</label>
                     <input
                       type="number"
                       min="0"
                       step="1"
                       className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                      placeholder={(t as any)("secondsPlaceholder")}
+                      placeholder={t("secondsPlaceholder")}
                       value={editDeviceForm.pollingInterval}
                       onChange={(event) => setEditDeviceForm((v) => ({ ...v, pollingInterval: event.target.value }))}
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("fullThresholdLabel")}</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("fullThresholdLabel")}</label>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
                       className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                      placeholder={(t as any)("percentPlaceholder")}
+                      placeholder={t("percentPlaceholder")}
                       value={editDeviceForm.fullThreshold}
                       onChange={(event) => setEditDeviceForm((v) => ({ ...v, fullThreshold: event.target.value }))}
                     />
@@ -1292,7 +1291,7 @@ export default function DevicesPage() {
                 </div>
 
                 <div className="pt-2">
-                  <label className="mb-2 block text-sm font-medium text-slate-700">{(t as any)("locationMapLabel")}</label>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">{t("locationMapLabel")}</label>
                   <LocationPickerMap
                     className="h-48 w-full rounded-xl border border-slate-200"
                     value={editLocation}
@@ -1327,7 +1326,7 @@ export default function DevicesPage() {
                   {t("cancel")}
                 </button>
                 <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60" type="submit" disabled={editDeviceLoading}>
-                  {editDeviceLoading ? t("saving") : (t as any)("saveChangesBtn")}
+                  {editDeviceLoading ? t("saving") : t("saveChangesBtn")}
                 </button>
               </div>
             </form>
@@ -1336,7 +1335,7 @@ export default function DevicesPage() {
       ) : null}
 
       {showControlModal && canControlDevice ? (
-        <Modal title={(t as any)("deviceCommandCenterTitle")} subtitle={(t as any)("deviceCommandCenterSubtitle")} onClose={closeControlModal} widthClassName="w-[min(1120px,98vw)]">
+        <Modal title={t("deviceCommandCenterTitle")} subtitle={t("deviceCommandCenterSubtitle")} onClose={closeControlModal} widthClassName="w-[min(1120px,98vw)]">
           {selectedDevice ? (
             <form onSubmit={executeSelectedRpc} className="space-y-5">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
@@ -1348,8 +1347,8 @@ export default function DevicesPage() {
               <div className="grid gap-3 lg:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="mb-3">
-                    <h4 className="text-sm font-semibold text-slate-900">{(t as any)("systemActionsLabel")}</h4>
-                    <p className="text-xs text-slate-500">{(t as any)("systemActionsDesc")}</p>
+                    <h4 className="text-sm font-semibold text-slate-900">{t("systemActionsLabel")}</h4>
+                    <p className="text-xs text-slate-500">{t("systemActionsDesc")}</p>
                   </div>
                   <div className="grid gap-2">
                     {availableRpcOptions.filter((option) => option.type === "ONE_WAY").map((option) => (
@@ -1378,8 +1377,8 @@ export default function DevicesPage() {
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="mb-3">
-                    <h4 className="text-sm font-semibold text-slate-900">{(t as any)("hardwareControlsLabel")}</h4>
-                    <p className="text-xs text-slate-500">{(t as any)("hardwareControlsDesc")}</p>
+                    <h4 className="text-sm font-semibold text-slate-900">{t("hardwareControlsLabel")}</h4>
+                    <p className="text-xs text-slate-500">{t("hardwareControlsDesc")}</p>
                   </div>
                   <div className="grid gap-2">
                     {availableRpcOptions.filter((option) => option.type === "TWO_WAY").map((option) => (
@@ -1408,8 +1407,8 @@ export default function DevicesPage() {
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <p className="font-semibold text-foreground">{(t as any)("actionSummaryLabel")} {getRpcMethodOption(selectedRpcMethod, t as any).label}</p>
-                <p>{getRpcMethodOption(selectedRpcMethod, t as any).description}</p>
+                <p className="font-semibold text-foreground">{t("actionSummaryLabel")} {getRpcMethodOption(selectedRpcMethod, t).label}</p>
+                <p>{getRpcMethodOption(selectedRpcMethod, t).description}</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
@@ -1418,7 +1417,7 @@ export default function DevicesPage() {
                   type="submit"
                   disabled={rpcLoading}
                 >
-                  {rpcLoading ? (t as any)("sending") : (t as any)("executeCommandBtn")}
+                  {rpcLoading ? t("sending") : t("executeCommandBtn")}
                 </button>
                 <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeControlModal}>
                   {t("cancel")}
@@ -1428,19 +1427,19 @@ export default function DevicesPage() {
 
               {rpcResponseText ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-sm text-slate-100">
-                  <div className="mb-2 text-xs uppercase tracking-wide text-slate-400">{(t as any)("deviceResponseLabel")}</div>
+                  <div className="mb-2 text-xs uppercase tracking-wide text-slate-400">{t("deviceResponseLabel")}</div>
                   <pre className="overflow-x-auto whitespace-pre-wrap wrap-break-word font-mono text-xs leading-6">{rpcResponseText}</pre>
                 </div>
               ) : null}
             </form>
           ) : (
-            <p className="text-sm text-slate-600">{(t as any)("selectDeviceToControl")}</p>
+            <p className="text-sm text-slate-600">{t("selectDeviceToControl")}</p>
           )}
         </Modal>
       ) : null}
 
       {showConfigModal ? (
-        <Modal title={(t as any)("firmwareConfigTitle")} subtitle={(t as any)("firmwareConfigSubtitle")} onClose={closeConfigModal} widthClassName="w-[min(1100px,98vw)]">
+        <Modal title={t("firmwareConfigTitle")} subtitle={t("firmwareConfigSubtitle")} onClose={closeConfigModal} widthClassName="w-[min(1100px,98vw)]">
           {selectedDevice ? (
             <form onSubmit={confirmConfig} className="space-y-4">
               {(() => {
@@ -1451,10 +1450,10 @@ export default function DevicesPage() {
                 return (
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                     <p>
-                      <span className="font-semibold">{(t as any)("locationCol")}:</span>{" "}
+                      <span className="font-semibold">{t("locationCol")}:</span>{" "}
                       {isResolvingLocation
-                        ? (t as any)("resolvingAddress")
-                        : locationText || toCoordinateText(selectedDevice.latitude, selectedDevice.longitude, t as any)}
+                        ? t("resolvingAddress")
+                        : locationText || toCoordinateText(selectedDevice.latitude, selectedDevice.longitude, t)}
                     </p>
                   </div>
                 );
@@ -1463,12 +1462,12 @@ export default function DevicesPage() {
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 <p className="font-semibold text-foreground">{selectedDevice.name}</p>
                 <p>MAC: {selectedDevice.mac}</p>
-                <p>{(t as any)("currentBinTarget")} {selectedDevice.targetBinVersion || "-"}</p>
-                <p>{(t as any)("currentDesktopTarget")} {selectedDevice.targetDesktopVersion || "-"}</p>
+                <p>{t("currentBinTarget")} {selectedDevice.targetBinVersion || "-"}</p>
+                <p>{t("currentDesktopTarget")} {selectedDevice.targetDesktopVersion || "-"}</p>
               </div>
 
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700">{(t as any)("edgeNodeFirmwareLabel")}</label>
+                <label className="block text-sm font-medium text-slate-700">{t("edgeNodeFirmwareLabel")}</label>
                 <select
                   className="w-full rounded-xl border border-slate-200 px-3 py-2"
                   value={configForm?.targetBinFirmwareId || ""}
@@ -1478,18 +1477,18 @@ export default function DevicesPage() {
                   }}
                   disabled={binFirmwares.length === 0}
                 >
-                  <option value="">{binFirmwares.length > 0 ? (t as any)("selectTargetFirmware") : (t as any)("noFirmwareAvailable")}</option>
+                  <option value="">{binFirmwares.length > 0 ? t("selectTargetFirmware") : t("noFirmwareAvailable")}</option>
                   {binFirmwares.map((firmware) => (
                     <option key={firmware.id} value={firmware.id}>
                       {firmwareLabel(firmware)}
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-slate-500">{(t as any)("currentlySavedTarget")} {selectedDevice?.targetBinVersion || "-"}</p>
+                <p className="text-xs text-slate-500">{t("currentlySavedTarget")} {selectedDevice?.targetBinVersion || "-"}</p>
               </div>
 
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700">{(t as any)("masterHubFirmwareLabel")}</label>
+                <label className="block text-sm font-medium text-slate-700">{t("masterHubFirmwareLabel")}</label>
                 <select
                   className="w-full rounded-xl border border-slate-200 px-3 py-2"
                   value={configForm?.targetDesktopFirmwareId || ""}
@@ -1499,14 +1498,14 @@ export default function DevicesPage() {
                   }}
                   disabled={desktopFirmwares.length === 0}
                 >
-                  <option value="">{desktopFirmwares.length > 0 ? (t as any)("selectTargetFirmware") : (t as any)("noFirmwareAvailable")}</option>
+                  <option value="">{desktopFirmwares.length > 0 ? t("selectTargetFirmware") : t("noFirmwareAvailable")}</option>
                   {desktopFirmwares.map((firmware) => (
                     <option key={firmware.id} value={firmware.id}>
                       {firmwareLabel(firmware)}
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-slate-500">{(t as any)("currentlySavedTarget")} {selectedDevice?.targetDesktopVersion || "-"}</p>
+                <p className="text-xs text-slate-500">{t("currentlySavedTarget")} {selectedDevice?.targetDesktopVersion || "-"}</p>
               </div>
 
               <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
@@ -1515,7 +1514,7 @@ export default function DevicesPage() {
                   type="submit"
                   disabled={!isConfigDirty || configLoading}
                 >
-                  {configLoading ? t("saving") : (t as any)("applyConfigBtn")}
+                  {configLoading ? t("saving") : t("applyConfigBtn")}
                 </button>
                 <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeConfigModal}>
                   {t("cancel")}
@@ -1524,18 +1523,18 @@ export default function DevicesPage() {
               </div>
             </form>
           ) : (
-            <p className="text-sm text-slate-600">{(t as any)("clickConfigurePrompt")}</p>
+            <p className="text-sm text-slate-600">{t("clickConfigurePrompt")}</p>
           )}
         </Modal>
       ) : null}
 
       {showQuickAddModal ? (
-        <Modal title={(t as any)("addDeviceModalTitle")} subtitle={(t as any)("addDeviceModalSubtitle")} onClose={closeQuickAddModal} widthClassName="w-[min(1100px,98vw)]">
+        <Modal title={t("addDeviceModalTitle")} subtitle={t("addDeviceModalSubtitle")} onClose={closeQuickAddModal} widthClassName="w-[min(1100px,98vw)]">
           <form onSubmit={create} className="space-y-4">
             <div className="grid gap-3 lg:grid-cols-2">
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("deviceName")}</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("deviceName")}</label>
                   <input
                     className="w-full rounded-xl border border-slate-200 px-3 py-2"
                     placeholder="Smart Bin 01"
@@ -1546,7 +1545,7 @@ export default function DevicesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("macAddress")}</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("macAddress")}</label>
                   <input
                     className="w-full rounded-xl border border-slate-200 px-3 py-2"
                     placeholder="AA:BB:CC:DD:EE:FF"
@@ -1555,27 +1554,27 @@ export default function DevicesPage() {
                     required
                   />
                   {!isMacValid && form.mac.trim() ? (
-                    <p className="mt-1 text-xs text-rose-600">{(t as any)("invalidMacFormat")}</p>
+                    <p className="mt-1 text-xs text-rose-600">{t("invalidMacFormat")}</p>
                   ) : null}
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("activationClaimCodeLabel")}</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("activationClaimCodeLabel")}</label>
                   <input
                     className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                    placeholder={(t as any)("sixCharsPlaceholder")}
+                    placeholder={t("sixCharsPlaceholder")}
                     value={form.claimCode}
                     onChange={(event) => setForm((v) => ({ ...v, claimCode: event.target.value.slice(0, 6) }))}
                     required
                   />
                   {!isClaimCodeValid && form.claimCode.trim() ? (
-                    <p className="mt-1 text-xs text-rose-600">{(t as any)("invalidClaimCode")}</p>
+                    <p className="mt-1 text-xs text-rose-600">{t("invalidClaimCode")}</p>
                   ) : null}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("latitude")}</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("latitude")}</label>
                     <input
                       className="w-full rounded-xl border border-slate-200 px-3 py-2"
                       placeholder="21.028500"
@@ -1585,7 +1584,7 @@ export default function DevicesPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("longitude")}</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("longitude")}</label>
                     <input
                       className="w-full rounded-xl border border-slate-200 px-3 py-2"
                       placeholder="105.854200"
@@ -1597,30 +1596,30 @@ export default function DevicesPage() {
                 </div>
 
                 {!addLocation && (form.latitude || form.longitude) ? (
-                  <p className="text-xs text-rose-600">{(t as any)("invalidCoordinates")}</p>
+                  <p className="text-xs text-rose-600">{t("invalidCoordinates")}</p>
                 ) : null}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("pollingIntervalLabel")}</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("pollingIntervalLabel")}</label>
                     <input
                       type="number"
                       min="0"
                       step="1"
                       className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                      placeholder={(t as any)("secondsOptional")}
+                      placeholder={t("secondsOptional")}
                       value={form.pollingInterval}
                       onChange={(event) => setForm((v) => ({ ...v, pollingInterval: event.target.value }))}
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{(t as any)("fullThresholdLabel")}</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("fullThresholdLabel")}</label>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
                       className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                      placeholder={(t as any)("percentOptional")}
+                      placeholder={t("percentOptional")}
                       value={form.fullThreshold}
                       onChange={(event) => setForm((v) => ({ ...v, fullThreshold: event.target.value }))}
                     />
@@ -1629,7 +1628,7 @@ export default function DevicesPage() {
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="mb-2 text-sm font-medium text-slate-700">{(t as any)("pickLocationMap")}</p>
+                <p className="mb-2 text-sm font-medium text-slate-700">{t("pickLocationMap")}</p>
                 <LocationPickerMap
                   className="h-105 w-full rounded-xl border border-slate-200"
                   value={addLocation}
@@ -1641,13 +1640,13 @@ export default function DevicesPage() {
                     }));
                   }}
                 />
-                <p className="mt-2 text-xs text-slate-500">{(t as any)("clickMapInstruction")}</p>
+                <p className="mt-2 text-xs text-slate-500">{t("clickMapInstruction")}</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
               <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" type="submit" disabled={!canSubmitAddDevice}>
-                {createLoading ? (t as any)("addingBtn") : (t as any)("addDeviceBtn")}
+                {createLoading ? t("addingBtn") : t("addDeviceBtn")}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeQuickAddModal}>
                 {t("cancel")}
@@ -1660,5 +1659,17 @@ export default function DevicesPage() {
 
       {!showQuickAddModal && !showConfigModal && message ? <p className="text-sm text-slate-600">{message}</p> : null}
     </div>
+  );
+}
+
+// ==========================================
+// 2. EXPORTED DEFAULT COMPONENT WRAPPED IN SUSPENSE
+// ==========================================
+export default function DevicesPage() {
+  const { t } = useLanguage();
+  return (
+    <Suspense fallback={<div className="p-4 text-slate-500">{t("loading")}...</div>}>
+      <DevicesPageContent />
+    </Suspense>
   );
 }

@@ -28,7 +28,7 @@ export default function NotificationsPage() {
     try {
       setMarkingId(id);
       await notificationsAdminApi.markAsRead(id);
-      setMessage((t as any)("alertMarkedRead"));
+      setMessage(t("alertMarkedRead"));
       await load();
     } finally {
       setMarkingId(null);
@@ -39,7 +39,7 @@ export default function NotificationsPage() {
     try {
       setMarkAllLoading(true);
       await notificationsAdminApi.readAll();
-      setMessage((t as any)("allAlertsMarkedRead"));
+      setMessage(t("allAlertsMarkedRead"));
       await load();
     } finally {
       setMarkAllLoading(false);
@@ -48,8 +48,8 @@ export default function NotificationsPage() {
 
   return (
     <Panel
-      title={(t as any)("systemAlertsTitle")}
-      subtitle={(t as any)("systemAlertsSubtitle")}
+      title={t("systemAlertsTitle")}
+      subtitle={t("systemAlertsSubtitle")}
       action={
         <button
           type="button"
@@ -57,7 +57,7 @@ export default function NotificationsPage() {
           disabled={markAllLoading}
           className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {markAllLoading ? (t as any)("marking") : (t as any)("markAllAsRead")}
+          {markAllLoading ? t("marking") : t("markAllAsRead")}
         </button>
       }
     >
@@ -78,11 +78,11 @@ export default function NotificationsPage() {
                   disabled={markingId === item.id}
                   className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100 disabled:opacity-60"
                 >
-                  {markingId === item.id ? (t as any)("marking") : (t as any)("markAsRead")}
+                  {markingId === item.id ? t("marking") : t("markAsRead")}
                 </button>
               ) : (
                 <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                  {(t as any)("readStatus")}
+                  {t("readStatus")}
                 </span>
               )}
             </div>

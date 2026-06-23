@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordVisibilityButton } from "@/components/ui/password-visibility-button";
 import { StatusMessage } from "@/components/ui/status-message";
-import { PASSWORD_MIN_LENGTH, getPasswordRules, getPasswordStrengthScore, isPasswordStrongEnough } from "@/lib/password-policy";
+import { getPasswordRules, getPasswordStrengthScore, isPasswordStrongEnough } from "@/lib/password-policy";
 import { authApi } from "@/services/api/auth";
 import { useLanguage } from "@/lib/language";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
-  const { t, language, setLanguage, languageLabels } = useLanguage();
+  const { t } = useLanguage();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -32,17 +32,17 @@ export default function ChangePasswordPage() {
     setError("");
 
     if (currentPassword === newPassword) {
-      setError((t as any)("newPasswordSameAsCurrent"));
+      setError(t("newPasswordSameAsCurrent"));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError((t as any)("passwordMismatch"));
+      setError(t("passwordMismatch"));
       return;
     }
 
     if (!isPasswordStrongEnough(newPassword)) {
-      setError((t as any)("passwordTooWeak"));
+      setError(t("passwordTooWeak"));
       return;
     }
 
@@ -54,12 +54,12 @@ export default function ChangePasswordPage() {
     } catch (err) {
       setStatus("error");
       const message = err instanceof Error ? err.message : "";
-      setError(message || (t as any)("changePasswordError"));
+      setError(message || t("changePasswordError"));
     }
   };
 
   return (
-    <AuthShell title={t("changePassword")} description={(t as any)("changePasswordDesc")}>
+    <AuthShell title={t("changePassword")} description={t("changePasswordDesc")}>
 
       {status === "success" ? (
         <div className="text-center">
@@ -69,9 +69,9 @@ export default function ChangePasswordPage() {
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-slate-900">{t("passwordChanged")}</h3>
-          <p className="mt-2 text-sm text-slate-600">{(t as any)("passwordUpdatedSuccess")}</p>
+          <p className="mt-2 text-sm text-slate-600">{t("passwordUpdatedSuccess")}</p>
           <Button onClick={() => router.push("/dashboard")} className="mt-6 w-full" size="lg">
-            {(t as any)("backToAccountHome")}
+            {t("backToAccountHome")}
           </Button>
         </div>
       ) : (
@@ -101,7 +101,7 @@ export default function ChangePasswordPage() {
                   type={showNew ? "text" : "password"} 
                   value={newPassword} 
                   onChange={(event) => setNewPassword(event.target.value)} 
-                  placeholder={(t as any)("min8Chars")} 
+                  placeholder={t("min8Chars")} 
                   className="pr-10" 
                   required 
                 />
@@ -116,7 +116,7 @@ export default function ChangePasswordPage() {
                   type={showConfirm ? "text" : "password"} 
                   value={confirmPassword} 
                   onChange={(event) => setConfirmPassword(event.target.value)} 
-                  placeholder={(t as any)("reEnterNewPassword")} 
+                  placeholder={t("reEnterNewPassword")} 
                   className="pr-10" 
                   required 
                 />
@@ -139,12 +139,12 @@ export default function ChangePasswordPage() {
               </div>
             ))}
             <p className={`text-xs ${strength <= 1 ? "text-rose-600" : strength === 2 ? "text-amber-600" : strength === 3 ? "text-cyan-700" : "text-emerald-700"}`}>
-              {(t as any)("passwordStrength")}: {
+              {t("passwordStrength")}: {
                 strength === 0 ? "" : 
-                strength === 1 ? (t as any)("strengthWeak") : 
-                strength === 2 ? (t as any)("strengthFair") : 
-                strength === 3 ? (t as any)("strengthGood") : 
-                (t as any)("strengthStrong")
+                strength === 1 ? t("strengthWeak") : 
+                strength === 2 ? t("strengthFair") : 
+                strength === 3 ? t("strengthGood") : 
+                t("strengthStrong")
               }
             </p>
           </div>

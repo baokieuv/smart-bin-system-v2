@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
-import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
+import { TranslationKey, useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 import type { AlarmRuleDto, DeviceGroupDto } from "@/types/device-group";
 
 const alarmSeverities = ["CRITICAL", "MAJOR", "MINOR", "WARNING", "INDETERMINATE"] as const;
@@ -56,7 +56,7 @@ const createBlankForm = (): DeviceGroupFormState => ({
 });
 
 // Thêm t vào param để dịch lỗi bên trong
-const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[], t: any) => {
+const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[], t: (key: TranslationKey) => string) => {
   const activeRows = alarmRules.filter(
     (rule) =>
       rule.alarmType.trim() ||
@@ -126,7 +126,7 @@ export default function DeviceGroupsPage() {
 
   useEffect(() => {
     void load().catch((error) => {
-      setMessage(error instanceof Error ? error.message : (t as any)("loadDeviceGroupsError"));
+      setMessage(error instanceof Error ? error.message : t("loadDeviceGroupsError"));
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -140,13 +140,13 @@ export default function DeviceGroupsPage() {
     try {
       parsedSpecs = JSON.parse(form.sharedSpecsJson || "{}");
     } catch {
-      setMessage((t as any)("invalidSharedSpecsJson"));
+      setMessage(t("invalidSharedSpecsJson"));
       setSaveLoading(false);
       return;
     }
 
     try {
-      const normalizedAlarmRules = normalizeAlarmRules(form.alarmRules, t as any);
+      const normalizedAlarmRules = normalizeAlarmRules(form.alarmRules, t);
 
       if ("error" in normalizedAlarmRules) {
         setMessage(normalizedAlarmRules.error);
@@ -162,7 +162,7 @@ export default function DeviceGroupsPage() {
           description: form.description.trim() || undefined,
           alarmRules: normalizedAlarmRules,
         });
-        setMessage((t as any)("groupUpdatedSuccess"));
+        setMessage(t("groupUpdatedSuccess"));
       } else {
         await deviceGroupsAdminApi.createDeviceGroup({
           code: form.code.trim(),
@@ -171,14 +171,14 @@ export default function DeviceGroupsPage() {
           description: form.description.trim() || undefined,
           alarmRules: normalizedAlarmRules,
         });
-        setMessage((t as any)("groupCreatedSuccess"));
+        setMessage(t("groupCreatedSuccess"));
       }
 
       setForm(createBlankForm());
       setEditingId(null);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : (t as any)("saveGroupError"));
+      setMessage(error instanceof Error ? error.message : t("saveGroupError"));
     } finally {
       setSaveLoading(false);
     }
@@ -188,10 +188,10 @@ export default function DeviceGroupsPage() {
     try {
       setDeleteLoadingId(id);
       await deviceGroupsAdminApi.deleteDeviceGroup(id);
-      setMessage((t as any)("groupRemovedSuccess"));
+      setMessage(t("groupRemovedSuccess"));
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : (t as any)("removeGroupError"));
+      setMessage(error instanceof Error ? error.message : t("removeGroupError"));
     } finally {
       setDeleteLoadingId(null);
     }
@@ -262,17 +262,17 @@ export default function DeviceGroupsPage() {
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
-      <Panel title={(t as any)("deviceGroupsTitle")} subtitle={(t as any)("deviceGroupsSubtitle")}>
+      <Panel title={t("deviceGroupsTitle")} subtitle={t("deviceGroupsSubtitle")}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-220 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2 px-3">{(t as any)("codeCol")}</th>
-                <th className="py-2 px-3">{(t as any)("nameCol")}</th>
-                <th className="py-2 px-3">{(t as any)("sharedSpecsCol")}</th>
-                <th className="py-2 px-3">{(t as any)("descriptionCol")}</th>
-                <th className="py-2 px-3">{(t as any)("alertRulesCol")}</th>
-                <th className="py-2 px-3">{(t as any)("actions")}</th>
+                <th className="py-2 px-3">{t("codeCol")}</th>
+                <th className="py-2 px-3">{t("nameCol")}</th>
+                <th className="py-2 px-3">{t("sharedSpecsCol")}</th>
+                <th className="py-2 px-3">{t("descriptionCol")}</th>
+                <th className="py-2 px-3">{t("alertRulesCol")}</th>
+                <th className="py-2 px-3">{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -298,7 +298,7 @@ export default function DeviceGroupsPage() {
                         onClick={() => openEditModal(item)}
                         className="rounded-lg bg-slate-100 px-2 py-1 text-sm hover:bg-slate-200 transition"
                       >
-                        {(t as any)("editBtn")}
+                        {t("editBtn")}
                       </button>
                       {!item.isDefault ? (
                         <button
@@ -307,7 +307,7 @@ export default function DeviceGroupsPage() {
                           disabled={deleteLoadingId === item.id}
                           className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition disabled:opacity-50"
                         >
-                          {deleteLoadingId === item.id ? (t as any)("deleting") : (t as any)("deleteBtn")}
+                          {deleteLoadingId === item.id ? t("deleting") : t("deleteBtn")}
                         </button>
                       ) : null}
                     </div>
@@ -319,17 +319,17 @@ export default function DeviceGroupsPage() {
         </div>
       </Panel>
 
-        <Panel title={(t as any)("groupActionsTitle")} subtitle={(t as any)("groupActionsSubtitle")}>
+        <Panel title={t("groupActionsTitle")} subtitle={t("groupActionsSubtitle")}>
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
               onClick={openCreateModal}
             >
-              {(t as any)("createDeviceGroupBtn")}
+              {t("createDeviceGroupBtn")}
             </button>
             <p className="text-sm text-slate-600">
-              {(t as any)("deviceGroupDesc")}
+              {t("deviceGroupDesc")}
             </p>
           </div>
         </Panel>
@@ -340,16 +340,16 @@ export default function DeviceGroupsPage() {
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">
-                  {editingId ? (t as any)("updateGroupTitle") : (t as any)("createGroupTitle")}
+                  {editingId ? t("updateGroupTitle") : t("createGroupTitle")}
                 </h3>
-                <p className="text-sm text-slate-500">{(t as any)("groupModalSubtitle")}</p>
+                <p className="text-sm text-slate-500">{t("groupModalSubtitle")}</p>
               </div>
               <button
                 type="button"
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
                 onClick={closeEditorModal}
               >
-                {(t as any)("closeBtn")}
+                {t("closeBtn")}
               </button>
             </div>
 
@@ -357,14 +357,14 @@ export default function DeviceGroupsPage() {
               <div className="grid gap-4 lg:grid-cols-2">
                 <input
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-sky-500 transition"
-                  placeholder={(t as any)("codePlaceholder")}
+                  placeholder={t("codePlaceholder")}
                   value={form.code}
                   onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))}
                   required
                 />
                 <input
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-sky-500 transition"
-                  placeholder={(t as any)("friendlyNamePlaceholder")}
+                  placeholder={t("friendlyNamePlaceholder")}
                   value={form.name}
                   onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
                   required
@@ -373,7 +373,7 @@ export default function DeviceGroupsPage() {
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">{(t as any)("sharedSpecsJsonLabel")}</label>
+                  <label className="block text-sm font-medium text-slate-700">{t("sharedSpecsJsonLabel")}</label>
                   <textarea
                     className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm outline-none focus:border-sky-500 transition"
                     placeholder='{"width":20, "height":30, "color":"blue"}'
@@ -384,10 +384,10 @@ export default function DeviceGroupsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">{(t as any)("descriptionCol")}</label>
+                  <label className="block text-sm font-medium text-slate-700">{t("descriptionCol")}</label>
                   <textarea
                     className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-sky-500 transition"
-                    placeholder={(t as any)("descriptionPlaceholder")}
+                    placeholder={t("descriptionPlaceholder")}
                     value={form.description}
                     onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                   />
@@ -397,9 +397,9 @@ export default function DeviceGroupsPage() {
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">{(t as any)("alertConfigTitle")}</p>
+                    <p className="text-sm font-semibold text-slate-800">{t("alertConfigTitle")}</p>
                     <p className="text-xs text-slate-500">
-                      {(t as any)("alertConfigDesc")}
+                      {t("alertConfigDesc")}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -408,14 +408,14 @@ export default function DeviceGroupsPage() {
                       className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50 transition"
                       onClick={addAlarmRule}
                     >
-                      {(t as any)("addRuleBtn")}
+                      {t("addRuleBtn")}
                     </button>
                     <button
                       type="button"
                       className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
                       onClick={clearAlarmRules}
                     >
-                      {(t as any)("clearAllBtn")}
+                      {t("clearAllBtn")}
                     </button>
                   </div>
                 </div>
@@ -426,20 +426,20 @@ export default function DeviceGroupsPage() {
                       <div key={`${index}-${rule.alarmType}-${rule.operator}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                         <div className="mb-3 flex items-center justify-between gap-2">
                           <p className="text-sm font-medium text-slate-700">
-                            {(t as any)("ruleAlarmNumber").replace("{num}", String(index + 1))}
+                            {t("ruleAlarmNumber").replace("{num}", String(index + 1))}
                           </p>
                           <button
                             type="button"
                             className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 transition"
                             onClick={() => removeAlarmRule(index)}
                           >
-                            {(t as any)("removeRuleBtn")}
+                            {t("removeRuleBtn")}
                           </button>
                         </div>
 
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{(t as any)("alarmTypeLabel")}</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("alarmTypeLabel")}</span>
                             <input
                               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.alarmType}
@@ -449,7 +449,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{(t as any)("operatorLabel")}</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("operatorLabel")}</span>
                             <select
                               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.operator}
@@ -464,7 +464,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{(t as any)("thresholdLabel")}</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("thresholdLabel")}</span>
                             <input
                               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.threshold}
@@ -475,7 +475,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{(t as any)("severityLabel")}</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("severityLabel")}</span>
                             <select
                               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.severity}
@@ -490,7 +490,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{(t as any)("clearOperatorLabel")}</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("clearOperatorLabel")}</span>
                             <select
                               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.clearOperator}
@@ -505,7 +505,7 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{(t as any)("clearThresholdLabel")}</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("clearThresholdLabel")}</span>
                             <input
                               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.clearThreshold}
@@ -519,7 +519,7 @@ export default function DeviceGroupsPage() {
                     ))
                   ) : (
                     <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 text-center">
-                      {(t as any)("noAlertRulesMsg")}
+                      {t("noAlertRulesMsg")}
                     </div>
                   )}
                 </div>
@@ -527,7 +527,7 @@ export default function DeviceGroupsPage() {
 
               <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
                 <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60 disabled:cursor-not-allowed" type="submit" disabled={saveLoading}>
-                  {saveLoading ? t("saving") : editingId ? (t as any)("updateGroupBtn") : (t as any)("createGroupBtn")}
+                  {saveLoading ? t("saving") : editingId ? t("updateGroupBtn") : t("createGroupBtn")}
                 </button>
                 <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm hover:bg-slate-200 transition" onClick={closeEditorModal}>
                   {t("cancel")}

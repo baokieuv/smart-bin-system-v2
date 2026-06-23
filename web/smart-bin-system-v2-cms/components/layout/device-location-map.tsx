@@ -49,9 +49,9 @@ function DeviceLocationMap({ devices, className, onDeviceClick }: DeviceLocation
   // Đưa hàm format vào trong để dùng t()
   const formatDeviceStatus = (status: string) => {
     const normalized = String(status || '').trim().toUpperCase();
-    if (normalized === 'ONLINE') return (t as any)('onlineStatus');
-    if (normalized === 'OFFLINE') return (t as any)('offlineStatus');
-    return normalized || (t as any)('offlineStatus');
+    if (normalized === 'ONLINE') return t('onlineStatus');
+    if (normalized === 'OFFLINE') return t('offlineStatus');
+    return normalized || t('offlineStatus');
   };
 
   useEffect(() => {
@@ -60,12 +60,12 @@ function DeviceLocationMap({ devices, className, onDeviceClick }: DeviceLocation
     let active = true;
     let didFallbackStyle = false;
 
-    let loadTimeout: ReturnType<typeof setTimeout>;
+    // let loadTimeout: ReturnType<typeof setTimeout>;
     let resizeTimeout1: ReturnType<typeof setTimeout>;
-    let resizeTimeout2: ReturnType<typeof setTimeout>;
-    let resizeTimeout3: ReturnType<typeof setTimeout>;
+    // let resizeTimeout2: ReturnType<typeof setTimeout>;
+    // let resizeTimeout3: ReturnType<typeof setTimeout>;
     let raf1: number;
-    let raf2: number;
+    // let raf2: number;
 
     mapboxgl.accessToken = accessToken;
 
@@ -78,7 +78,7 @@ function DeviceLocationMap({ devices, className, onDeviceClick }: DeviceLocation
     });
 
     map.on('error', (event) => {
-      const message = event.error?.message || (t as any)('mapErrorDefault');
+      const message = event.error?.message || t('mapErrorDefault');
       if (!didFallbackStyle && message.toLowerCase().includes('style')) {
         didFallbackStyle = true;
         map.setStyle(MAP_STYLES[1]);
@@ -101,11 +101,11 @@ function DeviceLocationMap({ devices, className, onDeviceClick }: DeviceLocation
     const handleResize = () => { if (active) map.resize(); };
     window.addEventListener('resize', handleResize);
 
-    raf2 = requestAnimationFrame(() => { if (active) map.resize(); });
-    resizeTimeout2 = setTimeout(() => { if (active) map.resize(); }, 80);
-    resizeTimeout3 = setTimeout(() => { if (active) map.resize(); }, 260);
+    const raf2 = requestAnimationFrame(() => { if (active) map.resize(); });
+    const resizeTimeout2 = setTimeout(() => { if (active) map.resize(); }, 80);
+    const resizeTimeout3 = setTimeout(() => { if (active) map.resize(); }, 260);
 
-    loadTimeout = setTimeout(() => {
+    const loadTimeout = setTimeout(() => {
       if (!active || isMapLoadedRef.current) return;
       setShowLoadingWarning(true);
     }, 8000);
@@ -151,7 +151,7 @@ function DeviceLocationMap({ devices, className, onDeviceClick }: DeviceLocation
       
       const img = document.createElement('img');
       img.src = isOnline ? '/icons/pin_online.svg' : '/icons/pin_offline.svg';
-      img.alt = isOnline ? (t as any)('deviceOnline') : (t as any)('deviceOffline');
+      img.alt = isOnline ? t('deviceOnline') : t('deviceOffline');
       img.style.width = '100%';
       img.style.height = '100%';
       img.style.filter = 'drop-shadow(0px 4px 6px rgba(0,0,0,0.15))';
@@ -176,7 +176,7 @@ function DeviceLocationMap({ devices, className, onDeviceClick }: DeviceLocation
             <div style="min-width: 160px; padding: 2px 0; font-size: 12px; line-height: 1.5; color: #0f172a;">
               <div style="font-weight: 700; margin-bottom: 2px;">${device.name}</div>
               <div style="font-weight: 700; margin-bottom: 2px;">${device.mac}</div>
-              <div>${(t as any)('statusLabel')} <span style="font-weight: 600; color: ${isOnline ? '#16a34a' : '#64748b'};">${formatDeviceStatus(device.status)}</span></div>
+              <div>${t('statusLabel')} <span style="font-weight: 600; color: ${isOnline ? '#16a34a' : '#64748b'};">${formatDeviceStatus(device.status)}</span></div>
             </div>
           `,
         }),
@@ -244,7 +244,7 @@ function DeviceLocationMap({ devices, className, onDeviceClick }: DeviceLocation
     return (
       <div className={className ?? ''}>
         <div className="flex h-full min-h-110 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-600">
-          {(t as any)('missingMapToken')}
+          {t('missingMapToken')}
         </div>
       </div>
     );
@@ -254,7 +254,7 @@ function DeviceLocationMap({ devices, className, onDeviceClick }: DeviceLocation
     return (
       <div className={className ?? ''}>
         <div className="flex h-full min-h-110 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center text-sm text-rose-600">
-          {(t as any)('mapFailedToLoad')} {mapErrorMessage}
+          {t('mapFailedToLoad')} {mapErrorMessage}
         </div>
       </div>
     );
@@ -267,21 +267,21 @@ function DeviceLocationMap({ devices, className, onDeviceClick }: DeviceLocation
 
         {!isMapLoaded ? (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-slate-50/80 text-sm font-medium text-slate-600 backdrop-blur-[1px]">
-            {showLoadingWarning ? (t as any)('stillLoadingMap') : (t as any)('loadingMap')}
+            {showLoadingWarning ? t('stillLoadingMap') : t('loadingMap')}
           </div>
         ) : null}
 
         <div className="pointer-events-none absolute left-4 top-4 z-10 flex flex-wrap gap-2">
           <div className="rounded-full border border-slate-200 bg-white/92 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm backdrop-blur">
-            {validDevices.length} {validDevices.length === 1 ? (t as any)('deviceWithCoordinates') : (t as any)('devicesWithCoordinates')}
+            {validDevices.length} {validDevices.length === 1 ? t('deviceWithCoordinates') : t('devicesWithCoordinates')}
           </div>
           <div className="rounded-full border border-slate-200 bg-white/92 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm backdrop-blur">
-            {onlineCount} {(t as any)('onlineLabel')} · {offlineCount} {(t as any)('offlineLabel')}
+            {onlineCount} {t('onlineLabel')} · {offlineCount} {t('offlineLabel')}
           </div>
         </div>
 
         <div className="pointer-events-none absolute bottom-4 right-4 z-10 rounded-2xl border border-slate-200 bg-white/92 px-3 py-2 text-[11px] font-medium text-slate-600 shadow-sm backdrop-blur">
-          {(t as any)('devicePositionsOnly')}
+          {t('devicePositionsOnly')}
         </div>
       </div>
     </div>

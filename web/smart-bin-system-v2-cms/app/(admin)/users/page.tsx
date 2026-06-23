@@ -6,21 +6,21 @@ import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { getRecaptchaToken } from "@/lib/recaptcha";
 import { usersAdminApi } from "@/services/api/users-admin";
-import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
+import { useLanguage, type TranslationKey } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 import type { CreateUserRequest } from "@/types/auth";
 import type { UserDto } from "@/types/user";
 
 const states: UserDto["state"][] = ["ACTIVE", "PENDING", "SUSPENDED", "DELETED"];
 
 // Sử dụng hàm để gọi t()
-const getDevicePermissions = (t: any) => [
+const getDevicePermissions = (t: (key: TranslationKey) => string) => [
   { key: "VIEW_DEVICE", label: t("permViewDevices"), description: t("permViewDevicesDesc") },
   { key: "EDIT_DEVICE", label: t("permEditDevices"), description: t("permEditDevicesDesc") },
   { key: "DELETE_DEVICE", label: t("permDeleteDevices"), description: t("permDeleteDevicesDesc") },
   { key: "CONTROL_DEVICE", label: t("permControlDevices"), description: t("permControlDevicesDesc") },
 ];
 
-const formatStateLabel = (state: UserDto["state"], t: any) => {
+const formatStateLabel = (state: UserDto["state"], t: (key: TranslationKey) => string) => {
   switch (state) {
     case "ACTIVE":
       return t("stateActive");
@@ -35,7 +35,7 @@ const formatStateLabel = (state: UserDto["state"], t: any) => {
   }
 };
 
-const formatPermissionsLabel = (perms: string[] | undefined, t: any) => {
+const formatPermissionsLabel = (perms: string[] | undefined, t: (key: TranslationKey) => string) => {
   if (!perms || perms.length === 0) return t("permViewDefault");
   return perms
     .map((p) => p.split('_')[0])
@@ -68,7 +68,7 @@ export default function UsersPage() {
   const [permissionsForm, setPermissionsForm] = useState<string[]>([]);
   const [isUpdatingPerms, setIsUpdatingPerms] = useState(false);
 
-  const devicePermissionsList = getDevicePermissions(t as any);
+  const devicePermissionsList = getDevicePermissions(t);
 
   const load = async () => {
     const response = await usersAdminApi.getUsers({ page: 1, size: 100 });
@@ -77,7 +77,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     void load().catch((error) => {
-      setMessage(error instanceof Error ? error.message : (t as any)("loadUserListError"));
+      setMessage(error instanceof Error ? error.message : t("loadUserListError"));
     });
     const email = typeof window !== "undefined" ? localStorage.getItem("admin_email") : null;
     setCurrentEmail(email);
@@ -88,11 +88,11 @@ export default function UsersPage() {
     try {
       setUpdatingUserId(id);
       await usersAdminApi.updateUserState(id, state);
-      const successMsg = (t as any)("userStatusUpdateSuccess").replace("{state}", formatStateLabel(state, t as any));
+      const successMsg = t("userStatusUpdateSuccess").replace("{state}", formatStateLabel(state, t));
       setMessage(successMsg);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : (t as any)("userStatusUpdateError"));
+      setMessage(error instanceof Error ? error.message : t("userStatusUpdateError"));
     } finally {
       setUpdatingUserId(null);
     }
@@ -125,12 +125,12 @@ export default function UsersPage() {
       };
 
       await usersAdminApi.createUser(request);
-      setMessage((t as any)("userCreatedSuccess"));
+      setMessage(t("userCreatedSuccess"));
       setIsCreateOpen(false);
       setCreateForm(emptyCreateUserForm);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : (t as any)("userCreateError"));
+      setMessage(error instanceof Error ? error.message : t("userCreateError"));
     } finally {
       setIsSubmitting(false);
     }
@@ -167,12 +167,12 @@ export default function UsersPage() {
     
     try {
       await usersAdminApi.updateUserPermissions(selectedUserForPerms.id, permissionsForm);
-      const successMsg = (t as any)("permsUpdateSuccess").replace("{name}", selectedUserForPerms.name);
+      const successMsg = t("permsUpdateSuccess").replace("{name}", selectedUserForPerms.name);
       setMessage(successMsg);
       setIsPermsOpen(false);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : (t as any)("permsUpdateError"));
+      setMessage(error instanceof Error ? error.message : t("permsUpdateError"));
     } finally {
       setIsUpdatingPerms(false);
     }
@@ -185,15 +185,15 @@ export default function UsersPage() {
   return (
     <div className="space-y-4">
       <Panel
-        title={(t as any)("innoecoUsers")}
-        subtitle={(t as any)("manageUsersSubtitle")}
+        title={t("innoecoUsers")}
+        subtitle={t("manageUsersSubtitle")}
         action={
           <button
             type="button"
             onClick={openCreateUser}
             className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110"
           >
-            {(t as any)("addUserBtn")}
+            {t("addUserBtn")}
           </button>
         }
       >
@@ -201,12 +201,12 @@ export default function UsersPage() {
           <table className="w-full min-w-240 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">{(t as any)("avatarCol")}</th>
+                <th className="py-2">{t("avatarCol")}</th>
                 <th className="py-2">{t("fullName")}</th>
                 <th className="py-2">{t("emailAddress")}</th>
-                <th className="py-2">{(t as any)("permissionsCol")}</th>
-                <th className="py-2">{(t as any)("statusCol")}</th>
-                <th className="py-2">{(t as any)("actionCol")}</th>
+                <th className="py-2">{t("permissionsCol")}</th>
+                <th className="py-2">{t("statusCol")}</th>
+                <th className="py-2">{t("actionCol")}</th>
               </tr>
             </thead>
             <tbody>
@@ -233,11 +233,11 @@ export default function UsersPage() {
                     <td className="py-2 font-medium text-foreground">{user.name.trim()}</td>
                     <td className="py-2 text-slate-600">{user.email}</td>
                     <td className="py-2 text-slate-600">
-                      <span className="truncate max-w-30 inline-block" title={formatPermissionsLabel(user.devicePermissions, t as any)}>
-                        {formatPermissionsLabel(user.devicePermissions, t as any)}
+                      <span className="truncate max-w-30 inline-block" title={formatPermissionsLabel(user.devicePermissions, t)}>
+                        {formatPermissionsLabel(user.devicePermissions, t)}
                       </span>
                     </td>
-                    <td className="py-2 text-slate-600">{formatStateLabel(user.state, t as any)}</td>
+                    <td className="py-2 text-slate-600">{formatStateLabel(user.state, t)}</td>
                     <td className="py-2">
                       {isSelf ? (
                         <span className="text-slate-500">-</span>
@@ -251,7 +251,7 @@ export default function UsersPage() {
                           >
                             {states.map((state) => (
                               <option key={state} value={state}>
-                                {formatStateLabel(state, t as any)}
+                                {formatStateLabel(state, t)}
                               </option>
                             ))}
                           </select>
@@ -260,7 +260,7 @@ export default function UsersPage() {
                             onClick={() => openPermissionsModal(user)}
                             className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition"
                           >
-                            {(t as any)("manageBtn")}
+                            {t("manageBtn")}
                           </button>
                         </div>
                       )}
@@ -292,15 +292,15 @@ export default function UsersPage() {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-semibold text-foreground">{(t as any)("addNewUserTitle")}</h3>
-                <p className="mt-1 text-sm text-slate-600">{(t as any)("addNewUserDesc")}</p>
+                <h3 className="text-xl font-semibold text-foreground">{t("addNewUserTitle")}</h3>
+                <p className="mt-1 text-sm text-slate-600">{t("addNewUserDesc")}</p>
               </div>
               <button
                 type="button"
                 onClick={closeCreateUser}
                 className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 transition hover:bg-slate-100"
               >
-                {(t as any)("closeBtn")}
+                {t("closeBtn")}
               </button>
             </div>
 
@@ -313,7 +313,7 @@ export default function UsersPage() {
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                   value={createForm.email}
                   onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
-                  placeholder={(t as any)("userEmailPlaceholder")}
+                  placeholder={t("userEmailPlaceholder")}
                 />
               </div>
 
@@ -326,7 +326,7 @@ export default function UsersPage() {
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                   value={createForm.password}
                   onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
-                  placeholder={(t as any)("min8Chars")}
+                  placeholder={t("min8Chars")}
                 />
               </div>
 
@@ -338,7 +338,7 @@ export default function UsersPage() {
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                   value={createForm.name}
                   onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))}
-                  placeholder={(t as any)("egJaneDoe")}
+                  placeholder={t("egJaneDoe")}
                 />
               </div>
             </div>
@@ -356,7 +356,7 @@ export default function UsersPage() {
                 disabled={isSubmitting}
                 className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmitting ? t("creating") : (t as any)("createUserBtn")}
+                {isSubmitting ? t("creating") : t("createUserBtn")}
               </button>
             </div>
           </form>
@@ -378,9 +378,9 @@ export default function UsersPage() {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-semibold text-foreground">{(t as any)("devicePermsTitle")}</h3>
+                <h3 className="text-xl font-semibold text-foreground">{t("devicePermsTitle")}</h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  {(t as any)("updateAccessControlsFor")} <span className="font-semibold text-slate-800">{selectedUserForPerms.name}</span>.
+                  {t("updateAccessControlsFor")} <span className="font-semibold text-slate-800">{selectedUserForPerms.name}</span>.
                 </p>
               </div>
               <button
@@ -388,7 +388,7 @@ export default function UsersPage() {
                 onClick={closePermissionsModal}
                 className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 transition hover:bg-slate-100"
               >
-                {(t as any)("closeBtn")}
+                {t("closeBtn")}
               </button>
             </div>
 
@@ -439,7 +439,7 @@ export default function UsersPage() {
                   disabled={isUpdatingPerms}
                   className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isUpdatingPerms ? t("saving") : (t as any)("savePermsBtn")}
+                  {isUpdatingPerms ? t("saving") : t("savePermsBtn")}
                 </button>
               </div>
             </div>

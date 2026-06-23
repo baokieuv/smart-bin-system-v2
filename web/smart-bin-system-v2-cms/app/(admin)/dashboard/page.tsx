@@ -114,7 +114,7 @@ export default function DashboardPage() {
         }
       } catch (loadError) {
         if (cancelled) return;
-        setError(loadError instanceof Error ? loadError.message : (t as any)("dashboardLoadErrorUser"));
+        setError(loadError instanceof Error ? loadError.message : t("dashboardLoadErrorUser"));
         setMapDevices([]);
       }
     };
@@ -148,7 +148,7 @@ export default function DashboardPage() {
         });
         setMapDevices(deviceList);
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : (t as any)("dashboardLoadErrorAdmin"));
+        setError(loadError instanceof Error ? loadError.message : t("dashboardLoadErrorAdmin"));
       }
     };
 
@@ -177,14 +177,14 @@ export default function DashboardPage() {
     const deviceCount = mapDevices.length;
     const onlineCount = mapDevices.filter((device) => String(device.status).toUpperCase() === "ONLINE").length;
     const offlineCount = deviceCount - onlineCount;
-    const fullName = userProfile?.name?.trim() || (t as any)("yourAccount");
+    const fullName = userProfile?.name?.trim() || t("yourAccount");
 
     return (
       <div className="space-y-4">
         {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-          <Panel title={(t as any)("myAccount")} subtitle={(t as any)("profileOverview")}>
+          <Panel title={t("myAccount")} subtitle={t("profileOverview")}>
             <div className="flex flex-col items-center text-center">
               <div className="relative h-24 w-24 overflow-hidden rounded-full border border-slate-200 bg-slate-100">
                 {userProfile?.avatarUrl ? (
@@ -206,12 +206,12 @@ export default function DashboardPage() {
                 href="/settings"
                 className="mt-4 rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110"
               >
-                {(t as any)("editProfile")}
+                {t("editProfile")}
               </Link>
             </div>
           </Panel>
 
-          <Panel title={(t as any)("myDevices")} subtitle={(t as any)("myDevicesSubtitle")}>
+          <Panel title={t("myDevices")} subtitle={t("myDevicesSubtitle")}>
             <div style={{ height: 520 }}>
               <DeviceLocationMap
                 devices={mapDevices}
@@ -225,13 +225,13 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <Panel title={(t as any)("myDevices")}>
+          <Panel title={t("myDevices")}>
             <p className="text-3xl font-semibold text-foreground">{deviceCount}</p>
           </Panel>
-          <Panel title={(t as any)("onlineStatus")}>
+          <Panel title={t("onlineStatus")}>
             <p className="text-3xl font-semibold text-foreground">{onlineCount}</p>
           </Panel>
-          <Panel title={(t as any)("offlineStatus")}>
+          <Panel title={t("offlineStatus")}>
             <p className="text-3xl font-semibold text-foreground">{offlineCount}</p>
           </Panel>
         </div>
@@ -241,10 +241,10 @@ export default function DashboardPage() {
 
   // Chuyển mảng cards sang dùng object id để filter an toàn thay vì label
   const cards = [
-    { id: "users", label: (t as any)("activeUsers"), value: stats.users },
-    { id: "devices", label: (t as any)("innoecoDevices"), value: stats.devices },
-    { id: "tenants", label: (t as any)("partnerOrganizations"), value: stats.tenants },
-    { id: "alerts", label: (t as any)("unreadAlerts"), value: stats.unreadNotifications },
+    { id: "users", label: t("activeUsers"), value: stats.users },
+    { id: "devices", label: t("innoecoDevices"), value: stats.devices },
+    { id: "tenants", label: t("partnerOrganizations"), value: stats.tenants },
+    { id: "alerts", label: t("unreadAlerts"), value: stats.unreadNotifications },
   ].filter((card) => {
     if (role === "admin") {
       return ["users", "devices", "alerts"].includes(card.id);
@@ -254,23 +254,23 @@ export default function DashboardPage() {
 
   const notes = [
     {
-      title: (t as any)("noteStoreTitle"),
-      body: (t as any)("noteStoreBody"),
+      title: t("noteStoreTitle"),
+      body: t("noteStoreBody"),
       visibleTo: ["super_admin"],
     },
     {
-      title: (t as any)("noteOrdersTitle"),
-      body: (t as any)("noteOrdersBody"),
+      title: t("noteOrdersTitle"),
+      body: t("noteOrdersBody"),
       visibleTo: ["super_admin"],
     },
     {
-      title: (t as any)("noteFleetTitle"),
-      body: (t as any)("noteFleetBody"),
+      title: t("noteFleetTitle"),
+      body: t("noteFleetBody"),
       visibleTo: ["super_admin", "admin"],
     },
     {
-      title: (t as any)("noteAlertsTitle"),
-      body: (t as any)("noteAlertsBody"),
+      title: t("noteAlertsTitle"),
+      body: t("noteAlertsBody"),
       visibleTo: ["super_admin", "admin"],
     },
   ].filter((item) => item.visibleTo.includes(role ?? "admin"));
@@ -287,13 +287,13 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <Panel title={(t as any)("deviceMapTitle")} subtitle={(t as any)("deviceMapSubtitle")}>
+      <Panel title={t("deviceMapTitle")} subtitle={t("deviceMapSubtitle")}>
         <div style={{ height: 520 }}>
           <DeviceLocationMap devices={mapDevices} className="w-full h-full" />
         </div>
       </Panel>
 
-      <Panel title={(t as any)("operationalGuidelines")} subtitle={(t as any)("operationalGuidelinesSubtitle")}>
+      <Panel title={t("operationalGuidelines")} subtitle={t("operationalGuidelinesSubtitle")}>
         <div className="grid gap-3 text-sm text-slate-600 md:grid-cols-2">
           {notes.map((item) => (
             <div key={item.title} className="rounded-xl border border-slate-200 bg-slate-50 p-3">

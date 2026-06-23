@@ -175,7 +175,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
 
         <main className="rounded-2xl border border-slate-200 bg-white/60 p-4 shadow-[0_16px_35px_rgba(36,80,130,0.12)] backdrop-blur lg:p-6">
           <header className="mb-4 rounded-2xl border border-slate-200 bg-white px-5 py-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-600">{t("appName")} {(t as any)("workspace")}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-600">{t("appName")} {t("workspace")}</p>
             <h2 className="text-2xl font-semibold">{title}</h2>
           </header>
           {children}

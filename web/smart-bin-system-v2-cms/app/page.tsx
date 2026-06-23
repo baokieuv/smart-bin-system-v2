@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 
 export default function Home() {
-  const { t, language, setLanguage, languageLabels } = useLanguage();
+  const { t } = useLanguage();
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#e8f3ff] p-6">
@@ -13,10 +13,10 @@ export default function Home() {
 
         {/* <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">InnoEco</p> */}
         <h1 className="mt-8 text-4xl font-semibold tracking-tight text-slate-900 sm:mt-3 sm:text-5xl">
-          {(t as any)("landingTitle")}
+          {t("landingTitle")}
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-          {(t as any)("landingSubtitle")}
+          {t("landingSubtitle")}
         </p>
 
         <div className="mt-7 flex flex-wrap gap-3">
@@ -24,7 +24,7 @@ export default function Home() {
             href="/dashboard"
             className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110"
           >
-            {(t as any)("openDashboard")}
+            {t("openDashboard")}
           </Link>
           <Link
             href="/auth/login"

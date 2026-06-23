@@ -28,7 +28,7 @@ export default function TenantsPage() {
 
   useEffect(() => {
     void load().catch((error) => {
-      setMessage(error instanceof Error ? error.message : (t as any)("tenantsLoadError"));
+      setMessage(error instanceof Error ? error.message : t("tenantsLoadError"));
     });
 
     const email = typeof window !== "undefined" ? localStorage.getItem("admin_email") : null;
@@ -44,10 +44,10 @@ export default function TenantsPage() {
     try {
       await tenantsAdminApi.createTenant({ name: form.name, email: form.email });
       setForm({ name: "", email: "" });
-      setMessage((t as any)("tenantCreatedSuccess"));
+      setMessage(t("tenantCreatedSuccess"));
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : (t as any)("tenantCreateError"));
+      setMessage(error instanceof Error ? error.message : t("tenantCreateError"));
     } finally {
       setCreateLoading(false);
     }
@@ -69,11 +69,11 @@ export default function TenantsPage() {
       setUpdatingTenantId(id);
       await tenantsAdminApi.updateTenantStatus(id, { status });
       // Thay thế {status} trong chuỗi dịch bằng biến status thực tế
-      const successMsg = (t as any)("tenantStatusUpdateSuccess").replace("{status}", status);
+      const successMsg = t("tenantStatusUpdateSuccess").replace("{status}", status);
       setMessage(successMsg);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : (t as any)("tenantStatusUpdateError"));
+      setMessage(error instanceof Error ? error.message : t("tenantStatusUpdateError"));
     } finally {
       setUpdatingTenantId(null);
     }
@@ -82,26 +82,26 @@ export default function TenantsPage() {
   return (
     <div className="space-y-4">
       <Panel
-        title={(t as any)("innoecoPartners")}
-        subtitle={(t as any)("partnersSubtitle")}
+        title={t("innoecoPartners")}
+        subtitle={t("partnersSubtitle")}
         action={
           <button type="button" onClick={openCreateModal} className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110">
-            {(t as any)("addPartnerAccount")}
+            {t("addPartnerAccount")}
           </button>
         }
       >
-        <p className="text-sm text-slate-600">{(t as any)("partnersDescription")}</p>
+        <p className="text-sm text-slate-600">{t("partnersDescription")}</p>
       </Panel>
 
-      <Panel title={(t as any)("partnerDirectory")} subtitle={(t as any)("partnerDirectorySubtitle")}>
+      <Panel title={t("partnerDirectory")} subtitle={t("partnerDirectorySubtitle")}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-240 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">{(t as any)("organizationName")}</th>
+                <th className="py-2">{t("organizationName")}</th>
                 <th className="py-2">{t("email")}</th>
-                <th className="py-2">{(t as any)("accountState")}</th>
-                <th className="py-2">{(t as any)("action")}</th>
+                <th className="py-2">{t("accountState")}</th>
+                <th className="py-2">{t("action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -136,24 +136,24 @@ export default function TenantsPage() {
       </Panel>
 
       {showCreateModal ? (
-        <Modal title={(t as any)("createPartnerAccount")} subtitle={(t as any)("createPartnerSubtitle")} onClose={closeCreateModal}>
+        <Modal title={t("createPartnerAccount")} subtitle={t("createPartnerSubtitle")} onClose={closeCreateModal}>
           <form className="space-y-4" onSubmit={createTenant}>
             <div>
-              <label className="block text-sm font-medium text-slate-700">{(t as any)("organizationName")}</label>
+              <label className="block text-sm font-medium text-slate-700">{t("organizationName")}</label>
               <input
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                 value={form.name}
                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder={(t as any)("egOrganization")}
+                placeholder={t("egOrganization")}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">{(t as any)("contactEmail")}</label>
+              <label className="block text-sm font-medium text-slate-700">{t("contactEmail")}</label>
               <input
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                 value={form.email}
                 onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                placeholder={(t as any)("partnerEmailPlaceholder")}
+                placeholder={t("partnerEmailPlaceholder")}
               />
             </div>
             <div className="flex items-center gap-2 border-t border-slate-200 pt-4">

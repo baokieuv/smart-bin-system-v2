@@ -1,3 +1,5 @@
+import { TranslationKey } from "./language";
+
 export const PASSWORD_MIN_LENGTH = 8;
 
 export type PasswordRule = {
@@ -6,7 +8,7 @@ export type PasswordRule = {
 };
 
 // Thêm tham số t (tùy chọn) để hỗ trợ đa ngôn ngữ
-export const getPasswordRules = (password: string, t?: (key: any) => string): PasswordRule[] => [
+export const getPasswordRules = (password: string, t?: (key: TranslationKey) => string): PasswordRule[] => [
   { 
     label: t ? t("ruleMinLength") : `At least ${PASSWORD_MIN_LENGTH} characters`, 
     check: password.length >= PASSWORD_MIN_LENGTH 

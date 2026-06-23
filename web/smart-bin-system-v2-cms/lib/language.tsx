@@ -299,7 +299,9 @@ const enTranslations = {
   avatarCol: "Avatar",
   permissionsCol: "Permissions",
   statusCol: "Status",
+  actionCol: "Action",
   manageBtn: "Manage",
+  stateActive: "Active",
   statePending: "Pending",
   stateSuspended: "Suspended",
   stateDeleted: "Deleted",
@@ -531,6 +533,9 @@ const enTranslations = {
   rpcClearHardwareErrorsDesc: "Clear existing hardware error states.",
   rpcTriggerOtaUpdate: "Trigger OTA Update",
   rpcTriggerOtaUpdateDesc: "Start an over-the-air update process.",
+  createRule: "Create Rule",
+  removingBtn: "Removing...",
+  uploading: "Uploading...",
 } as const;
 
 export type TranslationKey = keyof typeof enTranslations;
@@ -825,7 +830,9 @@ const translations: Record<LanguageCode, Record<TranslationKey, string>> = {
     avatarCol: "Ảnh đại diện",
     permissionsCol: "Quyền hạn",
     statusCol: "Trạng thái",
+    actionCol: "Hành động",
     manageBtn: "Quản lý",
+    stateActive: "Hoạt động",
     statePending: "Chờ duyệt",
     stateSuspended: "Đình chỉ",
     stateDeleted: "Đã xóa",
@@ -1057,6 +1064,9 @@ const translations: Record<LanguageCode, Record<TranslationKey, string>> = {
     rpcClearHardwareErrorsDesc: "Xóa các trạng thái lỗi phần cứng hiện tại.",
     rpcTriggerOtaUpdate: "Cập nhật OTA",
     rpcTriggerOtaUpdateDesc: "Bắt đầu quá trình cập nhật không dây (Over-The-Air).",
+    createRule: "Tạo quy tắc",
+    removingBtn: "Đang xóa...",
+    uploading: "Đang tải lên...",
   },
 };
 

@@ -16,7 +16,7 @@ import { authApi } from "@/services/api/auth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { t, language, setLanguage, languageLabels } = useLanguage();
+  const { t } = useLanguage();
   
   // Dữ liệu mock (có thể bạn sẽ muốn xóa giá trị mặc định ở production)
   const [email, setEmail] = useState("admin@innoeco.com");
@@ -37,7 +37,7 @@ export default function LoginPage() {
 
     if (!hasCmsAdminAccess(roles) || !role) {
       // Đa ngôn ngữ cho lỗi phân quyền
-      setMessage((t as any)("loginNoPermission"));
+      setMessage(t("loginNoPermission"));
       return false;
     }
 
@@ -63,7 +63,7 @@ export default function LoginPage() {
       }
     } catch (error) {
       // Đa ngôn ngữ cho lỗi kết nối hoặc sai mật khẩu
-      setMessage(error instanceof Error ? error.message : (t as any)("signInErrorFallback"));
+      setMessage(error instanceof Error ? error.message : t("signInErrorFallback"));
     } finally {
       setPasswordLoading(false);
     }
@@ -83,13 +83,13 @@ export default function LoginPage() {
         }
       } catch (error) {
         // Đa ngôn ngữ cho lỗi server khi login bằng Google
-        setMessage(error instanceof Error ? error.message : (t as any)("googleSignInFailed"));
+        setMessage(error instanceof Error ? error.message : t("googleSignInFailed"));
       } finally {
         setGoogleLoading(false);
       }
     },
     // Đa ngôn ngữ cho lỗi popup bị chặn hoặc user hủy
-    onError: () => setMessage((t as any)("googleSignInFailed")),
+    onError: () => setMessage(t("googleSignInFailed")),
   });
 
   return (
@@ -99,7 +99,7 @@ export default function LoginPage() {
         {message ? <StatusMessage tone="error" className="mb-4">{message}</StatusMessage> : null}
 
         <div>
-          <label className="mb-1 block text-sm font-semibold text-slate-700">{(t as any)("emailLabel")}</label>
+          <label className="mb-1 block text-sm font-semibold text-slate-700">{t("emailAddress")}</label>
           <Input 
             type="email" 
             value={email} 
@@ -137,7 +137,7 @@ export default function LoginPage() {
 
       <div className="my-6 flex items-center gap-3">
         <div className="h-px flex-1 bg-slate-200" />
-        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{(t as any)("orContinueWith")}</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{t("orContinueWith")}</span>
         <div className="h-px flex-1 bg-slate-200" />
       </div>
 

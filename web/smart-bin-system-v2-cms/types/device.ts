@@ -76,3 +76,5 @@ export type UpdateDeviceRequest = {
   scope?: string;
   additionalAttributes?: Record<string, unknown>;
 };
+
+export type TelemetryPayload = Record<string, Array<{ ts: number; value: string }>>;

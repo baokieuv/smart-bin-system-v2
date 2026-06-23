@@ -53,7 +53,7 @@ const extractUploadUrl = (data: unknown) => {
 export default function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const CropperComponent = Cropper;
-  const { t, language, setLanguage, languageLabels } = useLanguage();
+  const { t } = useLanguage();
   const [profile, setProfile] = useState<UserDto | null>(null);
   const [profileMessage, setProfileMessage] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
@@ -82,7 +82,7 @@ export default function SettingsPage() {
     };
 
     void load().catch((error) => {
-      setProfileMessage(error instanceof Error ? error.message : (t as any)("errorLoadProfile"));
+      setProfileMessage(error instanceof Error ? error.message : t("errorLoadProfile"));
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -128,9 +128,9 @@ export default function SettingsPage() {
       setCroppedAreaPixels(null);
     } catch (error) {
       if (error instanceof Error && error.message === "FILE_READ_ERROR") {
-        setProfileMessage((t as any)("errorReadImage"));
+        setProfileMessage(t("errorReadImage"));
       } else {
-        setProfileMessage(error instanceof Error ? error.message : (t as any)("errorLoadAvatar"));
+        setProfileMessage(error instanceof Error ? error.message : t("errorLoadAvatar"));
       }
     }
   };
@@ -144,7 +144,7 @@ export default function SettingsPage() {
     try {
       const croppedBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
       if (!croppedBlob) {
-        throw new Error((t as any)("errorCropImage"));
+        throw new Error(t("errorCropImage"));
       }
 
       const croppedFile = new File([croppedBlob], "avatar.jpg", { type: "image/jpeg" });
@@ -156,7 +156,7 @@ export default function SettingsPage() {
 
       const avatarUrl = extractUploadUrl(uploadResponse.data);
       if (!avatarUrl) {
-        throw new Error((t as any)("errorResolveAvatarUrl"));
+        throw new Error(t("errorResolveAvatarUrl"));
       }
 
       const updateResponse = await usersApi.update({
@@ -171,7 +171,7 @@ export default function SettingsPage() {
       setProfileMessage(t("avatarUpdated"));
       setImageSrc(null);
     } catch (error) {
-      setProfileMessage(error instanceof Error ? error.message : (t as any)("errorUpdateAvatar"));
+      setProfileMessage(error instanceof Error ? error.message : t("errorUpdateAvatar"));
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -199,7 +199,7 @@ export default function SettingsPage() {
       setProfileMessage(t("profileUpdated"));
       setShowProfileModal(false);
     } catch (error) {
-      setProfileMessage(error instanceof Error ? error.message : (t as any)("errorUpdateProfile"));
+      setProfileMessage(error instanceof Error ? error.message : t("errorUpdateProfile"));
     } finally {
       setProfileLoading(false);
     }
@@ -210,7 +210,7 @@ export default function SettingsPage() {
     setPasswordMessage("");
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setPasswordMessage((t as any)("errorPasswordsNotMatch"));
+      setPasswordMessage(t("errorPasswordsNotMatch"));
       return;
     }
 
@@ -226,21 +226,21 @@ export default function SettingsPage() {
       setPasswordForm(emptyPasswordForm);
       setPasswordMessage(t("passwordChanged"));
     } catch (error) {
-      setPasswordMessage(error instanceof Error ? error.message : (t as any)("errorChangePassword"));
+      setPasswordMessage(error instanceof Error ? error.message : t("errorChangePassword"));
     } finally {
       setPasswordLoading(false);
     }
   };
 
-  const fullName = profile?.name?.trim() || (t as any)("unnamedUser");
+  const fullName = profile?.name?.trim() || t("unnamedUser");
   const userInitial = (profile?.name || profile?.email || "U").slice(0, 1).toUpperCase();
 
   return (
     <div className="space-y-4">
-      <Panel title={(t as any)("settingsTitle")} subtitle={t("manageProfile")}>
+      <Panel title={t("settingsTitle")} subtitle={t("manageProfile")}>
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-1">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{(t as any)("accountLabel")}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{t("accountLabel")}</p>
             <div className="mt-3 flex items-center gap-3">
               <button
                 type="button"
@@ -320,7 +320,7 @@ export default function SettingsPage() {
             </button>
           }
         >
-          <p className="text-sm text-slate-600">{(t as any)("launchEditor")}</p>
+          <p className="text-sm text-slate-600">{t("launchEditor")}</p>
         </Panel>
 
         <Panel
@@ -332,7 +332,7 @@ export default function SettingsPage() {
             </button>
           }
         >
-          <p className="text-sm text-slate-600">{(t as any)("openSecurityPanel")}</p>
+          <p className="text-sm text-slate-600">{t("openSecurityPanel")}</p>
         </Panel>
       </div>
 
@@ -345,7 +345,7 @@ export default function SettingsPage() {
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                 value={profile?.name || ""}
                 onChange={(event) => setProfile((current) => (current ? { ...current, name: event.target.value } : current))}
-                placeholder={(t as any)("yourFullName")}
+                placeholder={t("yourFullName")}
               />
             </div>
 
@@ -355,7 +355,7 @@ export default function SettingsPage() {
                 readOnly
                 className="mt-2 w-full rounded-xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-slate-600 outline-none"
                 value={profile?.email || ""}
-                placeholder={(t as any)("adminEmail")}
+                placeholder={t("adminEmail")}
               />
             </div>
 
@@ -386,7 +386,7 @@ export default function SettingsPage() {
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                 value={passwordForm.currentPassword}
                 onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))}
-                placeholder={(t as any)("enterCurrentPassword")}
+                placeholder={t("enterCurrentPassword")}
               />
             </div>
 
@@ -398,7 +398,7 @@ export default function SettingsPage() {
                   className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                   value={passwordForm.newPassword}
                   onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))}
-                  placeholder={(t as any)("enterNewPassword")}
+                  placeholder={t("enterNewPassword")}
                 />
               </div>
               <div>
@@ -419,7 +419,7 @@ export default function SettingsPage() {
                 disabled={passwordLoading}
                 className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {passwordLoading ? (t as any)("updating") : t("changePassword")}
+                {passwordLoading ? t("updating") : t("changePassword")}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm" onClick={closePasswordModal}>
                 {t("cancel")}
@@ -476,7 +476,7 @@ export default function SettingsPage() {
                 className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
                 disabled={isUploadingAvatar}
               >
-                {isUploadingAvatar ? (t as any)("updating") : t("updateAvatarButton")}
+                {isUploadingAvatar ? t("updating") : t("updateAvatarButton")}
               </button>
             </div>
           </div>

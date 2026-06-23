@@ -15,7 +15,7 @@ type VerifyStatus = "loading" | "success" | "error";
 function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { t, language, setLanguage, languageLabels } = useLanguage();
+  const { t } = useLanguage();
 
   const token = searchParams.get("token") || "";
   const emailFromQuery = searchParams.get("email") || "";
@@ -35,9 +35,9 @@ function VerifyEmailContent() {
         const response = await authApi.verifyEmail(token);
         setStatus("success");
         setMessage(response.data || t("verifyEmailSuccess"));
-      } catch {
+      } catch (error) {
         setStatus("error");
-        setMessage(t("verifyEmailExpired"));
+        setMessage(error instanceof Error ? error.message : t("verifyEmailExpired"));
       }
     };
 
@@ -76,9 +76,9 @@ function VerifyEmailContent() {
       setCountdown(5);
       setStatus("success");
       setMessage(t("verifyEmailResent"));
-    } catch {
+    } catch (error) {
       setStatus("error");
-      setMessage(t("verifyEmailResendError"));
+      setMessage(error instanceof Error ? error.message : t("verifyEmailResendError"));
     } finally {
       setIsResending(false);
     }

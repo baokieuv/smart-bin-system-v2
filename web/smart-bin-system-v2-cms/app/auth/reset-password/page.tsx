@@ -12,7 +12,7 @@ import { useLanguage } from "@/lib/language";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const { t, language, setLanguage, languageLabels } = useLanguage();
+  const { t } = useLanguage();
   
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -29,9 +29,9 @@ export default function ResetPasswordPage() {
       setStatus("success");
       // Sử dụng API response hoặc fallback dịch thuật
       setMessage(response.data || t("resetPasswordSuccessFallback"));
-    } catch {
+    } catch (error) {
       setStatus("error");
-      setMessage(t("resetPasswordError"));
+      setMessage(error instanceof Error ? error.message : t("resetPasswordError"));
     }
   };
 

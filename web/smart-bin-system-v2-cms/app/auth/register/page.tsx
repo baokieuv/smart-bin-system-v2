@@ -16,7 +16,7 @@ import { usersApi } from "@/services/api/users";
 export default function RegisterPage() {
   const router = useRouter();
   // Lấy hàm t() và các state từ context
-  const { t, language, setLanguage, languageLabels } = useLanguage();
+  const { t } = useLanguage();
   
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -38,12 +38,12 @@ export default function RegisterPage() {
     // Sử dụng t() cho các thông báo lỗi validation
     if (!isPasswordStrongEnough(password)) {
       // Ép kiểu (any) tạm thời nếu bạn chưa kịp update file translations
-      setStatus({ type: "error", message: (t as any)("passwordTooWeak") });
+      setStatus({ type: "error", message: t("passwordTooWeak") });
       return;
     }
 
     if (password !== confirmPassword) {
-      setStatus({ type: "error", message: (t as any)("passwordMismatch") });
+      setStatus({ type: "error", message: t("passwordMismatch") });
       return;
     }
 
@@ -64,9 +64,9 @@ export default function RegisterPage() {
         return;
       }
 
-      setStatus({ type: "error", message: response.message || (t as any)("registrationFailed") });
+      setStatus({ type: "error", message: response.message || t("registrationFailed") });
     } catch (error) {
-      setStatus({ type: "error", message: (t as any)("serverError") });
+      setStatus({ type: "error", message: error instanceof Error ? error.message : t("serverError") });
     } finally {
       setIsSubmitting(false);
     }
@@ -126,12 +126,12 @@ export default function RegisterPage() {
                 ))}
               </div>
               <p className={`text-xs ${strength <= 1 ? "text-rose-600" : strength === 2 ? "text-amber-600" : strength === 3 ? "text-cyan-700" : "text-emerald-700"}`}>
-                {(t as any)("passwordStrength")}: {
+                {t("passwordStrength")}: {
                   strength === 0 ? "" : 
-                  strength === 1 ? (t as any)("strengthWeak") : 
-                  strength === 2 ? (t as any)("strengthFair") : 
-                  strength === 3 ? (t as any)("strengthGood") : 
-                  (t as any)("strengthStrong")
+                  strength === 1 ? t("strengthWeak") : 
+                  strength === 2 ? t("strengthFair") : 
+                  strength === 3 ? t("strengthGood") : 
+                  t("strengthStrong")
                 }
               </p>
             </div>

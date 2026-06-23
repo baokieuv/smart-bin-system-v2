@@ -57,7 +57,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
       const items: DeviceImportItem[] = [];
 
       if (rows.length === 0) {
-        setError((t as any)("importEmptyFile"));
+        setError(t("importEmptyFile"));
         setPreview([]);
         return;
       }
@@ -104,7 +104,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
       }
 
       if (items.length === 0) {
-        setError((t as any)("importInvalidData"));
+        setError(t("importInvalidData"));
         setPreview([]);
         return;
       }
@@ -123,7 +123,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
   };
 
   const doImport = async () => {
-    if (preview.length === 0) return setError((t as any)("importNoDevices"));
+    if (preview.length === 0) return setError(t("importNoDevices"));
     setLoading(true);
     try {
       const response = await devicesAdminApi.importDevices({
@@ -146,11 +146,11 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
         const suffix = failedMacs.length > 10 ? `, ... (+${failedMacs.length - 10})` : "";
         const detail = previewMacs ? `: ${previewMacs}${suffix}` : "";
         
-        const failedMsg = (t as any)("importFailedPartial").replace("{count}", String(failed.length));
+        const failedMsg = t("importFailedPartial").replace("{count}", String(failed.length));
         emitToast(`${failedMsg} ${detail}`, "error");
         setError(failedMsg);
       } else {
-        const successMsg = (t as any)("importSuccess").replace("{count}", String(preview.length));
+        const successMsg = t("importSuccess").replace("{count}", String(preview.length));
         emitToast(successMsg, "success");
         setError(null);
       }
@@ -169,7 +169,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
 
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-slate-700">{(t as any)("importLabel")}</label>
+      <label className="block text-sm font-medium text-slate-700">{t("importLabel")}</label>
       <div className="flex items-center gap-2">
         <input
           type="file"
@@ -177,24 +177,24 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
           onChange={(e) => handleFile(e.target.files)}
           className="text-sm"
         />
-        <span className="text-sm text-slate-500">{fileName ?? (t as any)("noFileSelected")}</span>
+        <span className="text-sm text-slate-500">{fileName ?? t("noFileSelected")}</span>
       </div>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
       {preview.length > 0 ? (
         <div className="rounded-md border border-slate-200 p-2">
           <div className="text-sm text-slate-600">
-            {(t as any)("importPreviewText").replace("{count}", String(preview.length))}
+            {t("importPreviewText").replace("{count}", String(preview.length))}
           </div>
           <div className="mt-2 overflow-x-auto max-h-56">
             <table className="w-full text-sm min-w-max">
               <thead>
                 <tr className="text-left text-slate-600">
-                  <th className="py-1 pr-4">{(t as any)("deviceName")}</th>
-                  <th className="py-1 pr-4">{(t as any)("macAddress")}</th>
-                  <th className="py-1 pr-4">{(t as any)("claimCode")}</th>
-                  <th className="py-1 pr-4">{(t as any)("latitude")}</th>
-                  <th className="py-1">{(t as any)("longitude")}</th>
+                  <th className="py-1 pr-4">{t("deviceName")}</th>
+                  <th className="py-1 pr-4">{t("macAddress")}</th>
+                  <th className="py-1 pr-4">{t("claimCode")}</th>
+                  <th className="py-1 pr-4">{t("latitude")}</th>
+                  <th className="py-1">{t("longitude")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -217,7 +217,7 @@ export default function ImportDevicesPanel({ onImported }: { onImported?: () => 
               onClick={doImport}
               disabled={loading}
             >
-              {loading ? (t as any)("importing") : (t as any)("importDevicesBtn")}
+              {loading ? t("importing") : t("importDevicesBtn")}
             </button>
             <button
               type="button"
