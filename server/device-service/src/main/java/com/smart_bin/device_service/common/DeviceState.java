@@ -23,4 +23,16 @@ public enum DeviceState {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown DeviceState value: " + value));
     }
+
+    public static DeviceState fromString(String stateName) {
+        if (stateName == null || stateName.trim().isEmpty()) {
+            return null; // Trả về null thay vì ném lỗi để an toàn cho bộ lọc (filter)
+        }
+
+        try {
+            return DeviceState.valueOf(stateName.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
 }
