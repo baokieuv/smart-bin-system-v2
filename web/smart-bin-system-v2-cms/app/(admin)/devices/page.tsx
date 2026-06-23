@@ -1,119 +1,40 @@
 "use client";
 
 import ImportDevicesPanel from "@/components/devices/import-devices";
-import { LocationPickerMap, type LocationValue } from "@/components/layout/location-picker-map";
 import Modal from "@/components/ui/modal";
 import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { getCmsAccessRole } from "@/lib/auth-session";
+import { useLanguage, type TranslationKey } from "@/lib/language";
 import { deviceApi } from "@/services/api/device";
+import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
 import { devicesAdminApi } from "@/services/api/devices-admin";
 import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
-import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
 import { usersAdminApi } from "@/services/api/users-admin";
 import type { DeviceDto, TelemetryPayload } from "@/types/device";
 import type { FirmwareDto } from "@/types/firmware";
 import type { UserDto } from "@/types/user";
 import { FormEvent, useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useLanguage, type TranslationKey } from "@/lib/language"; 
-
-type RpcMethodOption = {
-  method: string;
-  label: string;
-  type: "ONE_WAY" | "TWO_WAY";
-  description: string;
-};
-
-const getRpcMethodOptions = (t: (key: TranslationKey) => string): RpcMethodOption[] => [
-  { method: "openLid", label: t("rpcOpenLid"), type: "TWO_WAY", description: t("rpcOpenLidDesc") },
-  { method: "closeLid", label: t("rpcCloseLid"), type: "TWO_WAY", description: t("rpcCloseLidDesc") },
-  { method: "lockBin", label: t("rpcLockBin"), type: "TWO_WAY", description: t("rpcLockBinDesc") },
-  { method: "unlockBin", label: t("rpcUnlockBin"), type: "TWO_WAY", description: t("rpcUnlockBinDesc") },
-  { method: "forceSync", label: t("rpcForceSync"), type: "ONE_WAY", description: t("rpcForceSyncDesc") },
-  { method: "triggerAlarmAlert", label: t("rpcTriggerAlert"), type: "ONE_WAY", description: t("rpcTriggerAlertDesc") },
-  { method: "rebootDevice", label: t("rpcRebootDevice"), type: "ONE_WAY", description: t("rpcRebootDeviceDesc") },
-  { method: "calibrateSensor", label: t("rpcCalibrateSensors"), type: "TWO_WAY", description: t("rpcCalibrateSensorsDesc") },
-  { method: "setPollingInterval", label: t("rpcSetPollingInterval"), type: "TWO_WAY", description: t("rpcSetPollingIntervalDesc") },
-  { method: "clearHardwareError", label: t("rpcClearHardwareErrors"), type: "TWO_WAY", description: t("rpcClearHardwareErrorsDesc") },
-  { method: "triggerOtaUpdate", label: t("rpcTriggerOtaUpdate"), type: "ONE_WAY", description: t("rpcTriggerOtaUpdateDesc") },
-];
-
-const getRpcMethodOption = (method: string, t: (key: TranslationKey) => string) => {
-  const options = getRpcMethodOptions(t);
-  return options.find((option) => option.method === method) ?? options[0];
-};
-
-const getDefaultRpcParams = (method: string) => {
-  switch (method) {
-    case "setPollingInterval":
-      return JSON.stringify({ intervalSeconds: 60 }, null, 2);
-    case "triggerAlarmAlert":
-      return JSON.stringify({ message: "Manual alert" }, null, 2);
-    case "calibrateSensor":
-      return JSON.stringify({}, null, 2);
-    default:
-      return JSON.stringify({}, null, 2);
-  }
-};
-
-const firmwareLabel = (firmware: FirmwareDto) => {
-  const suffix = firmware.description ? ` - ${firmware.description}` : "";
-  return `${firmware.version}${suffix}`;
-};
-
-const firmwareTimestamp = (firmware: FirmwareDto) => {
-  if (!firmware.createdDate) return 0;
-  const parsed = Date.parse(firmware.createdDate);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const getLatestFirmware = (firmwares: FirmwareDto[], type: "ESP32" | "RASPBERRY_PI") =>
-  [...firmwares]
-    .filter((firmware) => firmware.type === type)
-    .sort((left, right) => firmwareTimestamp(right) - firmwareTimestamp(left) || right.version.localeCompare(left.version, undefined, { numeric: true, sensitivity: "base" }))[0];
-
-const MAC_PATTERN = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
-const CLAIM_CODE_PATTERN = /^.{6}$/;
-
-const formatMacAddress = (rawValue: string) => {
-  const normalized = rawValue
-    .toUpperCase()
-    .replace(/[^0-9A-F]/g, "")
-    .slice(0, 12);
-
-  const pairs = normalized.match(/.{1,2}/g);
-  return pairs ? pairs.join(":") : "";
-};
-
-const parseCoordinatePair = (latitudeValue: string, longitudeValue: string): LocationValue | null => {
-  const latitude = Number(latitudeValue);
-  const longitude = Number(longitudeValue);
-
-  if (Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
-  if (latitude < -90 || latitude > 90) return null;
-  if (longitude < -180 || longitude > 180) return null;
-
-  return { latitude, longitude };
-};
-
-const parseOptionalNumber = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-
-  const parsed = Number(trimmed);
-  return Number.isNaN(parsed) ? undefined : parsed;
-};
-
-const toLocationKey = (latitude?: number, longitude?: number) => {
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return "";
-  return `${Number(latitude).toFixed(6)},${Number(longitude).toFixed(6)}`;
-};
-
-const toCoordinateText = (latitude?: number, longitude?: number, t?: (key: TranslationKey) => string) => {
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return t ? t("locationUnavailable") : "Location unavailable";
-  return `${Number(latitude).toFixed(6)}, ${Number(longitude).toFixed(6)}`;
-};
+import AddDeviceModal from "@/components/devices/add-device-modal";
+import AssignDevicesPanel from "@/components/devices/assign-devices-panel";
+import ConfigureFirmwareModal from "@/components/devices/configure-firmware-modal";
+import DeviceControlModal from "@/components/devices/device-control-modal";
+import DeviceDetailsModal from "@/components/devices/device-details-modal";
+import DevicesFilterPanel, { type FilterProps } from "@/components/devices/devices-filter-panel";
+import DevicesTable from "@/components/devices/devices-table";
+import {
+  CLAIM_CODE_PATTERN,
+  firmwareTimestamp,
+  getDefaultRpcParams,
+  getLatestFirmware,
+  getRpcMethodOptions,
+  MAC_PATTERN,
+  parseCoordinatePair,
+  parseOptionalNumber,
+  toCoordinateText,
+  toLocationKey,
+} from "./utils";
 
 // ==========================================
 // 1. EXTRACTED COMPONENT LOGIC
@@ -125,6 +46,16 @@ function DevicesPageContent() {
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
   const { t } = useLanguage(); 
 
+  const [partners, setPartners] = useState<{ id: string; name: string }[]>([]);
+  // const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterInputs, setFilterInputs] = useState<FilterProps>({
+    name: searchParams.get("name") || "",
+    mac: searchParams.get("mac") || "",
+    groupId: searchParams.get("groupId") || "",
+    status: searchParams.get("status") || "",
+    tenantId: searchParams.get("tenantId") || "",
+  });
   const [devices, setDevices] = useState<DeviceDto[]>([]);
   const [firmwares, setFirmwares] = useState<FirmwareDto[]>([]);
   const [users, setUsers] = useState<UserDto[]>([]);
@@ -233,13 +164,7 @@ function DevicesPageContent() {
   
   const addLocation = parseCoordinatePair(form.latitude, form.longitude);
   const editLocation = parseCoordinatePair(editDeviceForm.latitude, editDeviceForm.longitude);
-  const isMacValid = MAC_PATTERN.test(form.mac.trim());
-  const isClaimCodeValid = CLAIM_CODE_PATTERN.test(form.claimCode.trim());
-  const isNameValid = form.name.trim().length > 0;
-  const canSubmitAddDevice = isMacValid && isClaimCodeValid && isNameValid && addLocation !== null && !createLoading;
-
-  const formatTimeShort = (ts: number) =>
-    new Date(ts).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const canSubmitAddDevice = MAC_PATTERN.test(form.mac.trim()) && CLAIM_CODE_PATTERN.test(form.claimCode.trim()) && form.name.trim().length > 0 && addLocation !== null && !createLoading;
 
   const buildTelemetryHistory = useCallback((telemetries: TelemetryPayload) => {
     const binKeys = ['bin1', 'bin2', 'bin3', 'bin4'];
@@ -305,18 +230,50 @@ function DevicesPageContent() {
     }
   };
 
-  const load = useCallback(async (nextPage = page, nextSize = size) => {
-    const response = await devicesAdminApi.getDevices({ page: nextPage, size: nextSize });
+  const load = useCallback(async () => {
+    const page = Number(searchParams.get("page")) || 1;
+    const size = Number(searchParams.get("size")) || 10;
+
+    const filterParams: Record<string, string | number> = {
+      page,
+      size,
+    };
+
+    // Chỉ lấy trực tiếp từ các param của bộ lọc Filter Modal
+    const name = searchParams.get("name");
+    if (name) filterParams.name = name;
+
+    const mac = searchParams.get("mac");
+    if (mac) filterParams.mac = mac;
+
+    const groupId = searchParams.get("groupId");
+    if (groupId) filterParams.groupId = groupId;
+
+    const status = searchParams.get("status");
+    if (status) filterParams.state = status; // Map "status" sang "state" cho API Backend
+
+    const tenantId = searchParams.get("tenantId");
+    if (tenantId) filterParams.tenantId = tenantId;
+
+    // Gọi API Filter
+    const response = await deviceApi.getFilterList(filterParams);
+    
     setDevices(unwrapListPayload(response.data));
+    setPage(page);
+    setSize(size);
 
     if (!Array.isArray(response.data) && response.data) {
       const payload = response.data as Record<string, unknown>;
       const backendTotalPages = payload.totalPages;
       if (typeof backendTotalPages === "number" && Number.isFinite(backendTotalPages)) {
         setTotalPages(Math.max(1, backendTotalPages));
+      } else {
+        setTotalPages(1);
       }
+    } else {
+      setTotalPages(1);
     }
-  }, [page, size]);
+  }, [searchParams]);
 
   const loadFirmwares = async () => {
     const response = await firmwaresAdminApi.getFirmwares({ page: 1, size: 1000 });
@@ -327,8 +284,10 @@ function DevicesPageContent() {
 
   useEffect(() => {
     loadRole();
-    void load(page, size);
-  }, [load, page, size]);
+    if (role !== null) {
+      void load();
+    }
+  }, [load, role]);
 
   useEffect(() => {
     void loadFirmwares().catch(() => {
@@ -351,8 +310,75 @@ function DevicesPageContent() {
         // ignore
       }
     })();
+
+    if (role === "super_admin") {
+      (async () => {
+        try {
+          // TODO: Replace with actual API call to fetch partners/tenants
+          // For example:
+          // const response = await partnersAdminApi.getPartners({ page: 1, size: 500 });
+          // const items = unwrapListPayload(response.data);
+          // setPartners(items.map((item) => ({ id: item.id, name: item.name })));
+        } catch {
+          // ignore
+        }
+      })();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [role]);
+
+  // useEffect(() => {
+  //   setSearchQuery(searchParams.get("search") || "");
+  // }, [searchParams]);
+
+  useEffect(() => {
+    setFilterInputs({
+      name: searchParams.get("name") || "",
+      mac: searchParams.get("mac") || "",
+      groupId: searchParams.get("groupId") || "",
+      status: searchParams.get("status") || "",
+      tenantId: searchParams.get("tenantId") || "",
+    });
+  }, [searchParams]);
+
+  // const handleSearch = (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   const params = new URLSearchParams();
+  //   if (searchQuery.trim()) {
+  //     params.set("search", searchQuery.trim());
+  //   }
+  //   params.set("page", "1");
+  //   params.set("size", String(size));
+  //   router.push(`${pathname}?${params.toString()}`);
+  // };
+
+  const handleApplyFilters = () => {
+    const params = new URLSearchParams();
+    Object.entries(filterInputs).forEach(([key, value]) => {
+      if (value) {
+        params.set(key, value);
+      }
+    });
+    params.set("page", "1");
+    params.set("size", String(size));
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const handleClearFilters = () => {
+    setFilterInputs({ name: "", mac: "", groupId: "", status: "", tenantId: "" });
+    // setSearchQuery("");
+    router.push(`${pathname}?page=1&size=${size}`);
+  };
+
+  const handleApplyFiltersAndClose = () => {
+    handleApplyFilters();
+    setShowFilterModal(false);
+  };
+
+  const handleClearFiltersAndClose = () => {
+    handleClearFilters();
+    setShowFilterModal(false);
+  };
 
   const toggleDeviceSelection = (deviceId: string) => {
     setSelectedDeviceIds((current) =>
@@ -420,7 +446,7 @@ function DevicesPageContent() {
       setSelectedDeviceIds([]);
       setAssignGroupId("");
       setAssignUserId("");
-      await load(page, size);
+      await load();
     } catch (error) {
       setAssignMessage(error instanceof Error ? error.message : t("assignmentFailed"));
     } finally {
@@ -504,7 +530,7 @@ function DevicesPageContent() {
       });
       setMessage(t("deviceAddedSuccess"));
       setShowQuickAddModal(false);
-      await load(page, size);
+      await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("addDeviceError"));
     } finally {
@@ -634,7 +660,7 @@ function DevicesPageContent() {
       });
 
       setEditDeviceMessage(t("deviceDetailsUpdated"));
-      await load(page, size);
+      await load();
       
       setSelectedDeviceDetails(current => 
         current ? {
@@ -883,6 +909,19 @@ function DevicesPageContent() {
     });
   }, [devices, resolveLocationText]);
 
+  const handleSetPage = (newPage: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("page", String(newPage));
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const handleSetSize = (newSize: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("size", String(newSize));
+    params.set("page", "1");
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
   const getLocationText = (lat?: number, lng?: number) => {
     const key = toLocationKey(lat, lng);
     const isResolving = key ? Boolean(loadingLocationKeys[key]) : false;
@@ -892,221 +931,68 @@ function DevicesPageContent() {
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
-      <Panel title={t("devicesTitle")} subtitle={t("devicesSubtitle")}>
-        <div className="max-w-full overflow-x-auto">
-          <table className="w-full min-w-300 text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-600">
-                  {canAssignDevices ? <th className="w-10 py-2 px-3 whitespace-nowrap">{t("selectCol")}</th> : null}
-                  <th className="py-2 px-3 whitespace-nowrap">{t("deviceName")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{t("macAddress")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{t("locationCol")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{t("groupCol")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{t("statusCol")}</th>
-                  <th className="py-2 px-3 whitespace-nowrap">{t("actions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {devices.map((device) => (
-                <tr key={device.id} className={`border-b border-slate-200/70 ${selectedDeviceId === device.id ? "bg-sky-50/60" : ""}`}>
-                  {canAssignDevices ? (
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={selectedDeviceIds.includes(device.id)}
-                        onChange={() => toggleDeviceSelection(device.id)}
-                        aria-label={`Select ${device.name}`}
-                      />
-                    </td>
-                  ) : null}
-                  <td className="py-2 px-3 font-medium text-foreground whitespace-nowrap">
-                    {canControlDevice ? (
-                      <button
-                        type="button"
-                        onClick={() => openControlModal(device)}
-                        className="text-left font-medium text-sky-800 underline decoration-sky-300 underline-offset-4 hover:text-sky-900"
-                      >
-                        {device.name}
-                      </button>
-                    ) : (
-                      device.name
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.mac}</td>
-                  <td className="py-2 px-3 text-slate-600 max-w-50 truncate" title={getLocationText(device.latitude, device.longitude)}>
-                    {getLocationText(device.latitude, device.longitude)}
-                  </td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.groupCode || "-"}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
-                    <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-500/10">
-                      {device.status} {device.state ? `(${device.state})` : ""}
-                    </span>
-                  </td>
-                  <td className="py-2 px-3 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openDeviceDetails(device)}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      {t("detailsBtn")}
-                    </button>
-                    {canConfigureFirmware ? (
-                      <button
-                        type="button"
-                        onClick={() => void openConfig(device)}
-                        disabled={configLoading || configFetchingId === device.id}
-                        className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:opacity-50"
-                      >
-                        {configFetchingId === device.id ? t("loading") : t("configureBtn")}
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-          <div className="text-slate-600">
-            {t("pageText")} {page} {t("ofText")} {totalPages}
-          </div>
+      <Panel
+        title={t("devicesTitle")}
+        subtitle={t("devicesSubtitle")}
+        action={
           <div className="flex items-center gap-2">
-            <select
-              className="rounded-lg border border-slate-200 px-2 py-1"
-              value={size}
-              onChange={(e) => {
-                setPage(1);
-                setSize(Number(e.target.value));
-              }}
+            {/* Chỉ giữ lại mỗi nút Filter */}
+            <button 
+              type="button" 
+              onClick={() => setShowFilterModal(true)} 
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              <option value={10}>10 {t("perPage")}</option>
-              <option value={20}>20 {t("perPage")}</option>
-              <option value={50}>50 {t("perPage")}</option>
-              <option value={100}>100 {t("perPage")}</option>
-            </select>
-            <button
-              className="rounded-lg border border-slate-200 px-3 py-1 disabled:opacity-50"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              type="button"
-            >
-              {t("previousBtn")}
-            </button>
-            <button
-              className="rounded-lg border border-slate-200 px-3 py-1 disabled:opacity-50"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              type="button"
-            >
-              {t("nextBtn")}
+              {t("filterBtn")}
             </button>
           </div>
-        </div>
+        }
+      >
+        <DevicesTable
+          devices={devices}
+          selectedDeviceIds={selectedDeviceIds}
+          selectedDeviceId={selectedDeviceId}
+          canAssignDevices={canAssignDevices}
+          canControlDevice={canControlDevice}
+          canConfigureFirmware={canConfigureFirmware}
+          configLoading={configLoading}
+          configFetchingId={configFetchingId}
+          onToggleSelection={toggleDeviceSelection}
+          onOpenControlModal={openControlModal}
+          onOpenDetails={openDeviceDetails}
+          onOpenConfig={openConfig}
+          getLocationText={getLocationText}
+          t={t}
+          page={page}
+          totalPages={totalPages}
+          size={size}
+          setPage={handleSetPage}
+          setSize={handleSetSize}
+        />
       </Panel>
 
       <div className="space-y-4">
-        {canAssignDevices ? (
-          <Panel title={t("assignDevicesTitle")} subtitle={t("assignDevicesSubtitle")}>
-            <form className="space-y-4" onSubmit={assignSelectedDevices}>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-foreground">
-                      {t("selectedDevicesCount").replace("{count}", String(selectedDeviceIds.length))}
-                    </p>
-                    <p>
-                      {selectedDeviceIds.length > 0
-                        ? t("devicesQueued").replace("{count}", String(selectedDeviceIds.length))
-                        : t("selectDevicesToStart")}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={selectAllVisibleDevices}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                      disabled={devices.length === 0}
-                    >
-                      {t("selectAllBtn")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDeviceIds([])}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                      disabled={selectedDeviceIds.length === 0}
-                    >
-                      {t("clearBtn")}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-3 rounded-1xl border border-slate-200 bg-white p-3 sm:grid-cols-1">
-                <button
-                  type="button"
-                  onClick={() => setAssignMode("group")}
-                  className={`rounded-xl px-4 py-3 text-left transition ${
-                    assignMode === "group"
-                      ? "border border-sky-300 bg-sky-50 text-sky-800"
-                      : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  <div className="text-sm font-semibold">{t("assignToGroup")}</div>
-                  <div className="mt-1 text-xs">{t("assignToGroupDesc")}</div>
-                </button>
-              </div>
-
-              {assignMode === "group" ? (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">{t("targetGroupLabel")}</label>
-                  <select
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2"
-                    value={assignGroupId}
-                    onChange={(event) => setAssignGroupId(event.target.value)}
-                  >
-                    <option value="">{t("selectGroupPlaceholder")}</option>
-                    {deviceGroups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.code} - {group.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">{t("targetUserLabel")}</label>
-                  <select
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2"
-                    value={assignUserId}
-                    onChange={(event) => setAssignUserId(event.target.value)}
-                  >
-                    <option value="">{t("selectUserPlaceholder")}</option>
-                    {sortedUsers.map((user) => (
-                      <option key={user.id} value={user.keycloakId}>
-                        {user.name} - {user.email} {user.state !== "ACTIVE" ? `(${user.state})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  type="submit"
-                  disabled={assignLoading || selectedDeviceIds.length === 0 || (assignMode === "group" ? !assignGroupId : !assignUserId)}
-                >
-                  {assignLoading ? t("processing") : t("applyAssignmentBtn")}
-                </button>
-                {assignMessage ? <p className="text-sm text-slate-600">{assignMessage}</p> : null}
-              </div>
-            </form>
-          </Panel>
-        ) : null}
+        <AssignDevicesPanel
+          canAssignDevices={canAssignDevices}
+          selectedDeviceIds={selectedDeviceIds}
+          devices={devices}
+          deviceGroups={deviceGroups}
+          sortedUsers={sortedUsers}
+          assignSelectedDevices={assignSelectedDevices}
+          selectAllVisibleDevices={selectAllVisibleDevices}
+          setSelectedDeviceIds={setSelectedDeviceIds}
+          assignMode={assignMode}
+          setAssignMode={setAssignMode}
+          assignGroupId={assignGroupId}
+          setAssignGroupId={setAssignGroupId}
+          assignUserId={assignUserId}
+          setAssignUserId={setAssignUserId}
+          assignMessage={assignMessage}
+          assignLoading={assignLoading}
+          t={t}
+        />
 
         <Panel title={t("bulkImportTitle")}>
-          <ImportDevicesPanel onImported={() => void load(page, size)} />
+          <ImportDevicesPanel onImported={() => void load()} />
         </Panel>
 
         <Panel
@@ -1122,540 +1008,84 @@ function DevicesPageContent() {
         </Panel>
       </div>
 
-      {/* Device Details & Edit Modal */}
-      {selectedDeviceDetails ? (
-        <Modal title={t("deviceDetailsTitle")} subtitle={t("deviceDetailsSubtitle")} onClose={closeDeviceDetails} widthClassName="w-[min(1100px,98vw)]">
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Left Column: Read-Only Info & Telemetry */}
-            <div className="space-y-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3 text-sm text-slate-700">
-                <h4 className="font-semibold text-slate-900 border-b border-slate-200 pb-2">{t("systemInfoLabel")}</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <span className="font-medium text-slate-900">{t("macAddress")}:</span> 
-                  <span>{selectedDeviceDetails.mac}</span>
-                  
-                  <span className="font-medium text-slate-900">{t("groupCol")}:</span> 
-                  <span>{selectedDeviceDetails.groupCode || "-"}</span>
-                  
-                  <span className="font-medium text-slate-900">{t("statusCol")}:</span> 
-                  <span className="capitalize">{selectedDeviceDetails.status || "offline"}</span>
-                  
-                  <span className="font-medium text-slate-900">{t("accountState")}:</span> 
-                  <span>{selectedDeviceDetails.state || "-"}</span>
+      <DeviceDetailsModal
+        device={selectedDeviceDetails}
+        onClose={closeDeviceDetails}
+        onSave={saveDeviceDetails}
+        editDeviceForm={editDeviceForm}
+        setEditDeviceForm={setEditDeviceForm}
+        editDeviceLoading={editDeviceLoading}
+        editDeviceMessage={editDeviceMessage}
+        editLocation={editLocation}
+        telemetryLoading={telemetryLoading}
+        telemetryMessage={telemetryMessage}
+        telemetryHistory={telemetryHistory}
+        locationTextByKey={locationTextByKey}
+        loadingLocationKeys={loadingLocationKeys}
+        t={t}
+      />
 
-                  <span className="font-medium text-slate-900">{t("locationCol")}:</span> 
-                  <span className="truncate" title={
-                    (() => {
-                      const key = toLocationKey(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude);
-                      const isResolving = key ? Boolean(loadingLocationKeys[key]) : false;
-                      const text = key ? locationTextByKey[key] : "";
-                      return isResolving ? t("resolvingAddress") : (text || toCoordinateText(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude, t));
-                    })()
-                  }>
-                    {(() => {
-                      const key = toLocationKey(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude);
-                      const isResolving = key ? Boolean(loadingLocationKeys[key]) : false;
-                      const text = key ? locationTextByKey[key] : "";
-                      return isResolving ? t("resolvingAddress") : (text || toCoordinateText(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude, t));
-                    })()}
-                  </span>
-                  
-                  <span className="font-medium text-slate-900">{t("claimedAtLabel")}:</span> 
-                  <span>{selectedDeviceDetails.claimedAt || "-"}</span>
-                  
-                  <span className="font-medium text-slate-900">{t("createdDateLabel")}:</span> 
-                  <span>{selectedDeviceDetails.createdDate || "-"}</span>
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-2">{t("deviceTelemetryLabel")}</h4>
-                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                  {telemetryLoading ? (
-                    <div className="py-4 text-center text-slate-500">{t("loadingTelemetry")}</div>
-                  ) : telemetryMessage ? (
-                    <div className="py-4 text-center text-sm text-slate-600">{telemetryMessage}</div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">{t("latestFillLevel")}</div>
-                          <div className="mt-1 text-lg font-semibold text-foreground">
-                            {telemetryHistory.length > 0 && telemetryHistory[0].fillLevel !== null ? `${telemetryHistory[0].fillLevel}%` : "-"}
-                          </div>
-                        </div>
-                        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">{t("latestThrows")}</div>
-                          <div className="mt-1 text-lg font-semibold text-foreground">
-                            {telemetryHistory.length > 0 && telemetryHistory[0].throwCount !== null ? telemetryHistory[0].throwCount : "-"}
-                          </div>
-                        </div>
-                        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">{t("latestBattery")}</div>
-                          <div className="mt-1 text-lg font-semibold text-foreground">
-                            {telemetryHistory.length > 0 && telemetryHistory[0].battery !== null ? `${telemetryHistory[0].battery}%` : "-"}
-                          </div>
-                        </div>
-                      </div>
+      <DeviceControlModal
+        isOpen={showControlModal && canControlDevice}
+        onClose={closeControlModal}
+        onExecute={executeSelectedRpc}
+        device={selectedDevice}
+        availableRpcOptions={availableRpcOptions}
+        selectedRpcMethod={selectedRpcMethod}
+        setSelectedRpcMethod={setSelectedRpcMethod}
+        rpcParamsText={rpcParamsText}
+        setRpcParamsText={setRpcParamsText}
+        rpcMessage={rpcMessage}
+        setRpcMessage={setRpcMessage}
+        rpcLoading={rpcLoading}
+        rpcResponseText={rpcResponseText}
+        setRpcResponseText={setRpcResponseText}
+        t={t}
+      />
 
-                      <div className="text-xs font-semibold text-slate-900 mt-2 mb-1">{t("recentHistoryLabel")}</div>
-                      <div className="max-h-40 overflow-auto border border-slate-100 rounded-lg">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-50 sticky top-0">
-                            <tr className="text-slate-500">
-                              <th className="py-1.5 px-3 font-medium">{t("timeCol")}</th>
-                              <th className="py-1.5 px-3 font-medium">{t("fillLevelCol")}</th>
-                              <th className="py-1.5 px-3 font-medium">{t("throwsCol")}</th>
-                              <th className="py-1.5 px-3 font-medium">{t("batteryCol")}</th> 
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {telemetryHistory.slice(0, 15).map((row) => (
-                              <tr key={row.timestamp} className="border-t border-slate-100">
-                                <td className="py-1.5 px-3 text-slate-600">{formatTimeShort(row.timestamp)}</td>
-                                <td className="py-1.5 px-3 text-slate-700">{row.fillLevel !== null ? `${row.fillLevel}%` : "-"}</td>
-                                <td className="py-1.5 px-3 text-slate-700">{row.throwCount !== null ? row.throwCount : "-"}</td>
-                                <td className="py-1.5 px-3 text-slate-700">{row.battery !== null ? `${row.battery}%` : "-"}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+      <ConfigureFirmwareModal
+        isOpen={showConfigModal}
+        onClose={closeConfigModal}
+        onConfirm={confirmConfig}
+        device={selectedDevice}
+        form={configForm}
+        setForm={setConfigForm}
+        binFirmwares={binFirmwares}
+        desktopFirmwares={desktopFirmwares}
+        isDirty={isConfigDirty}
+        isLoading={configLoading}
+        message={configMessage}
+        locationTextByKey={locationTextByKey}
+        loadingLocationKeys={loadingLocationKeys}
+        t={t}
+      />
 
-              <div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-2">{t("firmwareStatusLabel")}</h4>
-                <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4 text-sm text-slate-700">
-                  <div>
-                    <p className="font-semibold text-slate-900 mb-1">{t("edgeNodeLabel")}</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span>{t("currentLabel")} <span className="font-mono">{selectedDeviceDetails.binVersion || t("unknownVersion")}</span></span>
-                      <span>{t("targetLabel")} <span className="font-mono">{selectedDeviceDetails.targetBinVersion || t("notSetVersion")}</span></span>
-                    </div>
-                  </div>
-                  <div className="border-t border-slate-100 pt-3">
-                    <p className="font-semibold text-slate-900 mb-1">{t("masterHubLabel")}</p>
-                    <div className="flex items-center justify-between text-xs">
-                      <span>{t("currentLabel")} <span className="font-mono">{selectedDeviceDetails.desktopVersion || t("unknownVersion")}</span></span>
-                      <span>{t("targetLabel")} <span className="font-mono">{selectedDeviceDetails.targetDesktopVersion || t("notSetVersion")}</span></span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+      <AddDeviceModal
+        isOpen={showQuickAddModal}
+        onClose={closeQuickAddModal}
+        onCreate={create}
+        form={form}
+        setForm={setForm}
+        message={message}
+        createLoading={createLoading}
+        canSubmitAddDevice={canSubmitAddDevice}
+        addLocation={addLocation}
+        t={t}
+      />
 
-            {/* Right Column: Editable Form */}
-            <form onSubmit={saveDeviceDetails} className="space-y-4 flex flex-col h-full">
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 flex-1">
-                <h4 className="font-semibold text-slate-900 border-b border-slate-200 pb-2 mb-3 text-sm">{t("editableConfigLabel")}</h4>
-                
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("deviceName")}</label>
-                  <input
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    placeholder="Smart Bin 01"
-                    value={editDeviceForm.name}
-                    onChange={(event) => setEditDeviceForm((v) => ({ ...v, name: event.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("pollingIntervalLabel")}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                      placeholder={t("secondsPlaceholder")}
-                      value={editDeviceForm.pollingInterval}
-                      onChange={(event) => setEditDeviceForm((v) => ({ ...v, pollingInterval: event.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("fullThresholdLabel")}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                      placeholder={t("percentPlaceholder")}
-                      value={editDeviceForm.fullThreshold}
-                      onChange={(event) => setEditDeviceForm((v) => ({ ...v, fullThreshold: event.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <label className="mb-2 block text-sm font-medium text-slate-700">{t("locationMapLabel")}</label>
-                  <LocationPickerMap
-                    className="h-48 w-full rounded-xl border border-slate-200"
-                    value={editLocation}
-                    onChange={(location) => {
-                      setEditDeviceForm((v) => ({
-                        ...v,
-                        latitude: location.latitude.toFixed(6),
-                        longitude: location.longitude.toFixed(6),
-                      }));
-                    }}
-                  />
-                  <div className="mt-2 grid grid-cols-2 gap-3">
-                    <input
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 bg-slate-50"
-                      placeholder="Lat"
-                      readOnly
-                      value={editDeviceForm.latitude}
-                    />
-                    <input
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 bg-slate-50"
-                      placeholder="Lng"
-                      readOnly
-                      value={editDeviceForm.longitude}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-3">
-                {editDeviceMessage ? <p className="text-sm text-slate-600 mr-auto">{editDeviceMessage}</p> : null}
-                <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200" onClick={closeDeviceDetails}>
-                  {t("cancel")}
-                </button>
-                <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60" type="submit" disabled={editDeviceLoading}>
-                  {editDeviceLoading ? t("saving") : t("saveChangesBtn")}
-                </button>
-              </div>
-            </form>
-          </div>
+      {showFilterModal && (
+        <Modal title={t("filterDevicesTitle")} subtitle={t("applyFiltersToView")} onClose={() => setShowFilterModal(false)}>
+          <DevicesFilterPanel
+            filters={filterInputs}
+            onFiltersChange={setFilterInputs}
+            onApply={handleApplyFiltersAndClose}
+            onClear={handleClearFiltersAndClose}
+            deviceGroups={deviceGroups}
+            tenants={role === "super_admin" ? partners : undefined}
+            t={t}
+          />
         </Modal>
-      ) : null}
-
-      {showControlModal && canControlDevice ? (
-        <Modal title={t("deviceCommandCenterTitle")} subtitle={t("deviceCommandCenterSubtitle")} onClose={closeControlModal} widthClassName="w-[min(1120px,98vw)]">
-          {selectedDevice ? (
-            <form onSubmit={executeSelectedRpc} className="space-y-5">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <p className="font-semibold text-foreground">{selectedDevice.name}</p>
-                <p>MAC: {selectedDevice.mac}</p>
-                <p>Device ID: {selectedDevice.id}</p>
-              </div>
-
-              <div className="grid gap-3 lg:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="mb-3">
-                    <h4 className="text-sm font-semibold text-slate-900">{t("systemActionsLabel")}</h4>
-                    <p className="text-xs text-slate-500">{t("systemActionsDesc")}</p>
-                  </div>
-                  <div className="grid gap-2">
-                    {availableRpcOptions.filter((option) => option.type === "ONE_WAY").map((option) => (
-                      <button
-                        key={option.method}
-                        type="button"
-                        onClick={() => {
-                          setSelectedRpcMethod(option.method);
-                          setRpcParamsText(getDefaultRpcParams(option.method));
-                          setRpcMessage("");
-                          setRpcResponseText("");
-                        }}
-                        className={`rounded-xl border px-3 py-2 text-left transition ${
-                          selectedRpcMethod === option.method
-                            ? "border-sky-300 bg-sky-50 text-sky-900"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                        }`}
-                      >
-                        <div className="text-sm font-semibold">{option.label}</div>
-                        <div className="mt-1 text-xs text-slate-500">{option.method}</div>
-                        <p className="mt-1 text-xs text-slate-600">{option.description}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="mb-3">
-                    <h4 className="text-sm font-semibold text-slate-900">{t("hardwareControlsLabel")}</h4>
-                    <p className="text-xs text-slate-500">{t("hardwareControlsDesc")}</p>
-                  </div>
-                  <div className="grid gap-2">
-                    {availableRpcOptions.filter((option) => option.type === "TWO_WAY").map((option) => (
-                      <button
-                        key={option.method}
-                        type="button"
-                        onClick={() => {
-                          setSelectedRpcMethod(option.method);
-                          setRpcParamsText(getDefaultRpcParams(option.method));
-                          setRpcMessage("");
-                          setRpcResponseText("");
-                        }}
-                        className={`rounded-xl border px-3 py-2 text-left transition ${
-                          selectedRpcMethod === option.method
-                            ? "border-sky-300 bg-sky-50 text-sky-900"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                        }`}
-                      >
-                        <div className="text-sm font-semibold">{option.label}</div>
-                        <div className="mt-1 text-xs text-slate-500">{option.method}</div>
-                        <p className="mt-1 text-xs text-slate-600">{option.description}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <p className="font-semibold text-foreground">{t("actionSummaryLabel")} {getRpcMethodOption(selectedRpcMethod, t).label}</p>
-                <p>{getRpcMethodOption(selectedRpcMethod, t).description}</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
-                <button
-                  className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  type="submit"
-                  disabled={rpcLoading}
-                >
-                  {rpcLoading ? t("sending") : t("executeCommandBtn")}
-                </button>
-                <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeControlModal}>
-                  {t("cancel")}
-                </button>
-                {rpcMessage ? <p className="text-sm text-slate-600">{rpcMessage}</p> : null}
-              </div>
-
-              {rpcResponseText ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-sm text-slate-100">
-                  <div className="mb-2 text-xs uppercase tracking-wide text-slate-400">{t("deviceResponseLabel")}</div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap wrap-break-word font-mono text-xs leading-6">{rpcResponseText}</pre>
-                </div>
-              ) : null}
-            </form>
-          ) : (
-            <p className="text-sm text-slate-600">{t("selectDeviceToControl")}</p>
-          )}
-        </Modal>
-      ) : null}
-
-      {showConfigModal ? (
-        <Modal title={t("firmwareConfigTitle")} subtitle={t("firmwareConfigSubtitle")} onClose={closeConfigModal} widthClassName="w-[min(1100px,98vw)]">
-          {selectedDevice ? (
-            <form onSubmit={confirmConfig} className="space-y-4">
-              {(() => {
-                const key = toLocationKey(selectedDevice.latitude, selectedDevice.longitude);
-                const locationText = key ? locationTextByKey[key] : "";
-                const isResolvingLocation = key ? Boolean(loadingLocationKeys[key]) : false;
-
-                return (
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                    <p>
-                      <span className="font-semibold">{t("locationCol")}:</span>{" "}
-                      {isResolvingLocation
-                        ? t("resolvingAddress")
-                        : locationText || toCoordinateText(selectedDevice.latitude, selectedDevice.longitude, t)}
-                    </p>
-                  </div>
-                );
-              })()}
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <p className="font-semibold text-foreground">{selectedDevice.name}</p>
-                <p>MAC: {selectedDevice.mac}</p>
-                <p>{t("currentBinTarget")} {selectedDevice.targetBinVersion || "-"}</p>
-                <p>{t("currentDesktopTarget")} {selectedDevice.targetDesktopVersion || "-"}</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700">{t("edgeNodeFirmwareLabel")}</label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  value={configForm?.targetBinFirmwareId || ""}
-                  onChange={(event) => {
-                    const newId = event.target.value;
-                    setConfigForm((current) => ({ ...current, targetBinFirmwareId: newId }));
-                  }}
-                  disabled={binFirmwares.length === 0}
-                >
-                  <option value="">{binFirmwares.length > 0 ? t("selectTargetFirmware") : t("noFirmwareAvailable")}</option>
-                  {binFirmwares.map((firmware) => (
-                    <option key={firmware.id} value={firmware.id}>
-                      {firmwareLabel(firmware)}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-slate-500">{t("currentlySavedTarget")} {selectedDevice?.targetBinVersion || "-"}</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700">{t("masterHubFirmwareLabel")}</label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  value={configForm?.targetDesktopFirmwareId || ""}
-                  onChange={(event) => {
-                    const newId = event.target.value;
-                    setConfigForm((current) => ({ ...current, targetDesktopFirmwareId: newId }));
-                  }}
-                  disabled={desktopFirmwares.length === 0}
-                >
-                  <option value="">{desktopFirmwares.length > 0 ? t("selectTargetFirmware") : t("noFirmwareAvailable")}</option>
-                  {desktopFirmwares.map((firmware) => (
-                    <option key={firmware.id} value={firmware.id}>
-                      {firmwareLabel(firmware)}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-slate-500">{t("currentlySavedTarget")} {selectedDevice?.targetDesktopVersion || "-"}</p>
-              </div>
-
-              <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
-                <button
-                  className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  type="submit"
-                  disabled={!isConfigDirty || configLoading}
-                >
-                  {configLoading ? t("saving") : t("applyConfigBtn")}
-                </button>
-                <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeConfigModal}>
-                  {t("cancel")}
-                </button>
-                {configMessage ? <p className="text-sm text-slate-600">{configMessage}</p> : null}
-              </div>
-            </form>
-          ) : (
-            <p className="text-sm text-slate-600">{t("clickConfigurePrompt")}</p>
-          )}
-        </Modal>
-      ) : null}
-
-      {showQuickAddModal ? (
-        <Modal title={t("addDeviceModalTitle")} subtitle={t("addDeviceModalSubtitle")} onClose={closeQuickAddModal} widthClassName="w-[min(1100px,98vw)]">
-          <form onSubmit={create} className="space-y-4">
-            <div className="grid gap-3 lg:grid-cols-2">
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("deviceName")}</label>
-                  <input
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                    placeholder="Smart Bin 01"
-                    value={form.name}
-                    onChange={(event) => setForm((v) => ({ ...v, name: event.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("macAddress")}</label>
-                  <input
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                    placeholder="AA:BB:CC:DD:EE:FF"
-                    value={form.mac}
-                    onChange={(event) => setForm((v) => ({ ...v, mac: formatMacAddress(event.target.value) }))}
-                    required
-                  />
-                  {!isMacValid && form.mac.trim() ? (
-                    <p className="mt-1 text-xs text-rose-600">{t("invalidMacFormat")}</p>
-                  ) : null}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{t("activationClaimCodeLabel")}</label>
-                  <input
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                    placeholder={t("sixCharsPlaceholder")}
-                    value={form.claimCode}
-                    onChange={(event) => setForm((v) => ({ ...v, claimCode: event.target.value.slice(0, 6) }))}
-                    required
-                  />
-                  {!isClaimCodeValid && form.claimCode.trim() ? (
-                    <p className="mt-1 text-xs text-rose-600">{t("invalidClaimCode")}</p>
-                  ) : null}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("latitude")}</label>
-                    <input
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                      placeholder="21.028500"
-                      value={form.latitude}
-                      onChange={(event) => setForm((v) => ({ ...v, latitude: event.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("longitude")}</label>
-                    <input
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                      placeholder="105.854200"
-                      value={form.longitude}
-                      onChange={(event) => setForm((v) => ({ ...v, longitude: event.target.value }))}
-                      required
-                    />
-                  </div>
-                </div>
-
-                {!addLocation && (form.latitude || form.longitude) ? (
-                  <p className="text-xs text-rose-600">{t("invalidCoordinates")}</p>
-                ) : null}
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("pollingIntervalLabel")}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                      placeholder={t("secondsOptional")}
-                      value={form.pollingInterval}
-                      onChange={(event) => setForm((v) => ({ ...v, pollingInterval: event.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{t("fullThresholdLabel")}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                      placeholder={t("percentOptional")}
-                      value={form.fullThreshold}
-                      onChange={(event) => setForm((v) => ({ ...v, fullThreshold: event.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="mb-2 text-sm font-medium text-slate-700">{t("pickLocationMap")}</p>
-                <LocationPickerMap
-                  className="h-105 w-full rounded-xl border border-slate-200"
-                  value={addLocation}
-                  onChange={(location) => {
-                    setForm((v) => ({
-                      ...v,
-                      latitude: location.latitude.toFixed(6),
-                      longitude: location.longitude.toFixed(6),
-                    }));
-                  }}
-                />
-                <p className="mt-2 text-xs text-slate-500">{t("clickMapInstruction")}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
-              <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" type="submit" disabled={!canSubmitAddDevice}>
-                {createLoading ? t("addingBtn") : t("addDeviceBtn")}
-              </button>
-              <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeQuickAddModal}>
-                {t("cancel")}
-              </button>
-              {message ? <p className="text-sm text-slate-600">{message}</p> : null}
-            </div>
-          </form>
-        </Modal>
-      ) : null}
+      )}
 
       {!showQuickAddModal && !showConfigModal && message ? <p className="text-sm text-slate-600">{message}</p> : null}
     </div>

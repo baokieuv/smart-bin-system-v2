@@ -47,4 +47,21 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
     Page<Device> findByTenantIdAndActiveTrue(String tenantId, Pageable pageable);
 
     long countByUserIdAndTenantId(String userId, String tenantId);
+
+    @Query("SELECT d FROM Device d WHERE d.active = true " +
+            "AND (:targetTenantId IS NULL OR d.tenantId = :targetTenantId) " +
+            "AND (:targetUserId IS NULL OR d.userId = :targetUserId) " +
+            "AND (:name IS NULL OR d.name LIKE %:name%) " +
+            "AND (:mac IS NULL OR d.mac = :mac) " +
+            "AND (:state IS NULL OR d.state = :state) " +
+            "AND (:groupId IS NULL OR d.groupId = :groupId)")
+    Page<Device> searchDevices(
+            @Param("targetTenantId") String targetTenantId,
+            @Param("targetUserId") String targetUserId,
+            @Param("name") String name,
+            @Param("mac") String mac,
+            @Param("state") String state,
+            @Param("groupId") String groupId,
+            Pageable pageable
+    );
 }

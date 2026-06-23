@@ -151,6 +151,37 @@ public class DeviceService {
                 .orElseGet(() -> createPendingDeviceForFutureProvision(request, userId, tenantId));
     }
 
+    public Page<DeviceDto> getFilterDevices(
+            String keycloakId, String jwtTenantId, String permissions,
+            boolean isSuperAdmin, boolean isTenant, // Nhận cờ boolean từ Controller
+            String queryTenantId, String name, String mac, String state, String groupId,
+            int page, int size
+    ) {
+        verifyPermission(keycloakId, jwtTenantId, permissions, DevicePermission.VIEW_DEVICE.name());
+
+        int pageIndex = (page > 0) ? page - 1 : 0;
+        int pageSize = (size > 0) ? size : 10;
+        Pageable pageable = PageRequest.of(pageIndex, pageSize);
+
+        String targetTenantId = null;
+        String targetUserId = null;
+
+        if (isSuperAdmin) {
+            targetTenantId = queryTenantId;
+        } else if (isTenant) {
+            targetTenantId = jwtTenantId;
+        } else {
+            targetTenantId = jwtTenantId;
+            targetUserId = keycloakId;
+        }
+
+        Page<Device> devices = repository.searchDevices(
+                targetTenantId, targetUserId, name, mac, state, groupId, pageable
+        );
+
+        return devices.map(mapper::toDto);
+    }
+
 //    @Cacheable(value = "device_list", key = "#keycloakId + ':' + #page + ':' + #size")
     public PageResponseDto<DeviceDto> getListDevices(String keycloakId, String tenantId, String permissions, int page, int size) {
         verifyPermission(keycloakId, tenantId, permissions, DevicePermission.VIEW_DEVICE.name());

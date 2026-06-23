@@ -91,7 +91,7 @@ export default function DashboardPage() {
 
     const loadUserView = async () => {
       try {
-        const [profileResponse, devicesResponse] = await Promise.all([usersApi.me(), deviceApi.getList()]);
+        const [profileResponse, devicesResponse] = await Promise.all([usersApi.me(), deviceApi.getList({ page: 1, size: 1000 })]);
 
         if (cancelled) return;
 

@@ -52,6 +52,40 @@ public class DeviceController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
+    @GetMapping("/filter")
+    public ResponseEntity<ApiResponseFormat<Object>> getFilterDevices(
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication,
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String mac,
+            @RequestParam(required = false) String state,
+            @RequestParam(required = false) String groupId,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "10") int size
+    ) {
+        String keycloakId = jwt.getSubject();
+        String jwtTenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
+
+        boolean isSuperAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> Objects.requireNonNull(auth.getAuthority()).equalsIgnoreCase(UserRole.SUPER_ADMIN.getRoleName()) ||
+                        auth.getAuthority().equalsIgnoreCase("ROLE_" + UserRole.SUPER_ADMIN.getRoleName()));
+
+        boolean isTenant = authentication.getAuthorities().stream()
+                .anyMatch(auth -> Objects.requireNonNull(auth.getAuthority()).equalsIgnoreCase(UserRole.ADMIN.getRoleName()) || // Tùy chỉnh Enum của bạn ở đây
+                        auth.getAuthority().equalsIgnoreCase("ROLE_" + UserRole.ADMIN.getRoleName()));
+
+        var response = deviceService.getFilterDevices(
+                keycloakId, jwtTenantId, permissions,
+                isSuperAdmin, isTenant,
+                tenantId, name, mac, state, groupId,
+                page, size
+        );
+
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
     @GetMapping
     public ResponseEntity<ApiResponseFormat<Object>> getListDevices(
             @AuthenticationPrincipal Jwt jwt,

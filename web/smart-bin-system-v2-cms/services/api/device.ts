@@ -2,7 +2,7 @@
 
 import { api } from "@/lib/api-client";
 import { getCache, setCache } from "@/lib/cache";
-import type { AddDeviceRequest, DeviceDto, RpcRequestPayload, TelemetryParams, UpdateDeviceRequest } from "@/types/device";
+import type { AddDeviceRequest, DeviceDto, RpcRequestPayload, TelemetryParams, UpdateDeviceRequest, FilterDeviceParams } from "@/types/device";
 
 type ListPayload = DeviceDto[] | { content?: DeviceDto[] };
 
@@ -17,12 +17,19 @@ export const deviceApi = {
     return api.post<DeviceDto>("/devices/claim", formData);
   },
 
-  getList: async () => {
+  getFilterList: async (params?: FilterDeviceParams) => {
+    // Đổi từ "/devices" thành "/devices/filter"
+    const res = await api.get<ListPayload>("/devices/filter", params);
+    
+    return res;
+  },
+
+  getList: async (params?: { page?: number; size?: number }) => {
     const key = "devices:list";
     const cached = getCache<DeviceDto[]>(key);
     if (cached) return { success: true, data: cached } satisfies ApiResult<DeviceDto[]>;
 
-    const res = await api.get<ListPayload>("/devices");
+    const res = await api.get<ListPayload>("/devices", params);
     if (res && res.success && res.data) {
       const maybePage = res.data;
       if (Array.isArray(maybePage)) {

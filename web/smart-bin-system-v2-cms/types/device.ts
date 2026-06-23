@@ -77,4 +77,14 @@ export type UpdateDeviceRequest = {
   additionalAttributes?: Record<string, unknown>;
 };
 
+export type FilterDeviceParams = {
+  tenantId?: string;
+  name?: string;
+  mac?: string;
+  state?: string; 
+  groupId?: string;
+  page?: number;
+  size?: number;
+}
+
 export type TelemetryPayload = Record<string, Array<{ ts: number; value: string }>>;
