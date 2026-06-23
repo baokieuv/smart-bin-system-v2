@@ -175,8 +175,17 @@ public class DeviceService {
             targetUserId = keycloakId;
         }
 
+        UUID targetGroupId = null;
+        if (groupId != null && !groupId.isBlank()) {
+            try {
+                targetGroupId = UUID.fromString(groupId);
+            } catch (IllegalArgumentException e) {
+                // Log lỗi nếu cần, hoặc trả về lỗi dữ liệu không hợp lệ
+            }
+        }
+
         Page<Device> devices = repository.searchDevices(
-                targetTenantId, targetUserId, name, mac, DeviceState.fromString(state), UUID.fromString(groupId), pageable
+                targetTenantId, targetUserId, name, mac, DeviceState.fromString(state), targetGroupId, pageable
         );
 
         return devices.map(mapper::toDto);
