@@ -121,7 +121,6 @@ services:
       LOAD_DEMO: "true"
     depends_on:
       - postgres
-    command: /usr/bin/install-tb.sh --loadDemo
     networks:
       - smart_bin_network
 
