@@ -93,7 +93,7 @@ jobs:
             cd ~/smart-bin-system-v2/docker
             
             # Cập nhật các thay đổi mới nhất về cấu hình docker-compose nếu có
-            git pull origin main
+            git pull origin master
             
             # Tải các Docker Image vừa được build ở trên về máy VPS
             docker compose pull iam-service media-service device-service noti-service cms nginx

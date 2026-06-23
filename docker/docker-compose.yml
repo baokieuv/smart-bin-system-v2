@@ -117,6 +117,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thingsboard
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER} 
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD} 
+      INSTALL_TB: "true"
+      LOAD_DEMO: "true"
     depends_on:
       - postgres
     command: /usr/bin/install-tb.sh --loadDemo
