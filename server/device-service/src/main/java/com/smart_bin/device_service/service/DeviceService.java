@@ -38,6 +38,8 @@ import com.smart_bin.core.common.DevicePermission;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -134,6 +136,94 @@ public class DeviceService {
         }
 
         return results;
+    }
+
+    @Transactional
+    public List<ImportDeviceResponse> importDevicesByTenantV2(ImportDeviceRequest request, String tenantId) {
+        DeviceGroup defaultGroup = deviceGroupService.getOrCreateDefaultGroupForTenant(tenantId);
+        String tbProfileId = defaultGroup.getTbProfileId();
+
+        List<String> macs = request.devices().stream().map(DeviceImportItem::mac).toList();
+        Map<String, Device> existingDeviceMap = repository.findByMacInAndActiveTrue(macs).stream()
+                .collect(Collectors.toMap(Device::getMac, d -> d));
+
+        List<ImportDeviceResponse> results = Collections.synchronizedList(new ArrayList<>());
+        List<Device> validDevicesToSync = Collections.synchronizedList(new ArrayList<>());
+
+        for (DeviceImportItem item : request.devices()) {
+            String mac = item.mac();
+            String claimCode = item.claimCode();
+
+            String expectedCode = securityService.generateDeviceSecret(mac, com.smart_bin.device_service.common.Constants.TENANT_CLAIM_KEY)
+                    .substring(0, 6).toUpperCase();
+
+            if (claimCode == null || !claimCode.toUpperCase().equals(expectedCode)) {
+                results.add(new ImportDeviceResponse(mac, "FAILED", "Claim code không hợp lệ."));
+                continue;
+            }
+
+            Device targetDevice;
+            Device deviceInMap = existingDeviceMap.get(mac);
+
+            if (deviceInMap != null) {
+                if (deviceInMap.getTenantId() != null && !deviceInMap.getTenantId().equals(tenantId)) {
+                    results.add(new ImportDeviceResponse(mac, "FAILED", "Thiết bị đã thuộc quyền quản lý của Tenant khác."));
+                    continue;
+                } else if (deviceInMap.getTenantId() != null) {
+                    results.add(new ImportDeviceResponse(mac, "SKIPPED", "Thiết bị đã nằm trong danh sách của bạn."));
+                    continue;
+                } else {
+                    targetDevice = deviceInMap;
+                    results.add(new ImportDeviceResponse(mac, "SUCCESS", "Gán Tenant thành công cho thiết bị đã tồn tại."));
+                }
+            } else {
+                targetDevice = new Device();
+                targetDevice.setMac(mac);
+                targetDevice.setState(DeviceState.PENDING); // Trạng thái chờ kích hoạt
+                results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));
+            }
+
+            if (item.latitude() != null) targetDevice.setLatitude(item.latitude());
+            if (item.longitude() != null) targetDevice.setLongitude(item.longitude());
+            if (item.description() != null) targetDevice.setDescription(item.description());
+
+            targetDevice.setTenantId(tenantId);
+            targetDevice.setDeviceGroup(defaultGroup);
+            targetDevice.setName(item.name() != null ? item.name() : "SmartBin-" + mac.replace(":", "").replace("-", ""));
+
+            validDevicesToSync.add(targetDevice);
+        }
+
+        if (!validDevicesToSync.isEmpty()) {
+            int poolSize = Math.min(validDevicesToSync.size(), 20);
+            ExecutorService executor = Executors.newFixedThreadPool(poolSize);
+
+            List<CompletableFuture<Void>> futures = validDevicesToSync.stream()
+                    .map(device -> CompletableFuture.runAsync(() -> {
+                        try {
+                            syncWithThingsBoard(device, device.getMac());
+
+                            if (tbProfileId != null && device.getDeviceId() != null) {
+                                thingsBoardService.assignProfileToDevice(device.getDeviceId(), tbProfileId);
+                            }
+                        } catch (Exception e) {
+                            log.error("Lỗi xử lý gọi API ThingsBoard cho thiết bị MAC: {}", device.getMac(), e);
+                            // Có thể bổ sung cơ chế đánh dấu thất bại riêng cho phần cứng nếu cần thiết
+                        }
+                    }, executor))
+                    .toList();
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            executor.shutdown();
+
+            for (Device device : validDevicesToSync) {
+                assignGroupToDevice(device);
+            }
+
+            repository.saveAll(validDevicesToSync);
+        }
+
+        return new ArrayList<>(results);
     }
 
     @Transactional

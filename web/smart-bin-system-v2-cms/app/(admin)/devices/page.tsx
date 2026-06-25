@@ -117,6 +117,7 @@ function DevicesPageContent() {
   const [rpcResponseText, setRpcResponseText] = useState("");
   const [locationTextByKey, setLocationTextByKey] = useState<Record<string, string>>({});
   const [loadingLocationKeys, setLoadingLocationKeys] = useState<Record<string, boolean>>({});
+  const [isClosing, setIsClosing] = useState(false);
 
   const sortedFirmwares = useMemo(
     () =>
@@ -283,11 +284,9 @@ function DevicesPageContent() {
   };
 
   useEffect(() => {
+    void load();
     loadRole();
-    if (role !== null) {
-      void load();
-    }
-  }, [load, role]);
+  }, [load]);
 
   useEffect(() => {
     void loadFirmwares().catch(() => {
@@ -630,8 +629,13 @@ function DevicesPageContent() {
 
   const closeDeviceDetails = () => {
     if (editDeviceLoading) return;
+    
+    setIsClosing(true);
     setSelectedDeviceDetails(null);
-    router.replace(pathname, { scroll: false });
+    
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("deviceId");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   const saveDeviceDetails = async (event: FormEvent) => {
@@ -891,10 +895,16 @@ function DevicesPageContent() {
 
   useEffect(() => {
     const deviceId = searchParams.get("deviceId");
-    if (!deviceId || selectedDeviceDetails?.id === deviceId) return;
+    
+    if (!deviceId) {
+      setIsClosing(false); 
+      return;
+    }
+
+    if (isClosing || selectedDeviceDetails?.id === deviceId) return;
 
     void openDeviceDetailsById(deviceId);
-  }, [openDeviceDetailsById, searchParams, selectedDeviceDetails?.id]);
+  }, [openDeviceDetailsById, searchParams, selectedDeviceDetails?.id, isClosing]);
 
   useEffect(() => {
     if (!selectedDevice) return;

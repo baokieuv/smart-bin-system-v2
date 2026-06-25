@@ -37,7 +37,7 @@ public class DeviceController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String actorId = jwt.getSubject();
-        var response = deviceService.importDevicesByTenant(request, actorId);
+        var response = deviceService.importDevicesByTenantV2(request, actorId);
         return responseFactory.response(SuccessCode.CREATED, response);
     }
 

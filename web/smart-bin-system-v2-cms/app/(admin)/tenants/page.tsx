@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
 import Modal from "@/components/ui/modal";
+import Image from "next/image";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { tenantsAdminApi } from "@/services/api/tenants-admin";
 import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
@@ -107,6 +108,20 @@ export default function TenantsPage() {
             <tbody>
               {tenants.map((tenant) => (
                 <tr key={tenant.id} className="border-b border-slate-200/70">
+                  <td className="py-2">
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-sky-50">
+                        {tenant.avatarUrl ? (
+                          <Image src={tenant.avatarUrl} alt={tenant.name} fill className="object-cover" sizes="36px" />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-xs font-bold text-sky-700">
+                            {(tenant.name || "T").slice(0, 1).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-medium text-foreground truncate">{tenant.name}</span>
+                    </div>
+                  </td>
                   <td className="py-2 font-medium text-foreground">{tenant.name}</td>
                   <td className="py-2 text-slate-600">{tenant.email}</td>
                   <td className="py-2 text-slate-600">{tenant.state}</td>

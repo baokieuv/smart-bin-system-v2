@@ -289,7 +289,13 @@ export default function DashboardPage() {
 
       <Panel title={t("deviceMapTitle")} subtitle={t("deviceMapSubtitle")}>
         <div style={{ height: 520 }}>
-          <DeviceLocationMap devices={mapDevices} className="w-full h-full" />
+          <DeviceLocationMap 
+            devices={mapDevices} 
+            className="w-full h-full" 
+            onDeviceClick={(device) => {
+              router.push(`/devices?deviceId=${encodeURIComponent(device.id)}`);
+            }}
+          />
         </div>
       </Panel>
 

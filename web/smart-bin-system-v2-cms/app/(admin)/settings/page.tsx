@@ -245,7 +245,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={openAvatarPicker}
-                className="relative h-16 w-16 overflow-hidden rounded-full border border-slate-300 bg-white text-lg font-semibold text-slate-700"
+                className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-slate-300 bg-white text-lg font-semibold text-slate-700"
                 aria-label={t("changeAvatar")}
               >
                 {profile?.avatarUrl ? (
@@ -255,9 +255,16 @@ export default function SettingsPage() {
                 )}
               </button>
 
-              <div>
-                <p className="text-lg font-semibold text-foreground">{profile?.email || "-"}</p>
-                <p className="text-sm text-slate-600">{role ? role.replaceAll("_", " ") : t("loadingRole")}</p>
+              <div className="min-w-0 flex-1">
+                <p 
+                  className="truncate text-lg font-semibold text-foreground"
+                  title={profile?.email || "-"}
+                >
+                  {profile?.email || "-"}
+                </p>
+                <p className="truncate text-sm text-slate-600">
+                  {role ? role.replaceAll("_", " ") : t("loadingRole")}
+                </p>
               </div>
             </div>
 
