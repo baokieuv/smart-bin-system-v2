@@ -72,4 +72,11 @@ export const deviceApi = {
   executeRpc: async (deviceId: string, payload: RpcRequestPayload) => {
     return api.post(`/devices/${deviceId}/rpc`, payload);
   },
+
+  getBulkTelemetries: (keys: string[]) => {
+    return api.get<Record<string, number>>(
+      `/devices/bulk-telemetries`, 
+      { keys: keys.join(',') }
+    );
+  }
 };

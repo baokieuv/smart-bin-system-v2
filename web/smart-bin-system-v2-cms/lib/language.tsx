@@ -548,6 +548,8 @@ const enTranslations = {
   searchDevicesPlaceholder: "Search by name, MAC...",
   removingBtn: "Removing...",
   uploading: "Uploading...",
+  currentWasteWeight: "Waste Weight",
+  totalWasteCount: "Total Waste Count",
 } as const;
 
 export type TranslationKey = keyof typeof enTranslations;
@@ -1091,6 +1093,8 @@ const translations: Record<LanguageCode, Record<TranslationKey, string>> = {
     searchDevicesPlaceholder: "Tìm theo tên, MAC...",
     removingBtn: "Đang xóa...",
     uploading: "Đang tải lên...",
+    currentWasteWeight: "Khối lượng rác",
+    totalWasteCount: "Tổng số lượng rác",
   },
 };
 

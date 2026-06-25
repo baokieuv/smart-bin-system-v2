@@ -14,7 +14,7 @@ import { notificationsAdminApi } from "@/services/api/notifications-admin";
 import { usersAdminApi } from "@/services/api/users-admin";
 import { tenantsAdminApi } from "@/services/api/tenants-admin";
 import { usersApi } from "@/services/api/users";
-import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
+import { useLanguage } from "@/lib/language"; 
 import type { DeviceDto } from "@/types/device";
 import type { NotificationDto } from "@/types/notification";
 import type { BaseResponse, PagedPayload } from "@/types/core";
@@ -25,14 +25,14 @@ interface Stats {
   devices: number;
   tenants: number;
   unreadNotifications: number;
+  weight: number;
+  totalWasteCount: number;
 }
 
 const withAvatarCacheBuster = (avatarUrl?: string) => {
   if (!avatarUrl) return avatarUrl;
-
   const sanitizedUrl = usersApi.sanitizeAvatarUrl(avatarUrl);
   if (!sanitizedUrl) return avatarUrl;
-
   const separator = sanitizedUrl.includes("?") ? "&" : "?";
   return `${sanitizedUrl}${separator}v=${Math.floor(Math.random() * 1_000_000_000)}`;
 };
@@ -43,13 +43,12 @@ const resolveCmsRole = (candidateRole?: string | null) => {
   if (candidateRole === "super_admin" || candidateRole === "admin" || candidateRole === "user") {
     return candidateRole;
   }
-
   return null;
 };
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { t } = useLanguage(); // GỌI HOOK
+  const { t } = useLanguage(); 
   
   const [role, setRole] = useState<"super_admin" | "admin" | "user" | null>(null);
   const [stats, setStats] = useState<Stats>({
@@ -57,6 +56,8 @@ export default function DashboardPage() {
     devices: 0,
     tenants: 0,
     unreadNotifications: 0,
+    weight: 0,
+    totalWasteCount: 0,
   });
   const [mapDevices, setMapDevices] = useState<DeviceDto[]>([]);
   const [userProfile, setUserProfile] = useState<UserDto | null>(null);
@@ -89,84 +90,106 @@ export default function DashboardPage() {
       }
     }
 
-    const loadUserView = async () => {
-      try {
-        const [profileResponse, devicesResponse] = await Promise.all([usersApi.me(), deviceApi.getList({ page: 1, size: 1000 })]);
+    const loadUserView = () => {
+      // 1. Tải Profile độc lập (Nếu lỗi sẽ báo lỗi chung vì đây là data quan trọng)
+      usersApi.me()
+        .then((profileResponse) => {
+          if (cancelled) return;
+          if (profileResponse.success) {
+            const resolvedRole = resolveCmsRole(profileResponse.data.userRole) ?? "user";
+            setUserProfile({
+              ...profileResponse.data,
+              avatarUrl: profileResponse.data.avatarUrl ? withAvatarCacheBuster(profileResponse.data.avatarUrl) : undefined,
+            });
 
-        if (cancelled) return;
-
-        if (profileResponse.success) {
-          const resolvedRole = resolveCmsRole(profileResponse.data.userRole) ?? "user";
-          setUserProfile({
-            ...profileResponse.data,
-            avatarUrl: profileResponse.data.avatarUrl ? withAvatarCacheBuster(profileResponse.data.avatarUrl) : undefined,
-          });
-
-          if (!normalizedCachedRole) {
-            setRole(resolvedRole);
+            if (!normalizedCachedRole) setRole(resolvedRole);
+          } else {
+            setError(t("dashboardLoadErrorUser"));
           }
-        }
-
-        if (devicesResponse.success && Array.isArray(devicesResponse.data)) {
-          setMapDevices(devicesResponse.data);
-        } else {
-          setMapDevices([]);
-        }
-      } catch (loadError) {
-        if (cancelled) return;
-        setError(loadError instanceof Error ? loadError.message : t("dashboardLoadErrorUser"));
-        setMapDevices([]);
-      }
-    };
-
-    const loadAdminView = async () => {
-      const results = await Promise.allSettled([
-        usersAdminApi.getUsers({ page: 1, size: 999 }),
-        devicesAdminApi.getDevices({ page: 1, size: 1000 }),
-        notificationsAdminApi.getNotifications({ page: 1, size: 200 }),
-        tenantsAdminApi.getTenants({ page: 1, size: 1 }),
-      ]);
-
-      if (cancelled) return;
-
-      const settledValues = results.map((result) => (result.status === "fulfilled" ? (result as PromiseFulfilledResult<BaseResponse<unknown>>).value : undefined));
-
-      const usersRes = settledValues[0] as BaseResponse<unknown> | undefined;
-      const devicesRes = settledValues[1] as BaseResponse<unknown> | undefined;
-      const notifRes = settledValues[2] as BaseResponse<unknown> | undefined;
-      const tenantsRes = settledValues[3] as BaseResponse<unknown> | undefined;
-
-      try {
-        const notificationList = notifRes ? unwrapListPayload<NotificationDto>(notifRes.data as PagedPayload<NotificationDto>) : [];
-        const deviceList = devicesRes ? unwrapListPayload<DeviceDto>(devicesRes.data as PagedPayload<DeviceDto>) : [];
-
-        setStats({
-          users: usersRes ? getListCount((usersRes.data as PagedPayload<unknown>) ?? undefined) : 0,
-          devices: devicesRes ? getListCount((devicesRes.data as PagedPayload<unknown>) ?? undefined) : 0,
-          tenants: tenantsRes ? getListCount((tenantsRes.data as PagedPayload<unknown>) ?? undefined) : 0,
-          unreadNotifications: notificationList.filter((item) => !item.isRead).length,
+        })
+        .catch((e) => {
+          if (!cancelled) setError(e instanceof Error ? e.message : t("dashboardLoadErrorUser"));
         });
-        setMapDevices(deviceList);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : t("dashboardLoadErrorAdmin"));
-      }
+
+      // 2. Tải Devices độc lập
+      deviceApi.getList({ page: 1, size: 1000 })
+        .then((devicesResponse) => {
+          if (cancelled) return;
+          if (devicesResponse.success && Array.isArray(devicesResponse.data)) {
+            setMapDevices(devicesResponse.data);
+          }
+        })
+        .catch(console.error); // Lỗi API này không làm sập Profile hay Telemetry
+
+      // 3. Tải Telemetry độc lập
+      deviceApi.getBulkTelemetries(["weight", "total_waste_count"])
+        .then((telemetryResponse) => {
+          if (cancelled) return;
+          if (telemetryResponse?.success && telemetryResponse.data) {
+            setStats((prev) => ({
+              ...prev,
+              weight: telemetryResponse.data.weight || 0,
+              totalWasteCount: telemetryResponse.data.total_waste_count || 0,
+            }));
+          }
+        })
+        .catch(console.error);
     };
 
-    const load = async () => {
+    const loadAdminView = () => {
+      // Gọi từng API riêng biệt và cập nhật State cục bộ
+      
+      usersAdminApi.getUsers({ page: 1, size: 999 })
+        .then((res) => {
+          if (cancelled || !res?.success) return;
+          setStats((prev) => ({ ...prev, users: getListCount((res.data as PagedPayload<unknown>) ?? undefined) }));
+        }).catch(console.error);
+
+      devicesAdminApi.getDevices({ page: 1, size: 1000 })
+        .then((res) => {
+          if (cancelled || !res?.success) return;
+          setStats((prev) => ({ ...prev, devices: getListCount((res.data as PagedPayload<unknown>) ?? undefined) }));
+          setMapDevices(unwrapListPayload<DeviceDto>(res.data as PagedPayload<DeviceDto>));
+        }).catch(console.error);
+
+      notificationsAdminApi.getNotifications({ page: 1, size: 200 })
+        .then((res) => {
+          if (cancelled || !res?.success) return;
+          const notificationList = unwrapListPayload<NotificationDto>(res.data as PagedPayload<NotificationDto>);
+          setStats((prev) => ({
+            ...prev,
+            unreadNotifications: notificationList.filter((item) => !item.isRead).length,
+          }));
+        }).catch(console.error);
+
+      tenantsAdminApi.getTenants({ page: 1, size: 1 })
+        .then((res) => {
+          if (cancelled || !res?.success) return;
+          setStats((prev) => ({ ...prev, tenants: getListCount((res.data as PagedPayload<unknown>) ?? undefined) }));
+        }).catch(console.error);
+
+      deviceApi.getBulkTelemetries(["weight", "total_waste_count"])
+        .then((res) => {
+          if (cancelled || !res?.success || !res.data) return;
+          setStats((prev) => ({
+            ...prev,
+            weight: res.data.weight || 0,
+            totalWasteCount: res.data.total_waste_count || 0,
+          }));
+        }).catch(console.error);
+    };
+
+    const load = () => {
       if (role === "user") {
-        await loadUserView();
-        return;
+        loadUserView();
+      } else if (role === "super_admin" || role === "admin") {
+        loadAdminView();
+      } else {
+        loadUserView();
       }
-
-      if (role === "super_admin" || role === "admin") {
-        await loadAdminView();
-        return;
-      }
-
-      await loadUserView();
     };
 
-    void load();
+    load();
 
     return () => {
       cancelled = true;
@@ -224,7 +247,7 @@ export default function DashboardPage() {
           </Panel>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Panel title={t("myDevices")}>
             <p className="text-3xl font-semibold text-foreground">{deviceCount}</p>
           </Panel>
@@ -234,20 +257,27 @@ export default function DashboardPage() {
           <Panel title={t("offlineStatus")}>
             <p className="text-3xl font-semibold text-foreground">{offlineCount}</p>
           </Panel>
+          <Panel title={t("currentWasteWeight")}>
+            <p className="text-3xl font-semibold text-foreground">{stats.weight.toLocaleString("vi-VN")} kg</p>
+          </Panel>
+          <Panel title={t("totalWasteCount")}>
+            <p className="text-3xl font-semibold text-foreground">{stats.totalWasteCount.toLocaleString("vi-VN")}</p>
+          </Panel>
         </div>
       </div>
     );
   }
 
-  // Chuyển mảng cards sang dùng object id để filter an toàn thay vì label
   const cards = [
     { id: "users", label: t("activeUsers"), value: stats.users },
     { id: "devices", label: t("innoecoDevices"), value: stats.devices },
     { id: "tenants", label: t("partnerOrganizations"), value: stats.tenants },
     { id: "alerts", label: t("unreadAlerts"), value: stats.unreadNotifications },
+    { id: "weight", label: t("currentWasteWeight"), value: `${stats.weight.toLocaleString("vi-VN")} kg` },
+    { id: "wasteCount", label: t("totalWasteCount"), value: stats.totalWasteCount.toLocaleString("vi-VN") },
   ].filter((card) => {
     if (role === "admin") {
-      return ["users", "devices", "alerts"].includes(card.id);
+      return ["users", "devices", "alerts", "weight", "wasteCount"].includes(card.id);
     }
     return true;
   });
@@ -279,7 +309,7 @@ export default function DashboardPage() {
     <div className="space-y-4">
       {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => (
           <Panel key={card.id} title={card.label}>
             <p className="text-3xl font-semibold text-foreground">{card.value}</p>
