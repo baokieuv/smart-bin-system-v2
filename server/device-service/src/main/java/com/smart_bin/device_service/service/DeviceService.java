@@ -172,7 +172,7 @@ public class DeviceService {
             targetTenantId = jwtTenantId;
         } else {
             targetTenantId = jwtTenantId;
-            targetUserId = keycloakId;
+//            targetUserId = keycloakId;
         }
 
         UUID targetGroupId = null;
