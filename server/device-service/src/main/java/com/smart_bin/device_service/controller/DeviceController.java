@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.GrantedAuthority;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 
 @RestController
@@ -239,6 +240,19 @@ public class DeviceController {
                .orElse(UserRole.USER);
 
         var response = deviceService.executeRpc(deviceId, request, keycloakId, tenantId, role, permissions);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @GetMapping("/bulk-telemetries")
+    public ResponseEntity<ApiResponseFormat<Object>> getBulkTelemetries(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) List<String> keys
+    ){
+        String keycloakId = jwt.getSubject();
+        String tenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
+
+        var response = deviceService.getBulkTelemetries(keycloakId, tenantId, permissions, keys);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

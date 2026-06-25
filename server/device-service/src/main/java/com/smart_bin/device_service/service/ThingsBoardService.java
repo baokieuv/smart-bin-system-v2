@@ -24,6 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -342,6 +343,49 @@ public class ThingsBoardService {
             log.error("Failed to parse ThingsBoard alarm payload: {}", payload, ex);
             throw new ApiException(DeviceErrorCode.INVALID_PAYLOAD_FORMAT);
         }
+    }
+
+    public JsonNode getBulkLatestTelemetries(List<String> tbDeviceIds, List<String> telemetryKeys) {
+        if (tbDeviceIds == null || tbDeviceIds.isEmpty()) {
+            return objectMapper.createObjectNode();
+        }
+
+        // 1. Tạo Entity Filter
+        ObjectNode entityFilter = objectMapper.createObjectNode();
+        entityFilter.put("type", "entityList");
+        entityFilter.put("entityType", "DEVICE");
+        entityFilter.set("entityList", objectMapper.valueToTree(tbDeviceIds));
+
+        // 2. Tạo Page Link
+        ObjectNode pageLink = objectMapper.createObjectNode();
+        pageLink.put("pageSize", tbDeviceIds.size()); // Lấy tất cả trong 1 page
+        pageLink.put("page", 0);
+
+        // 3. Khai báo các field cơ bản muốn lấy (Ví dụ: tên thiết bị)
+        var entityFields = objectMapper.createArrayNode();
+        entityFields.addObject().put("type", "ENTITY_FIELD").put("key", "name");
+
+        // 4. Khai báo danh sách Telemetry keys muốn fetch
+        var latestValues = objectMapper.createArrayNode();
+        if (telemetryKeys != null) {
+            for (String key : telemetryKeys) {
+                latestValues.addObject().put("type", "TIME_SERIES").put("key", key);
+            }
+        }
+
+        // Tổ hợp Payload
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.set("entityFilter", entityFilter);
+        requestBody.set("pageLink", pageLink);
+        requestBody.set("entityFields", entityFields);
+        requestBody.set("latestValues", latestValues);
+
+        // Gửi Request
+        return restClient.post()
+                .uri("/api/entitiesQuery/find")
+                .body(requestBody)
+                .retrieve()
+                .body(JsonNode.class);
     }
 
     // Hàm tiện ích để gói dữ liệu và đẩy lên Kafka sạch sẽ hơn

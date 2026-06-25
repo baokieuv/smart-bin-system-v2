@@ -655,6 +655,61 @@ public class DeviceService {
         return thingsBoardService.sendRpcCommand(device.getDeviceId(), rpcMethod.getMethodName(), request.params(), false);
     }
 
+    public Map<String, Double> getBulkTelemetries(String keycloakId, String tenantId, String permissions, List<String> keys) {
+
+        verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
+
+        Pageable pageable = PageRequest.of(0, 1000);
+        Page<Device> devices;
+
+        if (Constants.DEFAULT_TENANT_ID.equals(tenantId)) {
+            devices = repository.findByUserIdAndActiveTrue(keycloakId, pageable);
+        } else {
+            devices = repository.findByTenantIdAndActiveTrue(tenantId, pageable);
+        }
+
+        List<String> deviceIds = devices.stream()
+                .map(Device::getDeviceId)
+                .filter(Objects::nonNull)
+                .toList();
+
+        JsonNode tbResponse = thingsBoardService.getBulkLatestTelemetries(deviceIds, keys);
+
+        Map<String, Double> summedResults = new HashMap<>();
+        if (keys != null) {
+            for (String key : keys) {
+                summedResults.put(key, 0.0);
+            }
+        }
+
+        JsonNode dataArray = tbResponse.path("data");
+        if (!dataArray.isArray() || dataArray.isEmpty()) {
+            return summedResults;
+        }
+
+        for (JsonNode deviceNode : dataArray) {
+            JsonNode timeSeriesNode = deviceNode.path("latest").path("TIME_SERIES");
+
+            if (!timeSeriesNode.isMissingNode() && keys != null) {
+                for (String key : keys) {
+                    JsonNode keyNode = timeSeriesNode.path(key);
+
+                    if (!keyNode.isMissingNode()) {
+                        String valueStr = keyNode.path("value").asText();
+                        try {
+                            double numericValue = Double.parseDouble(valueStr);
+                            summedResults.put(key, summedResults.get(key) + numericValue);
+                        } catch (NumberFormatException e) {
+                            log.warn("Giá trị không phải số cho key {}: {}", key, valueStr);
+                        }
+                    }
+                }
+            }
+        }
+
+        return summedResults;
+    }
+
     private Device resetExistingDeviceForProvision(Device device, DeviceProvisionRequest request) {
         if (device.getPublicKey() != null && device.getState() == DeviceState.ACTIVE) {
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED, "Thiết bị này đã được kích hoạt trước đó.");
