@@ -26,4 +26,15 @@ public class RestClientConfig {
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                 .build();
     }
+
+    @Bean("googleUserInfoRestClient")
+    public RestClient googleUserInfoRestClient() {
+        var requestFactory = new BufferingClientHttpRequestFactory(new SimpleClientHttpRequestFactory());
+
+        return RestClient.builder()
+                .baseUrl("https://www.googleapis.com")
+                .requestFactory(requestFactory)
+                .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
+                .build();
+    }
 }
