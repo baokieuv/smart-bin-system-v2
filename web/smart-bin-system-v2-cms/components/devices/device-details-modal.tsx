@@ -157,15 +157,22 @@ export default function DeviceDetailsModal({
               <div>
                 <p className="font-semibold text-slate-900 mb-1">{t("edgeNodeLabel")}</p>
                 <div className="flex items-center justify-between text-xs">
-                  <span>{t("currentLabel")} <span className="font-mono">{device.binVersion || t("unknownVersion")}</span></span>
-                  <span>{t("targetLabel")} <span className="font-mono">{device.targetBinVersion || t("notSetVersion")}</span></span>
+                  <span>{t("currentLabel")} <span className="font-mono">{device.binFirmware?.currentVersion || t("unknownVersion")}</span></span>
+                  <span>{t("targetLabel")} <span className="font-mono">{device.binFirmware?.targetVersion || t("notSetVersion")}</span></span>
                 </div>
               </div>
               <div className="border-t border-slate-100 pt-3">
                 <p className="font-semibold text-slate-900 mb-1">{t("masterHubLabel")}</p>
                 <div className="flex items-center justify-between text-xs">
-                  <span>{t("currentLabel")} <span className="font-mono">{device.desktopVersion || t("unknownVersion")}</span></span>
-                  <span>{t("targetLabel")} <span className="font-mono">{device.targetDesktopVersion || t("notSetVersion")}</span></span>
+                  <span>{t("currentLabel")} <span className="font-mono">{device.desktopFirmware?.currentVersion || t("unknownVersion")}</span></span>
+                  <span>{t("targetLabel")} <span className="font-mono">{device.desktopFirmware?.targetVersion || t("notSetVersion")}</span></span>
+                </div>
+              </div>
+              <div className="border-t border-slate-100 pt-3">
+                <p className="font-semibold text-slate-900 mb-1">{t("aiModelLabel")}</p>
+                <div className="flex items-center justify-between text-xs">
+                  <span>{t("currentLabel")} <span className="font-mono">{device.aiModelFirmware?.currentVersion || t("unknownVersion")}</span></span>
+                  <span>{t("targetLabel")} <span className="font-mono">{device.aiModelFirmware?.targetVersion || t("notSetVersion")}</span></span>
                 </div>
               </div>
             </div>

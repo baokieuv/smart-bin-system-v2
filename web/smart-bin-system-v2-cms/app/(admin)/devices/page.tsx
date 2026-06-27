@@ -101,8 +101,8 @@ function DevicesPageContent() {
   const [telemetryHistory, setTelemetryHistory] = useState<Array<{ timestamp: number; fillLevel: number | null; throwCount: number | null; battery: number | null }>>([]);
   const [telemetryMessage, setTelemetryMessage] = useState("");
 
-  const [configForm, setConfigForm] = useState({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
-  const [configInitial, setConfigInitial] = useState({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
+  const [configForm, setConfigForm] = useState({ targetBinFirmwareId: "", targetDesktopFirmwareId: "", targetAiModelFirmwareId: "" });
+  const [configInitial, setConfigInitial] = useState({ targetBinFirmwareId: "", targetDesktopFirmwareId: "", targetAiModelFirmwareId: "" });
   const [configMessage, setConfigMessage] = useState("");
   const [configLoading, setConfigLoading] = useState(false);
   const [configFetchingId, setConfigFetchingId] = useState<string | null>(null);
@@ -133,6 +133,11 @@ function DevicesPageContent() {
     [sortedFirmwares]
   );
 
+  const aiModelFirmwares = useMemo(
+    () => sortedFirmwares.filter((firmware) => firmware.type === "AI_MODEL"),
+    [sortedFirmwares]
+  );
+
   const sortedUsers = useMemo(
     () =>
       [...users].sort(
@@ -155,9 +160,10 @@ function DevicesPageContent() {
 
   const isConfigDirty =
     Boolean(selectedDeviceId) &&
-    Boolean(configForm?.targetBinFirmwareId || configForm?.targetDesktopFirmwareId) &&
+    Boolean(configForm?.targetBinFirmwareId || configForm?.targetDesktopFirmwareId || configForm?.targetAiModelFirmwareId) &&
     (configForm?.targetBinFirmwareId !== configInitial?.targetBinFirmwareId ||
-      configForm?.targetDesktopFirmwareId !== configInitial?.targetDesktopFirmwareId);
+      configForm?.targetDesktopFirmwareId !== configInitial?.targetDesktopFirmwareId ||
+      configForm?.targetAiModelFirmwareId !== configInitial?.targetAiModelFirmwareId);
 
   const canAssignDevices = role === "super_admin" || role === "admin";
   const canConfigureFirmware = role === "super_admin";
@@ -570,8 +576,8 @@ function DevicesPageContent() {
       name: device.name || "",
       latitude: device.latitude?.toString() || "21.0056", 
       longitude: device.longitude?.toString() || "105.8434",
-      pollingInterval: device.userConfigs?.pollingInterval?.toString() || "",
-      fullThreshold: device.userConfigs?.fullThreshold?.toString() || "",
+      pollingInterval: device.userConfigs?.polling_interval?.toString() || "",
+      fullThreshold: device.userConfigs?.full_threshold?.toString() || "",
     });
     setEditDeviceMessage("");
 
@@ -700,16 +706,19 @@ function DevicesPageContent() {
         config.targetBinFirmwareId || firmwareItems.find((firmware) => firmware.type === "ESP32" && firmware.version === config.targetBinVersion)?.id || getLatestFirmware(firmwareItems, "ESP32")?.id || "";
       const targetDesktopFirmwareId =
         config.targetDesktopFirmwareId || firmwareItems.find((firmware) => firmware.type === "RASPBERRY_PI" && firmware.version === config.targetDesktopVersion)?.id || getLatestFirmware(firmwareItems, "RASPBERRY_PI")?.id || "";
-      
-      setConfigForm({ targetBinFirmwareId, targetDesktopFirmwareId });
-      setConfigInitial({ targetBinFirmwareId, targetDesktopFirmwareId });
+      const targetAiModelFirmwareId = 
+        config.targetAiModelFirmwareId || firmwareItems.find((firmware) => firmware.type === "AI_MODEL" && firmware.version === config.targetAiModelVersion)?.id || getLatestFirmware(firmwareItems, "AI_MODEL")?.id || "";
+
+      setConfigForm({ targetBinFirmwareId, targetDesktopFirmwareId, targetAiModelFirmwareId });
+      setConfigInitial({ targetBinFirmwareId, targetDesktopFirmwareId, targetAiModelFirmwareId });
       setDevices((current) =>
         current.map((item) =>
           item.id === device.id
             ? {
                 ...item,
-                targetBinVersion: config.targetBinVersion || item.targetBinVersion,
-                targetDesktopVersion: config.targetDesktopVersion || item.targetDesktopVersion,
+                targetBinVersion: config.targetBinVersion || item.binFirmware?.targetVersion,
+                targetDesktopVersion: config.targetDesktopVersion || item.desktopFirmware?.targetVersion,
+                targetAiModelVersion: config.targetAiModelVersion || item.aiModelFirmware?.targetVersion,
               }
             : item
         )
@@ -717,8 +726,9 @@ function DevicesPageContent() {
     } catch (error) {
       const fallbackBin = getLatestFirmware(firmwares.length > 0 ? firmwares : await loadFirmwares(), "ESP32")?.id || "";
       const fallbackDesktop = getLatestFirmware(firmwares.length > 0 ? firmwares : await loadFirmwares(), "RASPBERRY_PI")?.id || "";
-      setConfigForm({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop });
-      setConfigInitial({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop });
+      const fallbackAiModel = getLatestFirmware(firmwares.length > 0 ? firmwares : await loadFirmwares(), "AI_MODEL")?.id || "";
+      setConfigForm({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop, targetAiModelFirmwareId: fallbackAiModel });
+      setConfigInitial({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop, targetAiModelFirmwareId: fallbackAiModel });
       setConfigMessage(error instanceof Error ? error.message : t("loadCurrentConfigError"));
     } finally {
       setConfigLoading(false);
@@ -792,8 +802,8 @@ function DevicesPageContent() {
     setShowConfigModal(false);
     setSelectedDeviceId("");
     setSelectedDevice(null);
-    setConfigForm({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
-    setConfigInitial({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
+    setConfigForm({ targetBinFirmwareId: "", targetDesktopFirmwareId: "", targetAiModelFirmwareId: "" });
+    setConfigInitial({ targetBinFirmwareId: "", targetDesktopFirmwareId: "", targetAiModelFirmwareId: "" });
     setConfigMessage("");
   };
 
@@ -823,8 +833,8 @@ function DevicesPageContent() {
           item.id === selectedDevice.id
             ? {
                 ...item,
-                targetBinVersion: binFirmware?.version || item.targetBinVersion,
-                targetDesktopVersion: desktopFirmware?.version || item.targetDesktopVersion,
+                targetBinVersion: binFirmware?.version || item.binFirmware?.targetVersion,
+                targetDesktopVersion: desktopFirmware?.version || item.desktopFirmware?.targetVersion,
               }
             : item
         )
@@ -833,8 +843,8 @@ function DevicesPageContent() {
         current
           ? {
               ...current,
-              targetBinVersion: binFirmware?.version || current.targetBinVersion,
-              targetDesktopVersion: desktopFirmware?.version || current.targetDesktopVersion,
+              targetBinVersion: binFirmware?.version || current.binFirmware?.targetVersion,
+              targetDesktopVersion: desktopFirmware?.version || current.desktopFirmware?.targetVersion,
             }
           : current
       );
@@ -968,7 +978,7 @@ function DevicesPageContent() {
           configFetchingId={configFetchingId}
           onToggleSelection={toggleDeviceSelection}
           onOpenControlModal={openControlModal}
-          onOpenDetails={openDeviceDetails}
+          onOpenDetails={role !== 'super_admin' ? openDeviceDetails : undefined}
           onOpenConfig={openConfig}
           getLocationText={getLocationText}
           t={t}
@@ -1062,6 +1072,7 @@ function DevicesPageContent() {
         setForm={setConfigForm}
         binFirmwares={binFirmwares}
         desktopFirmwares={desktopFirmwares}
+        aiModelFirmwares={aiModelFirmwares}
         isDirty={isConfigDirty}
         isLoading={configLoading}
         message={configMessage}

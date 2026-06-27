@@ -52,7 +52,7 @@ export const firmwareTimestamp = (firmware: FirmwareDto) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-export const getLatestFirmware = (firmwares: FirmwareDto[], type: "ESP32" | "RASPBERRY_PI") =>
+export const getLatestFirmware = (firmwares: FirmwareDto[], type: "ESP32" | "RASPBERRY_PI" | "AI_MODEL") =>
   [...firmwares]
     .filter((firmware) => firmware.type === type)
     .sort((left, right) => firmwareTimestamp(right) - firmwareTimestamp(left) || right.version.localeCompare(left.version, undefined, { numeric: true, sensitivity: "base" }))[0];

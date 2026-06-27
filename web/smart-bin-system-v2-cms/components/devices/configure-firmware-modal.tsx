@@ -12,10 +12,11 @@ interface ConfigureFirmwareModalProps {
   onClose: () => void;
   onConfirm: (event: FormEvent) => void;
   device: DeviceDto | null;
-  form: { targetBinFirmwareId: string; targetDesktopFirmwareId: string };
-  setForm: (updater: (prev: { targetBinFirmwareId: string; targetDesktopFirmwareId: string }) => { targetBinFirmwareId: string; targetDesktopFirmwareId: string }) => void;
+  form: { targetBinFirmwareId: string; targetDesktopFirmwareId: string; targetAiModelFirmwareId: string };
+  setForm: (updater: (prev: { targetBinFirmwareId: string; targetDesktopFirmwareId: string; targetAiModelFirmwareId: string }) => { targetBinFirmwareId: string; targetDesktopFirmwareId: string; targetAiModelFirmwareId: string }) => void;
   binFirmwares: FirmwareDto[];
   desktopFirmwares: FirmwareDto[];
+  aiModelFirmwares: FirmwareDto[];
   isDirty: boolean;
   isLoading: boolean;
   message: string;
@@ -33,6 +34,7 @@ export default function ConfigureFirmwareModal({
   setForm,
   binFirmwares,
   desktopFirmwares,
+  aiModelFirmwares,
   isDirty,
   isLoading,
   message,
@@ -65,10 +67,13 @@ export default function ConfigureFirmwareModal({
             <p className="font-semibold text-foreground">{device.name}</p>
             <p>MAC: {device.mac}</p>
             <p>
-              {t("currentBinTarget")} {device.targetBinVersion || "-"}
+              {t("currentBinTarget")} {device.binFirmware?.currentVersion || "-"}
             </p>
             <p>
-              {t("currentDesktopTarget")} {device.targetDesktopVersion || "-"}
+              {t("currentDesktopTarget")} {device.desktopFirmware?.currentVersion || "-"}
+            </p>
+            <p>
+              {t("currentAiModelTarget")} {device.aiModelFirmware?.currentVersion || "-"}
             </p>
           </div>
 
@@ -88,7 +93,7 @@ export default function ConfigureFirmwareModal({
               ))}
             </select>
             <p className="text-xs text-slate-500">
-              {t("currentlySavedTarget")} {device?.targetBinVersion || "-"}
+              {t("currentlySavedTarget")} {device?.binFirmware?.targetVersion || "-"}
             </p>
           </div>
 
@@ -108,7 +113,27 @@ export default function ConfigureFirmwareModal({
               ))}
             </select>
             <p className="text-xs text-slate-500">
-              {t("currentlySavedTarget")} {device?.targetDesktopVersion || "-"}
+              {t("currentlySavedTarget")} {device?.desktopFirmware?.targetVersion || "-"}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-700">{t("aiModelFirmwareLabel")}</label>
+            <select
+              className="w-full rounded-xl border border-slate-200 px-3 py-2"
+              value={form?.targetAiModelFirmwareId || ""}
+              onChange={(event) => setForm((current) => ({ ...current, targetAiModelFirmwareId: event.target.value }))}
+              disabled={aiModelFirmwares.length === 0}
+            >
+              <option value="">{aiModelFirmwares.length > 0 ? t("selectTargetFirmware") : t("noFirmwareAvailable")}</option>
+              {aiModelFirmwares.map((firmware) => (
+                <option key={firmware.id} value={firmware.id}>
+                  {firmwareLabel(firmware)}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500">
+              {t("currentlySavedTarget")} {device?.aiModelFirmware?.targetVersion || "-"}
             </p>
           </div>
 

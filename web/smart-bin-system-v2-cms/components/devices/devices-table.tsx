@@ -14,7 +14,7 @@ interface DevicesTableProps {
   configFetchingId: string | null;
   onToggleSelection: (deviceId: string) => void;
   onOpenControlModal: (device: DeviceDto) => void;
-  onOpenDetails: (device: DeviceDto) => void;
+  onOpenDetails?: (device: DeviceDto) => void;
   onOpenConfig: (device: DeviceDto) => void;
   getLocationText: (lat?: number, lng?: number) => string;
   t: (key: TranslationKey) => string;
@@ -89,9 +89,11 @@ export default function DevicesTable({
                   </span>
                 </td>
                 <td className="py-2 px-3 flex gap-2">
-                  <button type="button" onClick={() => onOpenDetails(device)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
-                    {t("detailsBtn")}
-                  </button>
+                  {onOpenDetails && (
+                    <button type="button" onClick={() => onOpenDetails(device)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                      {t("detailsBtn")}
+                    </button>
+                  )}
                   {canConfigureFirmware ? (
                     <button type="button" onClick={() => onOpenConfig(device)} disabled={configLoading || configFetchingId === device.id} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100 disabled:opacity-50">
                       {configFetchingId === device.id ? t("loading") : t("configureBtn")}

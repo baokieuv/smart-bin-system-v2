@@ -1,15 +1,6 @@
-// Service layer for user profile and avatar endpoints.
-
 import { api } from "@/lib/api-client";
-import { getCache, setCache } from "../../lib/cache";
 import type { CreateUserRequest } from "@/types/auth";
 import type { UserDto } from "@/types/user";
-
-type ApiResult<T> = {
-  success: boolean;
-  data?: T;
-  message?: string;
-};
 
 type UploadFileResponse = {
   objectName: string;
@@ -51,23 +42,11 @@ export const usersApi = {
   },
 
   me: async () => {
-    const key = "users:me";
-    const cached = getCache<UserDto>(key);
-    if (cached) return { success: true, data: cached } satisfies ApiResult<UserDto>;
-
-    const res = await api.get<UserDto>("/users/me");
-    if (res && res.success && res.data) {
-      setCache(key, res.data, 60 * 1000);
-    }
-    return res;
+    return api.get<UserDto>("/users/me", undefined, { cacheTTL: 60000 });
   },
 
   update: async (formData: { name?: string; avatarUrl?: string }) => {
-    const res = await api.put<UserDto>("/users/me", formData);
-    if (res && res.success && res.data) {
-      setCache("users:me", res.data, 60 * 1000);
-    }
-    return res;
+    return api.put<UserDto>("/users/me", formData);
   },
 
   uploadAvatar: async (file: File, options?: { folder?: string; oldObjectName?: string }) => {
