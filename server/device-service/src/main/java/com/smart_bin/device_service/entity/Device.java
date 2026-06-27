@@ -9,6 +9,8 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -51,21 +53,8 @@ public class Device extends BaseEntity {
     @Column(name = "claimed_at")
     private Long claimedAt;
 
-    // --- Firmware Tracking (Current) ---
-    @Column(name = "desktop_version")
-    private String desktopVersion; // Version thiết bị đang báo lên
-
-    @Column(name = "bin_version")
-    private String binVersion; // Version thiết bị đang báo lên
-
-    // --- Firmware Routing (Target do Hệ thống/Admin tự map) ---
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "target_bin_firmware_id")
-    private Firmware targetBinFirmware;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "target_desktop_firmware_id")
-    private Firmware targetDesktopFirmware;
+    @OneToMany(mappedBy = "device", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<DeviceFirmwareState> firmwareStates = new ArrayList<>();
 
     // --- Metadata phần cứng (Dùng để quyết định Firmware trên) ---
     @JdbcTypeCode(SqlTypes.JSON)

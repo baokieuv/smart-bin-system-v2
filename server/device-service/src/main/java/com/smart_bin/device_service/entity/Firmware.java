@@ -31,6 +31,6 @@ public class Firmware extends BaseEntity {
     private boolean active = true; // Dùng cho xóa mềm (Soft delete)
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     private FirmwareType type;
 }

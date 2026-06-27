@@ -606,9 +606,9 @@ public class DeviceService {
     }
 
     @Transactional
-    public String getPresignedUrl(String payload, String signature, String metadata, String desktopVer, String binVer) {
+    public String getPresignedUrl(String payload, String signature, String metadata, String desktopVer, String binVer, String aiModelVer) {
         DetectionResultDto fileInfo = parseMetadata(metadata);
-        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer);
+        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer, aiModelVer);
 
         JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
                 internalSecret, device.getMac(), fileInfo.filename(), fileInfo.contentType()
@@ -621,9 +621,9 @@ public class DeviceService {
     }
 
     @Transactional
-    public String confirmUpload(String payload, String signature, String metadata, String desktopVer, String binVer) {
+    public String confirmUpload(String payload, String signature, String metadata, String desktopVer, String binVer, String aiModelVer) {
         DetectionResultDto fileInfo = parseMetadata(metadata);
-        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer);
+        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer, aiModelVer);
 
         String finalImageUrl = extractCachedImageUrlAndClear(device.getMac(), fileInfo.detectionId());
         saveDetectionResult(device, fileInfo, finalImageUrl);
@@ -708,6 +708,30 @@ public class DeviceService {
         }
 
         return summedResults;
+    }
+
+    private void updateFirmwareState(Device device, FirmwareType type, String currentVersion, Firmware targetFirmware) {
+        if (device.getFirmwareStates() == null) {
+            device.setFirmwareStates(new ArrayList<>());
+        }
+
+        DeviceFirmwareState state = device.getFirmwareStates().stream()
+                .filter(s -> s.getType() == type)
+                .findFirst()
+                .orElseGet(() -> {
+                    DeviceFirmwareState newState = new DeviceFirmwareState();
+                    newState.setDevice(device);
+                    newState.setType(type);
+                    device.getFirmwareStates().add(newState);
+                    return newState;
+                });
+
+        if (currentVersion != null) {
+            state.setCurrentVersion(currentVersion);
+        }
+        if (targetFirmware != null) {
+            state.setTargetFirmware(targetFirmware);
+        }
     }
 
     private Device resetExistingDeviceForProvision(Device device, DeviceProvisionRequest request) {
@@ -795,12 +819,15 @@ public class DeviceService {
         }
     }
 
-    private void updateVersionInfo(Device device, String desktopVer, String binVer) {
+    private void updateVersionInfo(Device device, String desktopVer, String binVer, String aiModelVer) {
         if (StringUtils.hasText(desktopVer)) {
-            device.setDesktopVersion(desktopVer);
+            updateFirmwareState(device, FirmwareType.RASPBERRY_PI, desktopVer, null);
         }
         if (StringUtils.hasText(binVer)) {
-            device.setBinVersion(binVer);
+            updateFirmwareState(device, FirmwareType.ESP32, binVer, null);
+        }
+        if (StringUtils.hasText(aiModelVer)) {
+            updateFirmwareState(device, FirmwareType.AI_MODEL, aiModelVer, null);
         }
     }
 
@@ -837,15 +864,25 @@ public class DeviceService {
         List<FirmwareMapping> rules = mappingRepository.findAllByActiveTrueOrderByPriorityDesc();
         Map<String, Object> deviceMeta = device.getHwMetadata();
 
+        Set<FirmwareType> assignedTypes = new HashSet<>();
+
         for (FirmwareMapping rule : rules) {
+            Firmware targetFw = rule.getTargetFirmware();
+
+            if (assignedTypes.contains(targetFw.getType())) {
+                continue;
+            }
+
             if (isMetadataMatched(deviceMeta, rule.getMetadataCriteria())) {
-                // Tùy theo logic của bạn gán vào Bin hay Desktop, ở đây ví dụ gán vào Bin
-                device.setTargetBinFirmware(rule.getTargetFirmware());
-                log.info("Device MAC {} matched Firmware Rule ID {}", device.getMac(), rule.getId());
-                return; // Khớp rule đầu tiên (ưu tiên cao nhất) thì dừng
+                updateFirmwareState(device, targetFw.getType(), null, targetFw);
+                assignedTypes.add(targetFw.getType());
+                log.info("Device MAC {} matched Firmware Rule ID {} for Type {}", device.getMac(), rule.getId(), targetFw.getType());
             }
         }
-        log.warn("Không tìm thấy Firmware phù hợp cho Device MAC {}", device.getMac());
+
+        if (assignedTypes.isEmpty()) {
+            log.warn("Không tìm thấy Firmware phù hợp cho Device MAC {}", device.getMac());
+        }
     }
 
     private boolean isMetadataMatched(Map<String, Object> deviceMeta, Map<String, Object> ruleCriteria) {
@@ -941,7 +978,7 @@ public class DeviceService {
         }
     }
 
-    private Device verifyDeviceSignatureAndMetadata(String payload, String signature, String desktopVer, String binVer) {
+    private Device verifyDeviceSignatureAndMetadata(String payload, String signature, String desktopVer, String binVer, String aiModelVer) {
         JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
         String mac = payloadObj.get("mac").getAsString();
 
@@ -949,7 +986,7 @@ public class DeviceService {
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
         securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
-        updateVersionInfo(device, desktopVer, binVer);
+        updateVersionInfo(device, desktopVer, binVer, aiModelVer);
         return repository.save(device);
     }
 
@@ -1005,7 +1042,7 @@ public class DeviceService {
 
             for (Device device : devicePage.getContent()) {
                 if (isMetadataMatched(device.getHwMetadata(), rule.getMetadataCriteria())) {
-                    device.setTargetBinFirmware(rule.getTargetFirmware());
+                    updateFirmwareState(device, rule.getTargetFirmware().getType(), null, rule.getTargetFirmware());
                     devicesToUpdate.add(device);
                 }
             }

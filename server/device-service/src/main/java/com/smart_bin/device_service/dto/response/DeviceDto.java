@@ -19,8 +19,9 @@ public record DeviceDto (
         DeviceStatus status,
         Instant createdDate,
         Long claimedAt,
-        String desktopVersion,
-        String binVersion,
+        FirmwareResponse desktopFirmware,
+        FirmwareResponse binFirmware,
+        FirmwareResponse aiModelFirmware,
         String groupCode,
         Map<String, Object> userConfigs
 ) {

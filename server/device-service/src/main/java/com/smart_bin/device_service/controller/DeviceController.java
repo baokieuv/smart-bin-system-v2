@@ -263,9 +263,10 @@ public class DeviceController {
             @RequestHeader("metadata") String metadata,
             @RequestBody String payload,
             @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
-            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
+            @RequestHeader(value = "X-Bin-Version", required = false) String binVer,
+            @RequestHeader(value = "X-AI-Version", required = false) String aiVer
     ) {
-        var response = deviceService.getPresignedUrl(payload, signature, metadata, desktopVer, binVer);
+        var response = deviceService.getPresignedUrl(payload, signature, metadata, desktopVer, binVer, aiVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -276,9 +277,10 @@ public class DeviceController {
             @RequestBody String payload,
             @RequestHeader("X-Signature") String signature,
             @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
-            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
+            @RequestHeader(value = "X-Bin-Version", required = false) String binVer,
+            @RequestHeader(value = "X-AI-Version", required = false) String aiVer
     ){
-        var response = deviceService.confirmUpload(payload, signature, metadata, desktopVer, binVer);
+        var response = deviceService.confirmUpload(payload, signature, metadata, desktopVer, binVer, aiVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

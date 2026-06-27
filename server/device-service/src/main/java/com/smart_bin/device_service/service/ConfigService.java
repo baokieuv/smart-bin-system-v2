@@ -74,6 +74,7 @@ public class ConfigService {
         return firmwareRepository.findAllByActiveTrue(PageRequest.of(page - 1, size));
     }
 
+    // TODO -> check device using this firmware before delete
     @Transactional
     public void deleteFirmware(UUID id) {
         Firmware fw = firmwareRepository.findById(id)
@@ -109,13 +110,11 @@ public class ConfigService {
     public OtaCheckResponse checkOta(String payload, String signature) {
         Device device = authenticateDeviceFromPayload(payload, signature);
 
-        OtaCheckResponse.FirmwareUpdateInfo esp32Update =
-                checkFirmwareUpdate(device.getTargetBinFirmware(), device.getBinVersion());
+        OtaCheckResponse.FirmwareUpdateInfo esp32Update = getUpdateInfo(device, FirmwareType.ESP32);
+        OtaCheckResponse.FirmwareUpdateInfo piUpdate = getUpdateInfo(device, FirmwareType.RASPBERRY_PI);
+        OtaCheckResponse.FirmwareUpdateInfo aiModelUpdate = getUpdateInfo(device, FirmwareType.AI_MODEL);
 
-        OtaCheckResponse.FirmwareUpdateInfo piUpdate =
-                checkFirmwareUpdate(device.getTargetDesktopFirmware(), device.getDesktopVersion());
-
-        return new OtaCheckResponse(esp32Update, piUpdate);
+        return new OtaCheckResponse(esp32Update, piUpdate, aiModelUpdate);
     }
 
     @Transactional
@@ -131,18 +130,36 @@ public class ConfigService {
         log.info("Device {} reported OTA status: {} - {}", device.getMac(), status, message);
 
         if ("SUCCESS".equalsIgnoreCase(status)) {
-            // Desktop hiện tại chưa xử lý OTA, chỉ cập nhật bin version cho ESP32.
-            if (device.getTargetBinFirmware() != null) {
-                device.setBinVersion(device.getTargetBinFirmware().getVersion());
-            }
-            if (device.getTargetDesktopFirmware() != null) {
-                device.setDesktopVersion(device.getTargetDesktopFirmware().getVersion());
+            if (payloadObj.has("fwType") && !payloadObj.get("fwType").isJsonNull()) {
+                FirmwareType reportedType = FirmwareType.valueOf(payloadObj.get("fwType").getAsString().toUpperCase());
+
+                device.getFirmwareStates().stream()
+                        .filter(state -> state.getType() == reportedType && state.getTargetFirmware() != null)
+                        .findFirst()
+                        .ifPresent(state -> state.setCurrentVersion(state.getTargetFirmware().getVersion()));
+            } else {
+                // Fallback (Nếu thiết bị ko báo type, update toàn bộ các target đang có) - Không khuyến khích
+//                device.getFirmwareStates().forEach(state -> {
+//                    if (state.getTargetFirmware() != null) {
+//                        state.setCurrentVersion(state.getTargetFirmware().getVersion());
+//                    }
+//                });
             }
             deviceRepository.save(device);
         }
     }
 
     // --- Utils ---
+    private OtaCheckResponse.FirmwareUpdateInfo getUpdateInfo(Device device, FirmwareType type) {
+        if (device.getFirmwareStates() == null) return new OtaCheckResponse.FirmwareUpdateInfo(false, null, null, null);
+
+        return device.getFirmwareStates().stream()
+                .filter(s -> s.getType() == type)
+                .findFirst()
+                .map(s -> checkFirmwareUpdate(s.getTargetFirmware(), s.getCurrentVersion()))
+                .orElse(new OtaCheckResponse.FirmwareUpdateInfo(false, null, null, null));
+    }
+
     private OtaCheckResponse.FirmwareUpdateInfo checkFirmwareUpdate(Firmware targetFw, String currentVersion) {
         if (targetFw == null || !targetFw.isActive()) {
             return new OtaCheckResponse.FirmwareUpdateInfo(false, null, null, null);
@@ -168,23 +185,6 @@ public class ConfigService {
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
         securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
 
-        return device;
-    }
-
-    private Device getDeviceAndVerifyOwnership(String deviceIdStr, String keycloakId) {
-        UUID deviceId;
-        try {
-            deviceId = UUID.fromString(deviceIdStr);
-        } catch (IllegalArgumentException e) {
-            throw new ApiException(DeviceErrorCode.INVALID_ID_FORMAT);
-        }
-
-        Device device = deviceRepository.findByIdAndActiveTrue(deviceId)
-                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
-
-        if (!keycloakId.equals(device.getUserId()) && !keycloakId.equals(device.getTenantId())) {
-            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS);
-        }
         return device;
     }
 
