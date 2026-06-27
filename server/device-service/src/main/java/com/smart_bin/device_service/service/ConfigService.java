@@ -5,9 +5,11 @@ import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.FirmwareType;
 import com.smart_bin.device_service.dto.response.DeviceConfigResponse;
+import com.smart_bin.device_service.dto.response.DeviceDto;
 import com.smart_bin.device_service.dto.response.OtaCheckResponse;
 import com.smart_bin.device_service.entity.*;
 import com.smart_bin.device_service.exception.DeviceErrorCode;
+import com.smart_bin.device_service.mapper.DeviceMapper;
 import com.smart_bin.device_service.repository.*;
 import com.smart_bin.device_service.config.MediaServiceClient;
 import jakarta.transaction.Transactional;
@@ -33,6 +35,7 @@ public class ConfigService {
     private final DeviceRepository deviceRepository;
     private final MediaServiceClient mediaClient;
     private final DeviceSecurityService securityService;
+    private final DeviceMapper mapper;
 
     @Value("${media-service.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
     private String internalSecret;
@@ -147,6 +150,41 @@ public class ConfigService {
             }
             deviceRepository.save(device);
         }
+    }
+
+    public DeviceDto updateDeviceFirmware(String deviceId, String binFirmId, String deskFirmId, String aiModelFirmId) {
+        UUID deviceUUID = UUID.fromString(deviceId);
+        Device device = deviceRepository.findByIdAndActiveTrue(deviceUUID)
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        if (binFirmId != null) {
+            Firmware binFirmware = firmwareRepository.findById(UUID.fromString(binFirmId))
+                    .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_NOT_FOUND));
+            device.getFirmwareStates().stream()
+                    .filter(state -> state.getType() == FirmwareType.ESP32)
+                    .findFirst()
+                    .ifPresent(state -> state.setTargetFirmware(binFirmware));
+        }
+
+        if (deskFirmId != null) {
+            Firmware deskFirmware = firmwareRepository.findById(UUID.fromString(deskFirmId))
+                    .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_NOT_FOUND));
+            device.getFirmwareStates().stream()
+                    .filter(state -> state.getType() == FirmwareType.RASPBERRY_PI)
+                    .findFirst()
+                    .ifPresent(state -> state.setTargetFirmware(deskFirmware));
+        }
+
+        if (aiModelFirmId != null) {
+            Firmware aiModelFirmware = firmwareRepository.findById(UUID.fromString(aiModelFirmId))
+                    .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_NOT_FOUND));
+            device.getFirmwareStates().stream()
+                    .filter(state -> state.getType() == FirmwareType.AI_MODEL)
+                    .findFirst()
+                    .ifPresent(state -> state.setTargetFirmware(aiModelFirmware));
+        }
+
+        return mapper.toDto(deviceRepository.save(device));
     }
 
     // --- Utils ---

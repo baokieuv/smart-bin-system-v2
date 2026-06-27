@@ -54,6 +54,17 @@ public class ConfigController {
         return responseFactory.response(SuccessCode.OK, response);
     }
 
+    @PutMapping("/devices/{deviceId}/firmware")
+    public ResponseEntity<ApiResponseFormat<Object>> updateDeviceFirmware(
+            @PathVariable String deviceId,
+            @RequestParam(value = "targetBinFirmwareId", required = false) String targetBinFirmwareId,
+            @RequestParam(value = "targetDesktopFirmwareId", required = false) String targetDesktopFirmwareId,
+            @RequestParam(value = "targetAiModelFirmwareId", required = false) String targetAiModelFirmwareId
+    ) {
+        var response = configService.updateDeviceFirmware(deviceId, targetBinFirmwareId, targetDesktopFirmwareId, targetAiModelFirmwareId);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
     @PostMapping("/public/devices/config")
     @HardwareSecureResponse
     public ResponseEntity<ApiResponseFormat<Object>> getConfigForDevice(
