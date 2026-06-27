@@ -407,7 +407,7 @@ class MainViewModelRuntime:
         ok, download_result = vm.device_client.download_and_verify_esp32_firmware(esp32)
         if not ok:
             vm.logger.warning("ESP32 firmware download/verification failed: %s", download_result)
-            self._report_ota_failure(str(download_result))
+            self._report_ota_failure(str(download_result), fw_type="ESP32")
             return
  
         self._task_runner.start(
@@ -487,7 +487,7 @@ class MainViewModelRuntime:
             ok, msg = vm.actuator_client.upload_ota(firmware_file)
             vm.latest_ota_result = {"ok": ok, "message": msg, "backend_version": backend_version}
  
-            report_ok, report_msg = vm.device_client.report_ota_status("SUCCESS" if ok else "FAILED", msg)
+            report_ok, report_msg = vm.device_client.report_ota_status("SUCCESS" if ok else "FAILED", msg, "ESP32")
             if not report_ok:
                 vm.logger.warning("Failed to report OTA status: %s", report_msg)
 
