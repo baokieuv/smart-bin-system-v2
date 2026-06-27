@@ -141,7 +141,7 @@ class RpcMethod:
 @dataclass(frozen=True)
 class ViewModelConfig:
     telemetry_interval_ms: int = _env_int("SMART_BIN_TELEMETRY_INTERVAL_MS", 1 * 60 * 1000)
-    app_version_check_interval_ms: int = _env_int("SMART_BIN_APP_VERSION_CHECK_INTERVAL_MS", 24 * 60 * 60 * 1000)
+    app_version_check_interval_ms: int = _env_int("SMART_BIN_APP_VERSION_CHECK_INTERVAL_MS", 1 * 60 * 1000)
     feedback_timeout_ms: int = _env_int("SMART_BIN_FEEDBACK_TIMEOUT_MS", 10_000)
     thanks_timeout_ms: int = _env_int("SMART_BIN_THANKS_TIMEOUT_MS", 5_000)
     upload_interval_ms: int = _env_int("SMART_BIN_UPLOAD_INTERVAL_MS", 1 * 60 * 1000)
@@ -150,9 +150,9 @@ class ViewModelConfig:
 
 @dataclass(frozen=True)
 class ApiConfig:
-    device_base_url: str = _env_str("SMART_BIN_DEVICE_API_BASE", "https://api.kvbhust.id.vn/api/v1/devices/public")
-    config_base_url: str = _env_str("SMART_BIN_CONFIG_API_BASE", "https://api.kvbhust.id.vn/api/v1/configs")
-    thingsboard_base_url: str = _env_str("SMART_BIN_THINGSBOARD_API_BASE", "https://thingsboard.kvbhust.id.vn/api/v1")
+    device_base_url: str = _env_str("SMART_BIN_DEVICE_API_BASE", "http://localhost:80/api/v1/devices/public")
+    config_base_url: str = _env_str("SMART_BIN_CONFIG_API_BASE", "http://localhost:80/api/v1/configs")
+    thingsboard_base_url: str = _env_str("SMART_BIN_THINGSBOARD_API_BASE", "http://localhost:8082/api/v1")
     request_timeout_seconds: int = _env_int("SMART_BIN_API_TIMEOUT", 10)
 
 
@@ -264,6 +264,10 @@ class PathConfig:
     @property
     def bin_version_cache_path(self) -> Path:
         return self.data_dir / "bin_version_cache.txt"
+    
+    @property
+    def ai_model_version_cache_path(self) -> Path:
+        return self.data_dir / "ai_model_version_cache.txt"
 
 
 # ---------------------------------------------------------------------------

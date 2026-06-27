@@ -18,8 +18,8 @@ export const devicesAdminApi = {
   
   updateAdminConfig: async (
     deviceId: string,
-    payload: { targetBinFirmwareId?: string; targetDesktopFirmwareId?: string }
-  ) => api.put(`/configs/devices/${deviceId}/admin`, payload),
+    payload: { targetBinFirmwareId?: string; targetDesktopFirmwareId?: string; targetAiModelFirmwareId?: string }
+  ) => api.put(`/configs/devices/${deviceId}/firmware`, payload),
   
   executeRpc: async (deviceId: string, payload: RpcRequestPayload) => api.post(`/devices/${deviceId}/rpc`, payload),
   

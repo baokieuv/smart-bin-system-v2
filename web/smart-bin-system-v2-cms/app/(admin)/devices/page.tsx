@@ -823,11 +823,12 @@ function DevicesPageContent() {
       await devicesAdminApi.updateAdminConfig(selectedDevice.id, {
         targetBinFirmwareId: configForm.targetBinFirmwareId || undefined,
         targetDesktopFirmwareId: configForm.targetDesktopFirmwareId || undefined,
+        targetAiModelFirmwareId: configForm.targetAiModelFirmwareId || undefined,
       });
 
       const binFirmware = firmwares.find((firmware) => firmware.id === configForm.targetBinFirmwareId);
       const desktopFirmware = firmwares.find((firmware) => firmware.id === configForm.targetDesktopFirmwareId);
-
+      const aiModelFirmware = firmwares.find((firmware) => firmware.id === configForm.targetAiModelFirmwareId);
       setDevices((current) =>
         current.map((item) =>
           item.id === selectedDevice.id
@@ -835,6 +836,7 @@ function DevicesPageContent() {
                 ...item,
                 targetBinVersion: binFirmware?.version || item.binFirmware?.targetVersion,
                 targetDesktopVersion: desktopFirmware?.version || item.desktopFirmware?.targetVersion,
+                targetAiModelVersion: aiModelFirmware?.version || item.aiModelFirmware?.targetVersion,
               }
             : item
         )
@@ -845,6 +847,7 @@ function DevicesPageContent() {
               ...current,
               targetBinVersion: binFirmware?.version || current.binFirmware?.targetVersion,
               targetDesktopVersion: desktopFirmware?.version || current.desktopFirmware?.targetVersion,
+              targetAiModelVersion: aiModelFirmware?.version || current.aiModelFirmware?.targetVersion,
             }
           : current
       );

@@ -5,10 +5,13 @@ import com.smart_bin.device_service.dto.response.DeviceDto;
 import com.smart_bin.device_service.dto.response.FirmwareResponse;
 import com.smart_bin.device_service.entity.Device;
 import com.smart_bin.device_service.entity.DeviceFirmwareState;
+import com.smart_bin.device_service.entity.Firmware;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
 import org.mapstruct.ReportingPolicy;
+
+import java.util.Optional;
 
 @Mapper(
         componentModel = MappingConstants.ComponentModel.SPRING,
@@ -25,9 +28,15 @@ public interface DeviceMapper {
         if (device.getFirmwareStates() == null) {
             return null;
         }
+
         return device.getFirmwareStates().stream()
                 .filter(state -> state.getType() == type)
-                .map(it -> new FirmwareResponse(it.getCurrentVersion(), it.getTargetFirmware().getVersion()))
+                .map(state -> new FirmwareResponse(
+                        state.getCurrentVersion(),
+                        Optional.ofNullable(state.getTargetFirmware())
+                                .map(Firmware::getVersion)
+                                .orElse(null)
+                ))
                 .findFirst()
                 .orElse(null);
     }

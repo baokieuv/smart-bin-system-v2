@@ -4,6 +4,7 @@ import com.nimbusds.jose.shaded.gson.JsonObject;
 import com.smart_bin.core.exception.ApiException;
 import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.device_service.common.FirmwareType;
+import com.smart_bin.device_service.dto.request.UpdateFirmwareRequest;
 import com.smart_bin.device_service.dto.response.DeviceConfigResponse;
 import com.smart_bin.device_service.dto.response.DeviceDto;
 import com.smart_bin.device_service.dto.response.OtaCheckResponse;
@@ -152,13 +153,13 @@ public class ConfigService {
         }
     }
 
-    public DeviceDto updateDeviceFirmware(String deviceId, String binFirmId, String deskFirmId, String aiModelFirmId) {
+    public DeviceDto updateDeviceFirmware(String deviceId, UpdateFirmwareRequest request) {
         UUID deviceUUID = UUID.fromString(deviceId);
         Device device = deviceRepository.findByIdAndActiveTrue(deviceUUID)
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
-        if (binFirmId != null) {
-            Firmware binFirmware = firmwareRepository.findById(UUID.fromString(binFirmId))
+        if (request.targetBinFirmwareId() != null) {
+            Firmware binFirmware = firmwareRepository.findById(UUID.fromString(request.targetBinFirmwareId()))
                     .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_NOT_FOUND));
             device.getFirmwareStates().stream()
                     .filter(state -> state.getType() == FirmwareType.ESP32)
@@ -166,8 +167,8 @@ public class ConfigService {
                     .ifPresent(state -> state.setTargetFirmware(binFirmware));
         }
 
-        if (deskFirmId != null) {
-            Firmware deskFirmware = firmwareRepository.findById(UUID.fromString(deskFirmId))
+        if (request.targetDesktopFirmwareId() != null) {
+            Firmware deskFirmware = firmwareRepository.findById(UUID.fromString(request.targetDesktopFirmwareId()))
                     .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_NOT_FOUND));
             device.getFirmwareStates().stream()
                     .filter(state -> state.getType() == FirmwareType.RASPBERRY_PI)
@@ -175,8 +176,8 @@ public class ConfigService {
                     .ifPresent(state -> state.setTargetFirmware(deskFirmware));
         }
 
-        if (aiModelFirmId != null) {
-            Firmware aiModelFirmware = firmwareRepository.findById(UUID.fromString(aiModelFirmId))
+        if (request.targetAiModelFirmwareId() != null) {
+            Firmware aiModelFirmware = firmwareRepository.findById(UUID.fromString(request.targetAiModelFirmwareId()))
                     .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_NOT_FOUND));
             device.getFirmwareStates().stream()
                     .filter(state -> state.getType() == FirmwareType.AI_MODEL)
