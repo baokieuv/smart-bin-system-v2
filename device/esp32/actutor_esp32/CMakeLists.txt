@@ -5,4 +5,4 @@
 cmake_minimum_required(VERSION 3.16)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(actutor_esp32 VERSION "0.0.4")
+project(actutor_esp32 VERSION "0.0.3")
