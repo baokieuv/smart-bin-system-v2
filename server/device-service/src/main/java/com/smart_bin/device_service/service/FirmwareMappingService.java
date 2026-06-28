@@ -16,6 +16,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -35,11 +36,10 @@ public class FirmwareMappingService {
         FirmwareMapping mapping = new FirmwareMapping();
         mapping.setMetadataCriteria(request.metadataCriteria());
         mapping.setTargetFirmware(targetFw);
-        mapping.setPriority(request.priority() != null ? request.priority() : 0);
+        mapping.setPriority(calculatePriority(request.metadataCriteria(), request.priority()));
         mapping.setActive(true);
 
         FirmwareMapping savedMapping = mappingRepository.save(mapping);
-
         deviceService.applyFirmwareMappingToExistingDevices(savedMapping);
 
         return mapper.toResponse(savedMapping);
@@ -62,6 +62,9 @@ public class FirmwareMappingService {
         FirmwareMapping mapping = mappingRepository.findByIdAndActiveTrue(UUID.fromString(id))
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.FIRMWARE_MAPPING_NOT_FOUND));
 
+        boolean needsPriorityRecalculation = false;
+        Integer newManualPriority = request.priority();
+
         if (request.metadataCriteria() != null && !request.metadataCriteria().isEmpty()) {
             mapping.setMetadataCriteria(request.metadataCriteria());
         }
@@ -73,11 +76,16 @@ public class FirmwareMappingService {
         }
 
         if (request.priority() != null) {
-            mapping.setPriority(request.priority());
+            needsPriorityRecalculation = true;
+        } else {
+            newManualPriority = mapping.getPriority() % 100; // Giữ lại điểm tay cũ
+        }
+
+        if (needsPriorityRecalculation) {
+            mapping.setPriority(calculatePriority(mapping.getMetadataCriteria(), newManualPriority));
         }
 
         FirmwareMapping savedMapping = mappingRepository.save(mapping);
-
         deviceService.applyFirmwareMappingToExistingDevices(savedMapping);
 
         return mapper.toResponse(savedMapping);
@@ -90,5 +98,11 @@ public class FirmwareMappingService {
 
         mapping.setActive(false); // Xóa mềm
         mappingRepository.save(mapping);
+    }
+
+    private int calculatePriority(Map<String, Object> criteria, Integer manualPriority) {
+        int specificityScore = (criteria != null) ? (criteria.size() * 100) : 0;
+        int tieBreakerScore = (manualPriority != null) ? manualPriority : 0;
+        return specificityScore + tieBreakerScore;
     }
 }
