@@ -320,7 +320,7 @@ public class DeviceService {
     }
 
     public DeviceDto getDeviceDetail(String keycloakId, String tenantId, String deviceId, String permissions){
-        verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.VIEW_DEVICE.name());
 
         Device device = getDeviceAndVerifyOwnership(deviceId, keycloakId, tenantId);
         return mapper.toDto(device);
@@ -332,7 +332,7 @@ public class DeviceService {
             evict = { @CacheEvict(value = "device_list", allEntries = true) }
     )
     public DeviceDto updateDeviceByUser(String id, UpdateDeviceUserRequest request, String keycloakId, String tenantId, String permissions) {
-        verifyPermission(permissions, DevicePermission.EDIT_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.EDIT_DEVICE.name());
 
         Device device = getDeviceAndVerifyOwnership(id, keycloakId, tenantId);
         Map<String, Object> tbAttributes = new HashMap<>();
@@ -502,7 +502,7 @@ public class DeviceService {
 
     @Transactional
     public void deleteDevice(String id, String keycloakId, String tenantId, String permissions) {
-        verifyPermission(permissions, DevicePermission.DELETE_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.DELETE_DEVICE.name());
 
         Device device = getDeviceAndVerifyOwnership(id, keycloakId, tenantId);
 
@@ -581,7 +581,8 @@ public class DeviceService {
     }
 
     public JsonNode getTelemetries(String id, String keycloakId, String tenantId, String permissions, String keys, Long startTs, Long endTs) {
-        verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.VIEW_DEVICE.name());
+
 
         Device device = getDeviceAndVerifyOwnership(id, keycloakId, tenantId);
 
@@ -631,7 +632,7 @@ public class DeviceService {
     }
 
     public JsonNode executeRpc(String deviceId, RpcRequest request, String actorId, String tenantId, UserRole role, String permissions) {
-        verifyPermission(permissions, DevicePermission.CONTROL_DEVICE.name(), actorId, tenantId);
+        verifyPermission(actorId, tenantId, permissions, DevicePermission.CONTROL_DEVICE.name());
 
         RpcMethod rpcMethod = RpcMethod.fromMethodName(request.method());
         if (!rpcMethod.isAllowed(role)) {
@@ -645,7 +646,7 @@ public class DeviceService {
 
     public Map<String, Double> getBulkTelemetries(String keycloakId, String tenantId, String permissions, List<String> keys) {
 
-        verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.VIEW_DEVICE.name());
 
         Pageable pageable = PageRequest.of(0, 1000);
         Page<Device> devices;
