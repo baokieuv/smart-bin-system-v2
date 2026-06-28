@@ -108,9 +108,12 @@ public class DeviceService {
             } else {
                 targetDevice = new Device();
                 targetDevice.setMac(mac);
-                targetDevice.setState(DeviceState.PENDING); // Trạng thái chờ kích hoạt
+                targetDevice.setState(DeviceState.PENDING);
                 results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));
             }
+
+            // Đảm bảo luôn khởi tạo sẵn các FirmwareState
+            initializeDefaultFirmwareStates(targetDevice);
 
             if (item.latitude() != null) targetDevice.setLatitude(item.latitude());
             if (item.longitude() != null) targetDevice.setLongitude(item.longitude());
@@ -121,7 +124,6 @@ public class DeviceService {
             targetDevice.setName(item.name() != null ? item.name() : "SmartBin-" + mac.replace(":", "").replace("-", ""));
 
             syncWithThingsBoard(targetDevice, mac);
-
             assignGroupToDevice(targetDevice);
 
             if (tbProfileId != null && targetDevice.getDeviceId() != null) {
@@ -179,9 +181,12 @@ public class DeviceService {
             } else {
                 targetDevice = new Device();
                 targetDevice.setMac(mac);
-                targetDevice.setState(DeviceState.PENDING); // Trạng thái chờ kích hoạt
+                targetDevice.setState(DeviceState.PENDING);
                 results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));
             }
+
+            // Đảm bảo khởi tạo FirmwareState
+            initializeDefaultFirmwareStates(targetDevice);
 
             if (item.latitude() != null) targetDevice.setLatitude(item.latitude());
             if (item.longitude() != null) targetDevice.setLongitude(item.longitude());
@@ -208,7 +213,6 @@ public class DeviceService {
                             }
                         } catch (Exception e) {
                             log.error("Lỗi xử lý gọi API ThingsBoard cho thiết bị MAC: {}", device.getMac(), e);
-                            // Có thể bổ sung cơ chế đánh dấu thất bại riêng cho phần cứng nếu cần thiết
                         }
                     }, executor))
                     .toList();
@@ -243,7 +247,7 @@ public class DeviceService {
 
     public Page<DeviceDto> getFilterDevices(
             String keycloakId, String jwtTenantId, String permissions,
-            boolean isSuperAdmin, boolean isTenant, // Nhận cờ boolean từ Controller
+            boolean isSuperAdmin, boolean isTenant,
             String queryTenantId, String name, String mac, String state, String groupId,
             int page, int size
     ) {
@@ -269,8 +273,7 @@ public class DeviceService {
         if (groupId != null && !groupId.isBlank()) {
             try {
                 targetGroupId = UUID.fromString(groupId);
-            } catch (IllegalArgumentException e) {
-                // Log lỗi nếu cần, hoặc trả về lỗi dữ liệu không hợp lệ
+            } catch (IllegalArgumentException ignored) {
             }
         }
 
@@ -281,7 +284,6 @@ public class DeviceService {
         return devices.map(mapper::toDto);
     }
 
-//    @Cacheable(value = "device_list", key = "#keycloakId + ':' + #page + ':' + #size")
     public PageResponseDto<DeviceDto> getListDevices(String keycloakId, String tenantId, String permissions, int page, int size) {
         verifyPermission(keycloakId, tenantId, permissions, DevicePermission.VIEW_DEVICE.name());
 
@@ -309,17 +311,14 @@ public class DeviceService {
         Page<Device> devices;
 
         if (isSuperAdmin) {
-            // Nếu là SUPER_ADMIN -> Lấy toàn bộ thiết bị trên hệ thống
             devices = repository.findAllForAdminWithConfig(pageable);
         } else {
-            // Nếu chỉ là ADMIN (Tenant) -> Chỉ lấy thiết bị do Tenant này sở hữu
             devices = repository.findAllByTenantIdForAdminWithConfig(tenantId, pageable);
         }
 
         return devices.map(mapper::toDto);
     }
 
-//    @Cacheable(value = "device_detail", key = "#keycloakId + ':' + #deviceId")
     public DeviceDto getDeviceDetail(String keycloakId, String tenantId, String deviceId, String permissions){
         verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
 
@@ -431,14 +430,13 @@ public class DeviceService {
 
         if (tbProfileId != null) {
             List<CompletableFuture<Void>> futures = devicesToUpdate.stream()
-                    .filter(device -> device.getDeviceId() != null) // Chỉ gọi API với máy đã có tbDeviceId
+                    .filter(device -> device.getDeviceId() != null)
                     .map(device -> CompletableFuture.runAsync(() -> {
                         try {
                             thingsBoardService.assignProfileToDevice(device.getDeviceId(), tbProfileId);
                             log.info("Đã gán thành công Profile cho device: {}", device.getMac());
                         } catch (Exception e) {
                             log.error("Lỗi khi gán profile cho thiết bị {} trên ThingsBoard", device.getMac(), e);
-                            // Cân nhắc ném exception hoặc lưu log để retry sau
                         }
                     }))
                     .toList();
@@ -472,25 +470,21 @@ public class DeviceService {
         for (String mac : request.macAddresses()) {
             Device device = deviceMap.get(mac);
 
-            // Trường hợp 1: Thiết bị hoàn toàn không tồn tại trong DB
             if (device == null) {
                 results.add(new DeviceOperationResult(mac, false, "Thiết bị không tồn tại hoặc đã bị vô hiệu hóa."));
                 continue;
             }
 
-            // Trường hợp 2: Vi phạm quyền sở hữu (Data Isolation)
             if (device.getTenantId() == null || !device.getTenantId().equals(tenantId)) {
                 results.add(new DeviceOperationResult(mac, false, "Thiết bị không thuộc quyền sở hữu của tổ chức bạn."));
                 continue;
             }
 
-            // Trường hợp 3: Thiết bị đã được gán sẵn cho chính User này rồi (Tránh update thừa)
             if (request.userId().equals(device.getUserId())) {
                 results.add(new DeviceOperationResult(mac, true, "Thiết bị đã được gán cho người dùng này từ trước."));
                 continue;
             }
 
-            // HỢP LỆ -> Tiến hành gán User
             device.setUserId(request.userId());
             device.setState(DeviceState.ACTIVE);
             device.setClaimedAt(System.currentTimeMillis());
@@ -573,16 +567,11 @@ public class DeviceService {
         }
 
         syncWithThingsBoard(device, request.mac());
-
-        // 4. Tự động tìm và gán Firmware dựa trên hw_metadata
         autoAssignFirmware(device);
-
-        // 5. Nếu là máy mới (chưa có Config) thì tạo Default Config
         assignGroupToDevice(device);
 
         Device savedDevice = repository.save(device);
 
-        // 6. Trả về Token và ID cho phần cứng
         return new DeviceProvisionResponse(
                 savedDevice.getId().toString(),
                 savedDevice.getDeviceId(),
@@ -606,9 +595,9 @@ public class DeviceService {
     }
 
     @Transactional
-    public String getPresignedUrl(String payload, String signature, String metadata, String desktopVer, String binVer) {
+    public String getPresignedUrl(String payload, String signature, String metadata, String desktopVer, String binVer, String aiModelVer) {
         DetectionResultDto fileInfo = parseMetadata(metadata);
-        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer);
+        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer, aiModelVer);
 
         JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
                 internalSecret, device.getMac(), fileInfo.filename(), fileInfo.contentType()
@@ -621,9 +610,9 @@ public class DeviceService {
     }
 
     @Transactional
-    public String confirmUpload(String payload, String signature, String metadata, String desktopVer, String binVer) {
+    public String confirmUpload(String payload, String signature, String metadata, String desktopVer, String binVer, String aiModelVer) {
         DetectionResultDto fileInfo = parseMetadata(metadata);
-        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer);
+        Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer, aiModelVer);
 
         String finalImageUrl = extractCachedImageUrlAndClear(device.getMac(), fileInfo.detectionId());
         saveDetectionResult(device, fileInfo, finalImageUrl);
@@ -637,6 +626,7 @@ public class DeviceService {
         device.setHwMetadata(request.hwMetadata());
         device.setState(DeviceState.ACTIVE);
         device.setStatus(DeviceStatus.OFFLINE);
+        initializeDefaultFirmwareStates(device);
         return device;
     }
 
@@ -649,8 +639,6 @@ public class DeviceService {
         }
 
         Device device = getDeviceAndVerifyOwnership(deviceId, actorId, tenantId);
-
-//        boolean isTwoWay = method.equals("openLid") || method.equals("calibrateSensor");
 
         return thingsBoardService.sendRpcCommand(device.getDeviceId(), rpcMethod.getMethodName(), request.params(), false);
     }
@@ -710,6 +698,47 @@ public class DeviceService {
         return summedResults;
     }
 
+    /**
+     * Helper: Đảm bảo thiết bị luôn có đủ trạng thái firmware của tất cả FirmwareType hiện có.
+     */
+    private void initializeDefaultFirmwareStates(Device device) {
+        if (device.getFirmwareStates() == null) {
+            device.setFirmwareStates(new ArrayList<>());
+        }
+
+        for (FirmwareType type : FirmwareType.values()) {
+            boolean exists = device.getFirmwareStates().stream()
+                    .anyMatch(state -> state.getType() == type);
+
+            if (!exists) {
+                DeviceFirmwareState newState = new DeviceFirmwareState();
+                newState.setDevice(device);
+                newState.setType(type);
+                newState.setCurrentVersion("0.0.0");
+                device.getFirmwareStates().add(newState);
+            }
+        }
+    }
+
+    /**
+     * Cập nhật thông tin phiên bản hoặc target mới vào state đã được tạo sẵn
+     */
+    private void updateFirmwareState(Device device, FirmwareType type, String currentVersion, Firmware targetFirmware) {
+        initializeDefaultFirmwareStates(device);
+
+        device.getFirmwareStates().stream()
+                .filter(s -> s.getType() == type)
+                .findFirst()
+                .ifPresent(state -> {
+                    if (currentVersion != null) {
+                        state.setCurrentVersion(currentVersion);
+                    }
+                    if (targetFirmware != null) {
+                        state.setTargetFirmware(targetFirmware);
+                    }
+                });
+    }
+
     private Device resetExistingDeviceForProvision(Device device, DeviceProvisionRequest request) {
         if (device.getPublicKey() != null && device.getState() == DeviceState.ACTIVE) {
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED, "Thiết bị này đã được kích hoạt trước đó.");
@@ -717,6 +746,7 @@ public class DeviceService {
         device.setHwMetadata(request.hwMetadata());
         device.setState(DeviceState.ACTIVE);
         device.setStatus(DeviceStatus.OFFLINE);
+        initializeDefaultFirmwareStates(device);
         return device;
     }
 
@@ -732,7 +762,6 @@ public class DeviceService {
                 DeviceGroup group = device.getDeviceGroup();
 
                 if (group.getAlarmRules() != null) {
-                    // Giả định Entity DeviceGroup có quan hệ hoặc chứa danh sách AlarmRule định nghĩa trước
                     group.getAlarmRules().stream()
                             .filter(rule -> "HIGH_AVERAGE_WASTE".equals(rule.alarmType()))
                             .findFirst()
@@ -795,12 +824,15 @@ public class DeviceService {
         }
     }
 
-    private void updateVersionInfo(Device device, String desktopVer, String binVer) {
+    private void updateVersionInfo(Device device, String desktopVer, String binVer, String aiModelVer) {
         if (StringUtils.hasText(desktopVer)) {
-            device.setDesktopVersion(desktopVer);
+            updateFirmwareState(device, FirmwareType.RASPBERRY_PI, desktopVer, null);
         }
         if (StringUtils.hasText(binVer)) {
-            device.setBinVersion(binVer);
+            updateFirmwareState(device, FirmwareType.ESP32, binVer, null);
+        }
+        if (StringUtils.hasText(aiModelVer)) {
+            updateFirmwareState(device, FirmwareType.AI_MODEL, aiModelVer, null);
         }
     }
 
@@ -810,12 +842,10 @@ public class DeviceService {
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
         if (Constants.DEFAULT_TENANT_ID.equals(tenantId)) {
-            // Nếu là User cá nhân (Default Tenant) -> Chỉ được phép cấu hình máy của chính mình
             if (!Objects.equals(actorId, device.getUserId())) {
                 throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
             }
         } else {
-            // Nếu là User thuộc Doanh nghiệp/Tổ chức (Custom Tenant) -> Có quyền với toàn bộ máy của Tenant
             if (!Objects.equals(tenantId, device.getTenantId())) {
                 throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
             }
@@ -833,19 +863,28 @@ public class DeviceService {
     }
 
     private void autoAssignFirmware(Device device) {
-        // Lấy tất cả các rule đang active, sắp xếp theo Priority giảm dần
         List<FirmwareMapping> rules = mappingRepository.findAllByActiveTrueOrderByPriorityDesc();
         Map<String, Object> deviceMeta = device.getHwMetadata();
 
+        Set<FirmwareType> assignedTypes = new HashSet<>();
+
         for (FirmwareMapping rule : rules) {
+            Firmware targetFw = rule.getTargetFirmware();
+
+            if (assignedTypes.contains(targetFw.getType())) {
+                continue;
+            }
+
             if (isMetadataMatched(deviceMeta, rule.getMetadataCriteria())) {
-                // Tùy theo logic của bạn gán vào Bin hay Desktop, ở đây ví dụ gán vào Bin
-                device.setTargetBinFirmware(rule.getTargetFirmware());
-                log.info("Device MAC {} matched Firmware Rule ID {}", device.getMac(), rule.getId());
-                return; // Khớp rule đầu tiên (ưu tiên cao nhất) thì dừng
+                updateFirmwareState(device, targetFw.getType(), null, targetFw);
+                assignedTypes.add(targetFw.getType());
+                log.info("Device MAC {} matched Firmware Rule ID {} for Type {}", device.getMac(), rule.getId(), targetFw.getType());
             }
         }
-        log.warn("Không tìm thấy Firmware phù hợp cho Device MAC {}", device.getMac());
+
+        if (assignedTypes.isEmpty()) {
+            log.warn("Không tìm thấy Firmware phù hợp cho Device MAC {}", device.getMac());
+        }
     }
 
     private boolean isMetadataMatched(Map<String, Object> deviceMeta, Map<String, Object> ruleCriteria) {
@@ -877,6 +916,7 @@ public class DeviceService {
         device.setTenantId(tenantId);
         device.setUserId(userId);
         device.setClaimedAt(System.currentTimeMillis());
+        initializeDefaultFirmwareStates(device);
 
         Map<String, Object> tbAttributes = new HashMap<>();
         if (StringUtils.hasText(request.name())) {
@@ -913,8 +953,9 @@ public class DeviceService {
 
             device.setMac(request.mac());
             device.setUserId(userId);
-            device.setState(DeviceState.PENDING); // Đặt trạng thái chờ
+            device.setState(DeviceState.PENDING);
             device.setStatus(DeviceStatus.OFFLINE);
+            initializeDefaultFirmwareStates(device);
 
             if (StringUtils.hasText(request.name())) {
                 device.setName(request.name());
@@ -941,7 +982,7 @@ public class DeviceService {
         }
     }
 
-    private Device verifyDeviceSignatureAndMetadata(String payload, String signature, String desktopVer, String binVer) {
+    private Device verifyDeviceSignatureAndMetadata(String payload, String signature, String desktopVer, String binVer, String aiModelVer) {
         JsonObject payloadObj = securityService.parsePayloadAndCheckTimestamp(payload);
         String mac = payloadObj.get("mac").getAsString();
 
@@ -949,7 +990,7 @@ public class DeviceService {
                 .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
 
         securityService.verifySignatureWithDeviceKey(payload, signature, device.getPublicKey());
-        updateVersionInfo(device, desktopVer, binVer);
+        updateVersionInfo(device, desktopVer, binVer, aiModelVer);
         return repository.save(device);
     }
 
@@ -996,7 +1037,7 @@ public class DeviceService {
         log.info("Bắt đầu Job ngầm gán Firmware {} cho các thiết bị khớp rule...", rule.getTargetFirmware().getVersion());
 
         int page = 0;
-        int size = 500; // Xử lý từng lô 500 thiết bị
+        int size = 500;
         Page<Device> devicePage;
 
         do {
@@ -1005,7 +1046,7 @@ public class DeviceService {
 
             for (Device device : devicePage.getContent()) {
                 if (isMetadataMatched(device.getHwMetadata(), rule.getMetadataCriteria())) {
-                    device.setTargetBinFirmware(rule.getTargetFirmware());
+                    updateFirmwareState(device, rule.getTargetFirmware().getType(), null, rule.getTargetFirmware());
                     devicesToUpdate.add(device);
                 }
             }

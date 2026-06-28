@@ -13,10 +13,9 @@ export interface DeviceDto {
   status: DeviceStatus;
   createdDate: string;
   claimedAt?: number;
-  desktopVersion?: string;
-  binVersion?: string;
-  targetBinVersion?: string;
-  targetDesktopVersion?: string;
+  desktopFirmware?: FirmwareResponse;
+  binFirmware?: FirmwareResponse;
+  aiModelFirmware?: FirmwareResponse;
   userConfigs?: Record<string, unknown>;
 }
 
@@ -25,6 +24,8 @@ export interface DeviceAdminConfigDto {
   targetDesktopFirmwareId?: string | null;
   targetBinVersion?: string | null;
   targetDesktopVersion?: string | null;
+  targetAiModelVersion?: string | null;
+  targetAiModelFirmwareId?: string | null;
 }
 
 export interface DeviceOperationResult {
@@ -47,6 +48,11 @@ export type RpcRequestPayload = {
   method: string;
   params?: unknown;
 };
+
+export type FirmwareResponse = {
+  currentVersion: string;
+  targetVersion: string;
+}
 
 export type DeviceImportRequestItem = {
   mac: string;

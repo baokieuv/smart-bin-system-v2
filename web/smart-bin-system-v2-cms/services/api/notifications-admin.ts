@@ -3,13 +3,13 @@ import type { MarkNotificationsRequest, NotificationDto, UnreadCountPayload } fr
 
 export const notificationsAdminApi = {
   getNotifications: async (params?: { page?: number; size?: number }) =>
-    api.get<NotificationDto[] | { items?: NotificationDto[]; content?: NotificationDto[] }>("/notifications", params, { cacheTTL: 30000 }),
+    api.get<NotificationDto[] | { items?: NotificationDto[]; content?: NotificationDto[] }>("/notifications", params, { cacheTTL: 300000 }),
   markAsRead: async (id: string | number) => api.put(`/notifications/${id}/read`),
   readAll: async () => api.put("/notifications/read-all"),
   
   // Get unread notification count
   getUnreadCount: async () => {
-    return api.get<UnreadCountPayload>('/notifications/get-unread-count');
+    return api.get<UnreadCountPayload>('/notifications/get-unread-count', undefined, { cacheTTL: 60000 });
   },
 
   // Batch update read/unread status

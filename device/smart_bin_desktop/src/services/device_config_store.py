@@ -32,7 +32,7 @@ class DeviceConfigStore:
             "fullThreshold": config.full_threshold,
             "targetBinFirmwareVersion": config.target_bin_firmware_version,
             "targetDesktopVersion": config.target_desktop_version,
-            "deviceHeight": config.device_height,
+            "targetAiModelVersion": config.target_ai_model_version,
         }
 
         try:

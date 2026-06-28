@@ -1,34 +1,36 @@
 package com.smart_bin.device_service.dto.response;
 
+import com.smart_bin.device_service.common.FirmwareType;
 import com.smart_bin.device_service.entity.Device;
 
 import java.util.Map;
 
-public record DeviceConfigResponse (
-    String accessToken,
-    Map<String, Object> configs,
-    String targetBinFirmwareVersion,
-    String targetDesktopFirmwareVersion
-
-){
+public record DeviceConfigResponse(
+        String accessToken,
+        Map<String, Object> configs,
+        String targetBinFirmwareVersion,
+        String targetDesktopFirmwareVersion,
+        String targetAiModelVersion
+) {
     public static DeviceConfigResponse fromData(Map<String, Object> data, Device device) {
         return new DeviceConfigResponse(
                 device.getAccessToken(),
                 data,
-                device.getTargetBinFirmware() != null ? device.getTargetBinFirmware().getVersion() : null,
-                device.getTargetDesktopFirmware() != null ? device.getTargetDesktopFirmware().getVersion() : null
+                extractTargetVersion(device, FirmwareType.ESP32),
+                extractTargetVersion(device, FirmwareType.RASPBERRY_PI),
+                extractTargetVersion(device, FirmwareType.AI_MODEL)
         );
     }
-    // Hàm tiện ích để map từ Entity sang DTO
-//    public static DeviceConfigResponse fromEntity(DeviceConfig config, Device device) {
-//        DeviceGroup group = device.getDeviceGroup();
-//
-//        return new DeviceConfigResponse(
-//                device.getAccessToken(),
-//                config.getUserConfigs(),
-//                group.getSharedSpecs(),
-//                device.getTargetBinFirmware() != null ? device.getTargetBinFirmware().getVersion() : null,
-//                device.getTargetDesktopFirmware() != null ? device.getTargetDesktopFirmware().getVersion() : null
-//        );
-//    }
+
+    private static String extractTargetVersion(Device device, FirmwareType type) {
+        if (device.getFirmwareStates() == null) {
+            return null;
+        }
+
+        return device.getFirmwareStates().stream()
+                .filter(state -> state.getType() == type && state.getTargetFirmware() != null)
+                .map(state -> state.getTargetFirmware().getVersion())
+                .findFirst()
+                .orElse(null);
+    }
 }

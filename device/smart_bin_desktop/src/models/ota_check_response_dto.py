@@ -24,6 +24,7 @@ class FirmwareUpdateInfoDto:
 class OtaCheckResponseDto:
     esp32: FirmwareUpdateInfoDto | None = None
     raspberry_pi: FirmwareUpdateInfoDto | None = None
+    ai_model: FirmwareUpdateInfoDto | None = None
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -32,4 +33,5 @@ class OtaCheckResponseDto:
         return cls(
             esp32=FirmwareUpdateInfoDto.from_dict(data.get("esp32")),
             raspberry_pi=FirmwareUpdateInfoDto.from_dict(data.get("raspberryPi")),
+            ai_model=FirmwareUpdateInfoDto.from_dict(data.get("aiModel"))
         )

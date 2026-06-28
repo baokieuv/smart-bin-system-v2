@@ -284,16 +284,6 @@ export default function DashboardPage() {
 
   const notes = [
     {
-      title: t("noteStoreTitle"),
-      body: t("noteStoreBody"),
-      visibleTo: ["super_admin"],
-    },
-    {
-      title: t("noteOrdersTitle"),
-      body: t("noteOrdersBody"),
-      visibleTo: ["super_admin"],
-    },
-    {
       title: t("noteFleetTitle"),
       body: t("noteFleetBody"),
       visibleTo: ["super_admin", "admin"],
@@ -322,7 +312,7 @@ export default function DashboardPage() {
           <DeviceLocationMap 
             devices={mapDevices} 
             className="w-full h-full" 
-            onDeviceClick={(device) => {
+            onDeviceClick={role === "super_admin" ? undefined : (device) => {
               router.push(`/devices?deviceId=${encodeURIComponent(device.id)}`);
             }}
           />

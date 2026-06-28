@@ -8,7 +8,34 @@ import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
 import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 import type { FirmwareDto } from "@/types/firmware";
 
-const acceptedFileExtensions = [".bin", ".exe"];
+const acceptedFileExtensions = [
+  // 1. File thực thi và nhị phân cơ bản
+  ".bin", 
+  ".exe",
+
+  // 2. PyTorch
+  ".pt", 
+  ".pth",
+
+  // 3. TensorFlow / Keras
+  ".pb", 
+  ".h5", 
+  ".hdf5", 
+  ".keras", 
+  ".tflite",
+
+  // 4. Định dạng chuyển đổi chung (Interoperability)
+  ".onnx",
+
+  // 5. LLMs / Stable Diffusion (Hugging Face, LLaMA...)
+  ".safetensors", 
+  ".gguf", 
+  ".ggml",
+
+  // 6. Machine Learning truyền thống (Scikit-learn...)
+  ".pkl", 
+  ".joblib"
+];
 
 const isValidFirmwareFile = (file: File) => {
   const lowerName = file.name.toLowerCase();
@@ -232,6 +259,7 @@ export default function FirmwaresPage() {
             >
               <option value="ESP32">{t("esp32Option")}</option>
               <option value="RASPBERRY_PI">{t("piOption")}</option>
+              <option value="AI_MODEL">{t("aiModelOption")}</option>
             </select>
 
             <textarea
@@ -244,7 +272,7 @@ export default function FirmwaresPage() {
             <div className="space-y-2">
               <input
                 type="file"
-                accept=".bin,.exe,application/octet-stream,application/x-msdownload"
+                accept=".bin,.exe,.pt,.pth,.h5,.hdf5,.pb,.tflite,.keras,.onnx,.safetensors,.gguf,.ggml,.pkl,.joblib,application/octet-stream,application/x-msdownload"
                 onChange={(event) => {
                   const selected = event.target.files?.[0] || null;
                   setFile(selected);

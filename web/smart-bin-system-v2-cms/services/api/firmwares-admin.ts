@@ -5,7 +5,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9999/a
 
 export const firmwaresAdminApi = {
   getFirmwares: async (params?: { page?: number; size?: number }) =>
-    api.get<FirmwareListPayload>("/configs/firmwares", params, { cacheTTL: 30000 }),
+    api.get<FirmwareListPayload>("/configs/firmwares", params, { cacheTTL: 300000 }),
 
   uploadFirmware: async (payload: { file: File; version: string; type: string; description?: string }) => {
     return new Promise((resolve, reject) => {

@@ -26,28 +26,45 @@ class RuntimeVersionState:
     3. Scan of the local firmware binary for an embedded version string.
     """
 
-    def __init__(self, cache_path: Path | None = None) -> None:
+    def __init__(self, bin_cache_path: Path | None = None, ai_cache_path: Path | None = None) -> None:
         self.logger = logging.getLogger("smart_bin.runtime_versions")
-        self.cache_path = cache_path or APP_CONFIG.paths.bin_version_cache_path
+        self.bin_cache_path = bin_cache_path or APP_CONFIG.paths.bin_version_cache_path
+        self.ai_cache_path = ai_cache_path or APP_CONFIG.paths.ai_model_version_cache_path
+
         self._bin_version: str | None = None
+        self._ai_version: str | None = None
 
     # ------------------------------------------------------------------
-    # Public API
+    # Public APIs
     # ------------------------------------------------------------------
 
     def set_bin_version(self, version: str | None) -> None:
         normalized = str(version).strip() if version else ""
         self._bin_version = normalized or None
         if self._bin_version:
-            self._save_cache(self._bin_version)
+            self._save_cache(self.bin_cache_path, self._bin_version)
 
     def get_bin_version(self) -> str | None:
         if self._bin_version:
             return self._bin_version
-        cached = self._load_cache()
+        cached = self._load_cache(self.bin_cache_path)
         if cached:
             self._bin_version = cached
         return self._bin_version
+    
+    def set_ai_version(self, version: str | None) -> None:
+        normalized = str(version).strip() if version else ""
+        self._ai_version = normalized or None
+        if self._ai_version:
+            self._save_cache(self.ai_cache_path, self._ai_version)
+
+    def get_ai_version(self) -> str | None:
+        if self._ai_version:
+            return self._ai_version
+        cached = self._load_cache(self.ai_cache_path)
+        if cached:
+            self._ai_version = cached
+        return self._ai_version
 
     def resolve_bin_version(
         self,
@@ -75,20 +92,20 @@ class RuntimeVersionState:
     # Cache I/O
     # ------------------------------------------------------------------
 
-    def _save_cache(self, version: str) -> None:
+    def _save_cache(self, path: Path, version: str) -> None:
         try:
-            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-            self.cache_path.write_text(version, encoding="utf-8")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(version, encoding="utf-8")
         except OSError as exc:
-            self.logger.warning("Failed to save bin version cache: %s", exc)
+            self.logger.warning("Failed to save version cache to %s: %s", path, exc)
 
-    def _load_cache(self) -> str | None:
+    def _load_cache(self, path: Path) -> str | None:
         try:
-            if not self.cache_path.exists():
+            if not path.exists():
                 return None
-            return self.cache_path.read_text(encoding="utf-8").strip() or None
+            return path.read_text(encoding="utf-8").strip() or None
         except OSError as exc:
-            self.logger.warning("Failed to load bin version cache: %s", exc)
+            self.logger.warning("Failed to load version cache from %s: %s", path, exc)
             return None
 
     # ------------------------------------------------------------------
