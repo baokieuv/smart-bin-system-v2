@@ -13,7 +13,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ================= CẤU HÌNH HỆ THỐNG =================
-COM_PORT = 'COM8'      # Đổi thành cổng COM thực tế
+COM_PORT = 'COM10'      # Đổi thành cổng COM thực tế
 BAUD_RATE = 115200
 FIRMWARE_FILE = r'D:\HUST\soict\final-project\smart-bin-v2\smart-bin-system-v2\device\esp32\actutor_esp32.bin'
 CHUNK_SIZE = 512       
