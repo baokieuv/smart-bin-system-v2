@@ -5,73 +5,70 @@ import Modal from "@/components/ui/modal";
 import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { getCmsAccessRole } from "@/lib/auth-session";
+import { useLanguage, type TranslationKey } from "@/lib/language";
+import { deviceApi } from "@/services/api/device";
+import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
 import { devicesAdminApi } from "@/services/api/devices-admin";
 import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
-import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
 import { usersAdminApi } from "@/services/api/users-admin";
-import type { DeviceDto } from "@/types/device";
+import type { DeviceDto, TelemetryPayload } from "@/types/device";
 import type { FirmwareDto } from "@/types/firmware";
 import type { UserDto } from "@/types/user";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import AddDeviceModal from "@/components/devices/add-device-modal";
+import AssignDevicesPanel from "@/components/devices/assign-devices-panel";
+import ConfigureFirmwareModal from "@/components/devices/configure-firmware-modal";
+import DeviceControlModal from "@/components/devices/device-control-modal";
+import DeviceDetailsModal from "@/components/devices/device-details-modal";
+import DevicesFilterPanel, { type FilterProps } from "@/components/devices/devices-filter-panel";
+import DevicesTable from "@/components/devices/devices-table";
+import {
+  CLAIM_CODE_PATTERN,
+  firmwareTimestamp,
+  getDefaultRpcParams,
+  getLatestFirmware,
+  getRpcMethodOptions,
+  MAC_PATTERN,
+  parseCoordinatePair,
+  parseOptionalNumber,
+  toCoordinateText,
+  toLocationKey,
+} from "./utils";
 
-type RpcMethodOption = {
-  method: string;
-  label: string;
-  type: "ONE_WAY" | "TWO_WAY";
-  description: string;
-};
+// ==========================================
+// 1. EXTRACTED COMPONENT LOGIC
+// ==========================================
+function DevicesPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+  const { t } = useLanguage(); 
 
-const rpcMethodOptions: RpcMethodOption[] = [
-  { method: "openLid", label: "Open lid", type: "TWO_WAY", description: "Send the device command to open the lid." },
-  { method: "closeLid", label: "Close lid", type: "TWO_WAY", description: "Send the device command to close the lid." },
-  { method: "lockBin", label: "Lock bin", type: "TWO_WAY", description: "Lock the bin mechanism remotely." },
-  { method: "unlockBin", label: "Unlock bin", type: "TWO_WAY", description: "Unlock the bin mechanism remotely." },
-  { method: "forceSync", label: "Force sync", type: "ONE_WAY", description: "Force the device to sync state and telemetry." },
-  { method: "triggerAlarmAlert", label: "Trigger alarm alert", type: "ONE_WAY", description: "Trigger a manual alarm alert on the device." },
-  { method: "rebootDevice", label: "Reboot device", type: "ONE_WAY", description: "Restart the device remotely." },
-  { method: "calibrateSensor", label: "Calibrate sensor", type: "TWO_WAY", description: "Start a sensor calibration workflow." },
-  { method: "setPollingInterval", label: "Set polling interval", type: "TWO_WAY", description: "Update the device polling interval." },
-  { method: "clearHardwareError", label: "Clear hardware error", type: "TWO_WAY", description: "Clear a hardware-level error state." },
-  { method: "triggerOtaUpdate", label: "Trigger OTA update", type: "ONE_WAY", description: "Start the over-the-air update flow." },
-];
-
-const getRpcMethodOption = (method: string) => rpcMethodOptions.find((option) => option.method === method) ?? rpcMethodOptions[0];
-
-const getDefaultRpcParams = (method: string) => {
-  switch (method) {
-    case "setPollingInterval":
-      return JSON.stringify({ intervalSeconds: 60 }, null, 2);
-    case "triggerAlarmAlert":
-      return JSON.stringify({ message: "Manual alert" }, null, 2);
-    case "calibrateSensor":
-      return JSON.stringify({}, null, 2);
-    default:
-      return JSON.stringify({}, null, 2);
-  }
-};
-
-const firmwareLabel = (firmware: FirmwareDto) => {
-  const suffix = firmware.description ? ` - ${firmware.description}` : "";
-  return `${firmware.version}${suffix}`;
-};
-
-const firmwareTimestamp = (firmware: FirmwareDto) => {
-  if (!firmware.createdDate) return 0;
-  const parsed = Date.parse(firmware.createdDate);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const getLatestFirmware = (firmwares: FirmwareDto[], type: "ESP32" | "RASPBERRY_PI") =>
-  [...firmwares]
-    .filter((firmware) => firmware.type === type)
-    .sort((left, right) => firmwareTimestamp(right) - firmwareTimestamp(left) || right.version.localeCompare(left.version, undefined, { numeric: true, sensitivity: "base" }))[0];
-
-export default function DevicesPage() {
+  const [partners, setPartners] = useState<{ id: string; name: string }[]>([]);
+  // const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterInputs, setFilterInputs] = useState<FilterProps>({
+    name: searchParams.get("name") || "",
+    mac: searchParams.get("mac") || "",
+    groupId: searchParams.get("groupId") || "",
+    status: searchParams.get("status") || "",
+    tenantId: searchParams.get("tenantId") || "",
+  });
   const [devices, setDevices] = useState<DeviceDto[]>([]);
   const [firmwares, setFirmwares] = useState<FirmwareDto[]>([]);
   const [users, setUsers] = useState<UserDto[]>([]);
-  const [role, setRole] = useState<"super_admin" | "admin" | null>(null);
-  const [form, setForm] = useState({ mac: "", claimCode: "" });
+  const [role, setRole] = useState<"super_admin" | "admin" | "user" | null>(null);
+  const [form, setForm] = useState({
+    mac: "",
+    name: "",
+    claimCode: "",
+    latitude: "21.0056",
+    longitude: "105.8434",
+    pollingInterval: "",
+    fullThreshold: "",
+  });
   const [deviceGroups, setDeviceGroups] = useState<{ id: string; code: string; name: string }[]>([]);
   const [message, setMessage] = useState("");
   const [showQuickAddModal, setShowQuickAddModal] = useState(false);
@@ -85,20 +82,42 @@ export default function DevicesPage() {
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
+  
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [selectedDevice, setSelectedDevice] = useState<DeviceDto | null>(null);
-  const [configForm, setConfigForm] = useState({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
-  const [configInitial, setConfigInitial] = useState({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
+
+  const [selectedDeviceDetails, setSelectedDeviceDetails] = useState<DeviceDto | null>(null);
+  const [editDeviceLoading, setEditDeviceLoading] = useState(false);
+  const [editDeviceMessage, setEditDeviceMessage] = useState("");
+  const [editDeviceForm, setEditDeviceForm] = useState({
+    name: "",
+    latitude: "",
+    longitude: "",
+    pollingInterval: "",
+    fullThreshold: "",
+  });
+
+  const [telemetryLoading, setTelemetryLoading] = useState(false);
+  const [telemetryHistory, setTelemetryHistory] = useState<Array<{ timestamp: number; fillLevel: number | null; throwCount: number | null; battery: number | null }>>([]);
+  const [telemetryMessage, setTelemetryMessage] = useState("");
+
+  const [configForm, setConfigForm] = useState({ targetBinFirmwareId: "", targetDesktopFirmwareId: "", targetAiModelFirmwareId: "" });
+  const [configInitial, setConfigInitial] = useState({ targetBinFirmwareId: "", targetDesktopFirmwareId: "", targetAiModelFirmwareId: "" });
   const [configMessage, setConfigMessage] = useState("");
   const [configLoading, setConfigLoading] = useState(false);
   const [configFetchingId, setConfigFetchingId] = useState<string | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showControlModal, setShowControlModal] = useState(false);
-  const [selectedRpcMethod, setSelectedRpcMethod] = useState(rpcMethodOptions[0].method);
-  const [rpcParamsText, setRpcParamsText] = useState(getDefaultRpcParams(rpcMethodOptions[0].method));
+  
+  const initialRpcMethod = getRpcMethodOptions(t)[0].method;
+  const [selectedRpcMethod, setSelectedRpcMethod] = useState(initialRpcMethod);
+  const [rpcParamsText, setRpcParamsText] = useState(getDefaultRpcParams(initialRpcMethod));
   const [rpcMessage, setRpcMessage] = useState("");
   const [rpcLoading, setRpcLoading] = useState(false);
   const [rpcResponseText, setRpcResponseText] = useState("");
+  const [locationTextByKey, setLocationTextByKey] = useState<Record<string, string>>({});
+  const [loadingLocationKeys, setLoadingLocationKeys] = useState<Record<string, boolean>>({});
+  const [isClosing, setIsClosing] = useState(false);
 
   const sortedFirmwares = useMemo(
     () =>
@@ -114,6 +133,11 @@ export default function DevicesPage() {
     [sortedFirmwares]
   );
 
+  const aiModelFirmwares = useMemo(
+    () => sortedFirmwares.filter((firmware) => firmware.type === "AI_MODEL"),
+    [sortedFirmwares]
+  );
+
   const sortedUsers = useMemo(
     () =>
       [...users].sort(
@@ -125,19 +149,76 @@ export default function DevicesPage() {
     [users]
   );
 
+  const availableRpcOptions = useMemo(() => {
+    const rpcMethodOptions = getRpcMethodOptions(t);
+    if (role === "user") {
+      const allowedMethods = ["openLid", "closeLid", "lockBin", "unlockBin", "forceSync"];
+      return rpcMethodOptions.filter((option) => allowedMethods.includes(option.method));
+    }
+    return rpcMethodOptions;
+  }, [role, t]);
+
   const isConfigDirty =
     Boolean(selectedDeviceId) &&
-    Boolean(configForm?.targetBinFirmwareId || configForm?.targetDesktopFirmwareId) &&
+    Boolean(configForm?.targetBinFirmwareId || configForm?.targetDesktopFirmwareId || configForm?.targetAiModelFirmwareId) &&
     (configForm?.targetBinFirmwareId !== configInitial?.targetBinFirmwareId ||
-      configForm?.targetDesktopFirmwareId !== configInitial?.targetDesktopFirmwareId);
+      configForm?.targetDesktopFirmwareId !== configInitial?.targetDesktopFirmwareId ||
+      configForm?.targetAiModelFirmwareId !== configInitial?.targetAiModelFirmwareId);
 
-  const canAssignDevices = role !== "super_admin";
-  const canConfigureFirmware = role !== "admin";
-  const canControlDevice = role === "admin";
+  const canAssignDevices = role === "super_admin" || role === "admin";
+  const canConfigureFirmware = role === "super_admin";
+  const canControlDevice = role === "super_admin" || role === "admin" || role === "user";
+  
+  const addLocation = parseCoordinatePair(form.latitude, form.longitude);
+  const editLocation = parseCoordinatePair(editDeviceForm.latitude, editDeviceForm.longitude);
+  const canSubmitAddDevice = MAC_PATTERN.test(form.mac.trim()) && CLAIM_CODE_PATTERN.test(form.claimCode.trim()) && form.name.trim().length > 0 && addLocation !== null && !createLoading;
+
+  const buildTelemetryHistory = useCallback((telemetries: TelemetryPayload) => {
+    const binKeys = ['bin1', 'bin2', 'bin3', 'bin4'];
+    const binPoints = binKeys.flatMap((k) => telemetries[k] ?? []);
+    const totalPoints = telemetries['total_waste_count'] ?? [];
+    const batteryPoints = telemetries['pin'] ?? [];
+
+    type TempEntry = { timestamp: number; bins: number[]; throwCount: number | null; battery: number | null };
+    const grouped = new Map<number, TempEntry>();
+
+    binPoints.forEach((point) => {
+      const existing = grouped.get(point.ts) ?? { timestamp: point.ts, bins: [], throwCount: null, battery: null };
+      const val = Number(point.value);
+      if (!Number.isNaN(val)) existing.bins.push(val);
+      grouped.set(point.ts, existing);
+    });
+
+    totalPoints.forEach((point) => {
+      const existing = grouped.get(point.ts) ?? { timestamp: point.ts, bins: [], throwCount: null, battery: null };
+      const val = Number(point.value);
+      existing.throwCount = Number.isNaN(val) ? null : val;
+      grouped.set(point.ts, existing);
+    });
+
+    batteryPoints.forEach((point) => {
+      const existing = grouped.get(point.ts) ?? { timestamp: point.ts, bins: [], throwCount: null, battery: null };
+      const val = Number(point.value);
+      existing.battery = Number.isNaN(val) ? null : val;
+      grouped.set(point.ts, existing);
+    });
+
+    const results = Array.from(grouped.values())
+      .map((entry) => ({
+        timestamp: entry.timestamp,
+        fillLevel: entry.bins.length > 0 ? Math.round((entry.bins.reduce((s, v) => s + v, 0) / entry.bins.length) * 100) / 100 : null,
+        throwCount: entry.throwCount,
+        battery: entry.battery,
+      }))
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 50);
+
+    return results;
+  }, []);
 
   const loadRole = () => {
     const cachedRole = typeof window !== "undefined" ? localStorage.getItem("admin_role") : null;
-    if (cachedRole === "super_admin" || cachedRole === "admin") {
+    if (cachedRole === "super_admin" || cachedRole === "admin" || cachedRole === "user") {
       setRole(cachedRole);
       return;
     }
@@ -147,7 +228,8 @@ export default function DevicesPage() {
       try {
         const parsedRoles = JSON.parse(cachedRoles) as unknown;
         if (Array.isArray(parsedRoles)) {
-          setRole(getCmsAccessRole(parsedRoles.filter((candidate): candidate is string => typeof candidate === "string")));
+          const accessRole = getCmsAccessRole(parsedRoles.filter((candidate): candidate is string => typeof candidate === "string"));
+          setRole(accessRole);
         }
       } catch {
         setRole(null);
@@ -155,18 +237,50 @@ export default function DevicesPage() {
     }
   };
 
-  const load = useCallback(async (nextPage = page, nextSize = size) => {
-    const response = await devicesAdminApi.getDevices({ page: nextPage, size: nextSize });
+  const load = useCallback(async () => {
+    const page = Number(searchParams.get("page")) || 1;
+    const size = Number(searchParams.get("size")) || 10;
+
+    const filterParams: Record<string, string | number> = {
+      page,
+      size,
+    };
+
+    // Chỉ lấy trực tiếp từ các param của bộ lọc Filter Modal
+    const name = searchParams.get("name");
+    if (name) filterParams.name = name;
+
+    const mac = searchParams.get("mac");
+    if (mac) filterParams.mac = mac;
+
+    const groupId = searchParams.get("groupId");
+    if (groupId) filterParams.groupId = groupId;
+
+    const status = searchParams.get("status");
+    if (status) filterParams.state = status; // Map "status" sang "state" cho API Backend
+
+    const tenantId = searchParams.get("tenantId");
+    if (tenantId) filterParams.tenantId = tenantId;
+
+    // Gọi API Filter
+    const response = await deviceApi.getFilterList(filterParams);
+    
     setDevices(unwrapListPayload(response.data));
+    setPage(page);
+    setSize(size);
 
     if (!Array.isArray(response.data) && response.data) {
       const payload = response.data as Record<string, unknown>;
       const backendTotalPages = payload.totalPages;
       if (typeof backendTotalPages === "number" && Number.isFinite(backendTotalPages)) {
         setTotalPages(Math.max(1, backendTotalPages));
+      } else {
+        setTotalPages(1);
       }
+    } else {
+      setTotalPages(1);
     }
-  }, [page, size]);
+  }, [searchParams]);
 
   const loadFirmwares = async () => {
     const response = await firmwaresAdminApi.getFirmwares({ page: 1, size: 1000 });
@@ -176,13 +290,13 @@ export default function DevicesPage() {
   };
 
   useEffect(() => {
+    void load();
     loadRole();
-    void load(page, size);
-  }, [load, page, size]);
+  }, [load]);
 
   useEffect(() => {
     void loadFirmwares().catch(() => {
-      setConfigMessage("Unable to load firmware list");
+      setConfigMessage(t("loadFirmwareListError"));
     });
     void (async () => {
       try {
@@ -201,7 +315,75 @@ export default function DevicesPage() {
         // ignore
       }
     })();
-  }, []);
+
+    if (role === "super_admin") {
+      (async () => {
+        try {
+          // TODO: Replace with actual API call to fetch partners/tenants
+          // For example:
+          // const response = await partnersAdminApi.getPartners({ page: 1, size: 500 });
+          // const items = unwrapListPayload(response.data);
+          // setPartners(items.map((item) => ({ id: item.id, name: item.name })));
+        } catch {
+          // ignore
+        }
+      })();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+
+  // useEffect(() => {
+  //   setSearchQuery(searchParams.get("search") || "");
+  // }, [searchParams]);
+
+  useEffect(() => {
+    setFilterInputs({
+      name: searchParams.get("name") || "",
+      mac: searchParams.get("mac") || "",
+      groupId: searchParams.get("groupId") || "",
+      status: searchParams.get("status") || "",
+      tenantId: searchParams.get("tenantId") || "",
+    });
+  }, [searchParams]);
+
+  // const handleSearch = (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   const params = new URLSearchParams();
+  //   if (searchQuery.trim()) {
+  //     params.set("search", searchQuery.trim());
+  //   }
+  //   params.set("page", "1");
+  //   params.set("size", String(size));
+  //   router.push(`${pathname}?${params.toString()}`);
+  // };
+
+  const handleApplyFilters = () => {
+    const params = new URLSearchParams();
+    Object.entries(filterInputs).forEach(([key, value]) => {
+      if (value) {
+        params.set(key, value);
+      }
+    });
+    params.set("page", "1");
+    params.set("size", String(size));
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const handleClearFilters = () => {
+    setFilterInputs({ name: "", mac: "", groupId: "", status: "", tenantId: "" });
+    // setSearchQuery("");
+    router.push(`${pathname}?page=1&size=${size}`);
+  };
+
+  const handleApplyFiltersAndClose = () => {
+    handleApplyFilters();
+    setShowFilterModal(false);
+  };
+
+  const handleClearFiltersAndClose = () => {
+    handleClearFilters();
+    setShowFilterModal(false);
+  };
 
   const toggleDeviceSelection = (deviceId: string) => {
     setSelectedDeviceIds((current) =>
@@ -217,17 +399,17 @@ export default function DevicesPage() {
     event.preventDefault();
 
     if (!selectedDeviceIds.length) {
-      setAssignMessage("Select at least one device first");
+      setAssignMessage(t("selectDeviceFirst"));
       return;
     }
 
     if (assignMode === "group" && !assignGroupId) {
-      setAssignMessage("Choose a device group first");
+      setAssignMessage(t("chooseTargetGroup"));
       return;
     }
 
     if (assignMode === "user" && !assignUserId) {
-      setAssignMessage("Choose a user first");
+      setAssignMessage(t("chooseTargetUser"));
       return;
     }
 
@@ -244,7 +426,7 @@ export default function DevicesPage() {
         });
 
         const updatedCount = response.data?.length ?? selectedDevices.length;
-        setAssignMessage(`Assigned ${updatedCount} device${updatedCount !== 1 ? "s" : ""} to group`);
+        setAssignMessage(t("assignGroupSuccess").replace("{count}", String(updatedCount)));
       } else {
         const response = await devicesAdminApi.assignDevicesToUser({
           userId: assignUserId,
@@ -254,58 +436,257 @@ export default function DevicesPage() {
         const results = response.data ?? [];
         const successCount = results.filter((item) => item.status).length;
         const failedCount = results.length - successCount;
-        setAssignMessage(
-          failedCount > 0
-            ? `Assigned ${successCount}/${results.length} devices to user. ${failedCount} device(s) need attention.`
-            : `Assigned ${successCount} device${successCount !== 1 ? "s" : ""} to user`
-        );
+        
+        if (failedCount > 0) {
+          const msg = t("assignUserSuccessPartial")
+            .replace("{successCount}", String(successCount))
+            .replace("{total}", String(results.length))
+            .replace("{failedCount}", String(failedCount));
+          setAssignMessage(msg);
+        } else {
+          setAssignMessage(t("assignUserSuccess").replace("{count}", String(successCount)));
+        }
       }
 
       setSelectedDeviceIds([]);
       setAssignGroupId("");
       setAssignUserId("");
-      await load(page, size);
+      await load();
     } catch (error) {
-      setAssignMessage(error instanceof Error ? error.message : "Assignment failed");
+      setAssignMessage(error instanceof Error ? error.message : t("assignmentFailed"));
     } finally {
       setAssignLoading(false);
     }
   };
 
-  // Debug: log isConfigDirty changes
-  useEffect(() => {
-    if (selectedDeviceId) {
-      console.log(`[ConfigState] dirty=${isConfigDirty}, form=${JSON.stringify(configForm)}, initial=${JSON.stringify(configInitial)}`);
-    }
-  }, [isConfigDirty, configForm, configInitial, selectedDeviceId]);
-
   const create = async (event: FormEvent) => {
     event.preventDefault();
+
+    const normalizedMac = form.mac.trim().toUpperCase();
+    const normalizedClaimCode = form.claimCode.trim();
+    const normalizedName = form.name.trim();
+
+    if (!MAC_PATTERN.test(normalizedMac)) {
+      setMessage(t("invalidMacFormat"));
+      return;
+    }
+
+    if (!CLAIM_CODE_PATTERN.test(normalizedClaimCode)) {
+      setMessage(t("invalidClaimCode"));
+      return;
+    }
+
+    if (!normalizedName) {
+      setMessage(t("deviceNameRequired"));
+      return;
+    }
+
+    if (!addLocation) {
+      setMessage(t("invalidLocationSelected"));
+      return;
+    }
+
     setCreateLoading(true);
+    setMessage("");
+
     try {
-      await devicesAdminApi.importDevices({
-        devices: [{ mac: form.mac, claimCode: form.claimCode }],
+      const claimResponse = await deviceApi.add({
+        mac: normalizedMac,
+        name: normalizedName,
+        claimCode: normalizedClaimCode,
+        latitude: addLocation.latitude,
+        longitude: addLocation.longitude,
       });
-      setForm({ mac: "", claimCode: "" });
-      setMessage("Imported 1 device");
+
+      if (!claimResponse.success || !claimResponse.data) {
+        setMessage(claimResponse.message || t("addDeviceError"));
+        return;
+      }
+
+      const createdDevice = claimResponse.data;
+      const pollingInterval = parseOptionalNumber(form.pollingInterval);
+      const fullThreshold = parseOptionalNumber(form.fullThreshold);
+
+      if (pollingInterval !== undefined || fullThreshold !== undefined) {
+        const updateResponse = await deviceApi.update(createdDevice.id, {
+          name: normalizedName,
+          latitude: addLocation.latitude,
+          longitude: addLocation.longitude,
+          pollingInterval,
+          fullThreshold,
+          scope: "SERVER_SCOPE",
+          additionalAttributes: {},
+        });
+
+        if (!updateResponse.success) {
+          setMessage(updateResponse.message || t("deviceConfigFailed"));
+          return;
+        }
+      }
+
+      setForm({
+        mac: "",
+        name: "",
+        claimCode: "",
+        latitude: "",
+        longitude: "",
+        pollingInterval: "",
+        fullThreshold: "",
+      });
+      setMessage(t("deviceAddedSuccess"));
       setShowQuickAddModal(false);
-      await load(page, size);
+      await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Import failed");
+      setMessage(error instanceof Error ? error.message : t("addDeviceError"));
     } finally {
       setCreateLoading(false);
     }
   };
 
   const openQuickAddModal = () => {
-    setForm({ mac: "", claimCode: "" });
+    setForm({
+      mac: "",
+      name: "",
+      claimCode: "",
+      latitude: "21.0056",
+      longitude: "105.8434",
+      pollingInterval: "",
+      fullThreshold: "",
+    });
     setMessage("");
     setShowQuickAddModal(true);
   };
 
   const closeQuickAddModal = () => {
     setShowQuickAddModal(false);
-    setForm({ mac: "", claimCode: "" });
+    setForm({
+      mac: "",
+      name: "",
+      claimCode: "",
+      latitude: "",
+      longitude: "",
+      pollingInterval: "",
+      fullThreshold: "",
+    });
+  };
+
+  const openDeviceDetails = useCallback(async (device: DeviceDto) => {
+    setSelectedDeviceDetails(device);
+    setEditDeviceForm({
+      name: device.name || "",
+      latitude: device.latitude?.toString() || "21.0056", 
+      longitude: device.longitude?.toString() || "105.8434",
+      pollingInterval: device.userConfigs?.polling_interval?.toString() || "",
+      fullThreshold: device.userConfigs?.full_threshold?.toString() || "",
+    });
+    setEditDeviceMessage("");
+
+    setTelemetryMessage("");
+    setTelemetryLoading(true);
+    try {
+      const now = Date.now();
+      const response = await devicesAdminApi.getTelemetries(device.id, {
+        keys: 'bin1,bin2,bin3,bin4,total_waste_count,pin',
+        startTs: now - 7 * 24 * 60 * 60 * 1000,
+        endTs: now,
+        limit: 200,
+      });
+
+      if (!response || !response.success || !response.data) {
+        setTelemetryHistory([]);
+        setTelemetryMessage(response?.message || t("noTelemetryData"));
+        return;
+      }
+
+      const history = buildTelemetryHistory(response.data as TelemetryPayload);
+      setTelemetryHistory(history);
+      if (history.length === 0) setTelemetryMessage(t("noTelemetryPoints"));
+    } catch (err) {
+      setTelemetryHistory([]);
+      setTelemetryMessage(err instanceof Error ? err.message : t("loadTelemetryError"));
+    } finally {
+      setTelemetryLoading(false);
+    }
+  }, [buildTelemetryHistory, t]);
+
+  const openDeviceDetailsById = useCallback(
+    async (deviceId: string) => {
+      const existingDevice = devices.find((device) => device.id === deviceId);
+
+      if (existingDevice) {
+        await openDeviceDetails(existingDevice);
+        return;
+      }
+
+      try {
+        const response = await deviceApi.getDetail(deviceId);
+        if (response.success && response.data) {
+          await openDeviceDetails(response.data);
+          return;
+        }
+
+        setMessage(t("loadDeviceError"));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : t("loadDeviceError"));
+      }
+    },
+    [devices, openDeviceDetails, t],
+  );
+
+  const closeDeviceDetails = () => {
+    if (editDeviceLoading) return;
+    
+    setIsClosing(true);
+    setSelectedDeviceDetails(null);
+    
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("deviceId");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const saveDeviceDetails = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedDeviceDetails) return;
+
+    setEditDeviceLoading(true);
+    setEditDeviceMessage("");
+
+    const loc = parseCoordinatePair(editDeviceForm.latitude, editDeviceForm.longitude);
+    if (!loc && (editDeviceForm.latitude || editDeviceForm.longitude)) {
+      setEditDeviceMessage(t("provideValidCoordinates"));
+      setEditDeviceLoading(false);
+      return;
+    }
+
+    try {
+      await deviceApi.update(selectedDeviceDetails.id, {
+        name: editDeviceForm.name.trim(),
+        latitude: loc?.latitude,
+        longitude: loc?.longitude,
+        pollingInterval: parseOptionalNumber(editDeviceForm.pollingInterval),
+        fullThreshold: parseOptionalNumber(editDeviceForm.fullThreshold),
+        scope: "SERVER_SCOPE",
+        additionalAttributes: {},
+      });
+
+      setEditDeviceMessage(t("deviceDetailsUpdated"));
+      await load();
+      
+      setSelectedDeviceDetails(current => 
+        current ? {
+          ...current,
+          name: editDeviceForm.name.trim(),
+          latitude: loc?.latitude,
+          longitude: loc?.longitude,
+          pollingInterval: parseOptionalNumber(editDeviceForm.pollingInterval),
+          fullThreshold: parseOptionalNumber(editDeviceForm.fullThreshold),
+        } : null
+      );
+    } catch (error) {
+      setEditDeviceMessage(error instanceof Error ? error.message : t("updateDeviceDetailsError"));
+    } finally {
+      setEditDeviceLoading(false);
+    }
   };
 
   const openConfig = async (device: DeviceDto) => {
@@ -325,18 +706,19 @@ export default function DevicesPage() {
         config.targetBinFirmwareId || firmwareItems.find((firmware) => firmware.type === "ESP32" && firmware.version === config.targetBinVersion)?.id || getLatestFirmware(firmwareItems, "ESP32")?.id || "";
       const targetDesktopFirmwareId =
         config.targetDesktopFirmwareId || firmwareItems.find((firmware) => firmware.type === "RASPBERRY_PI" && firmware.version === config.targetDesktopVersion)?.id || getLatestFirmware(firmwareItems, "RASPBERRY_PI")?.id || "";
+      const targetAiModelFirmwareId = 
+        config.targetAiModelFirmwareId || firmwareItems.find((firmware) => firmware.type === "AI_MODEL" && firmware.version === config.targetAiModelVersion)?.id || getLatestFirmware(firmwareItems, "AI_MODEL")?.id || "";
 
-      console.log(`[DeviceConfig] Device: ${device.name}, Bin FW ID: ${targetBinFirmwareId}, Desktop FW ID: ${targetDesktopFirmwareId}`);
-      
-      setConfigForm({ targetBinFirmwareId, targetDesktopFirmwareId });
-      setConfigInitial({ targetBinFirmwareId, targetDesktopFirmwareId });
+      setConfigForm({ targetBinFirmwareId, targetDesktopFirmwareId, targetAiModelFirmwareId });
+      setConfigInitial({ targetBinFirmwareId, targetDesktopFirmwareId, targetAiModelFirmwareId });
       setDevices((current) =>
         current.map((item) =>
           item.id === device.id
             ? {
                 ...item,
-                targetBinVersion: config.targetBinVersion || item.targetBinVersion,
-                targetDesktopVersion: config.targetDesktopVersion || item.targetDesktopVersion,
+                targetBinVersion: config.targetBinVersion || item.binFirmware?.targetVersion,
+                targetDesktopVersion: config.targetDesktopVersion || item.desktopFirmware?.targetVersion,
+                targetAiModelVersion: config.targetAiModelVersion || item.aiModelFirmware?.targetVersion,
               }
             : item
         )
@@ -344,9 +726,10 @@ export default function DevicesPage() {
     } catch (error) {
       const fallbackBin = getLatestFirmware(firmwares.length > 0 ? firmwares : await loadFirmwares(), "ESP32")?.id || "";
       const fallbackDesktop = getLatestFirmware(firmwares.length > 0 ? firmwares : await loadFirmwares(), "RASPBERRY_PI")?.id || "";
-      setConfigForm({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop });
-      setConfigInitial({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop });
-      setConfigMessage(error instanceof Error ? error.message : "Load config failed");
+      const fallbackAiModel = getLatestFirmware(firmwares.length > 0 ? firmwares : await loadFirmwares(), "AI_MODEL")?.id || "";
+      setConfigForm({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop, targetAiModelFirmwareId: fallbackAiModel });
+      setConfigInitial({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop, targetAiModelFirmwareId: fallbackAiModel });
+      setConfigMessage(error instanceof Error ? error.message : t("loadCurrentConfigError"));
     } finally {
       setConfigLoading(false);
       setConfigFetchingId(null);
@@ -354,14 +737,14 @@ export default function DevicesPage() {
   };
 
   const openControlModal = (device: DeviceDto) => {
-    if (!canControlDevice) {
-      return;
-    }
+    if (!canControlDevice) return;
+
+    const defaultMethod = availableRpcOptions[0]?.method ?? "openLid";
 
     setSelectedDeviceId(device.id);
     setSelectedDevice(device);
-    setSelectedRpcMethod(rpcMethodOptions[0].method);
-    setRpcParamsText(getDefaultRpcParams(rpcMethodOptions[0].method));
+    setSelectedRpcMethod(defaultMethod);
+    setRpcParamsText(getDefaultRpcParams(defaultMethod));
     setRpcMessage("");
     setRpcResponseText("");
     setShowControlModal(true);
@@ -372,8 +755,10 @@ export default function DevicesPage() {
     setShowControlModal(false);
     setSelectedDeviceId("");
     setSelectedDevice(null);
-    setSelectedRpcMethod(rpcMethodOptions[0].method);
-    setRpcParamsText(getDefaultRpcParams(rpcMethodOptions[0].method));
+    
+    const defaultMethod = availableRpcOptions[0]?.method ?? "openLid";
+    setSelectedRpcMethod(defaultMethod);
+    setRpcParamsText(getDefaultRpcParams(defaultMethod));
     setRpcMessage("");
     setRpcResponseText("");
   };
@@ -381,16 +766,14 @@ export default function DevicesPage() {
   const executeSelectedRpc = async (event: FormEvent) => {
     event.preventDefault();
 
-    if (!selectedDevice || !canControlDevice) {
-      return;
-    }
+    if (!selectedDevice || !canControlDevice) return;
 
     let parsedParams: unknown = {};
     if (rpcParamsText.trim()) {
       try {
         parsedParams = JSON.parse(rpcParamsText);
       } catch {
-        setRpcMessage("Params must be valid JSON");
+        setRpcMessage(t("invalidJsonParams"));
         return;
       }
     }
@@ -406,9 +789,9 @@ export default function DevicesPage() {
       });
 
       setRpcResponseText(JSON.stringify(response.data ?? response, null, 2));
-      setRpcMessage(response.message || "RPC command sent");
+      setRpcMessage(response.message || t("commandSentSuccess"));
     } catch (error) {
-      setRpcMessage(error instanceof Error ? error.message : "Failed to send RPC command");
+      setRpcMessage(error instanceof Error ? error.message : t("sendCommandError"));
     } finally {
       setRpcLoading(false);
     }
@@ -419,8 +802,8 @@ export default function DevicesPage() {
     setShowConfigModal(false);
     setSelectedDeviceId("");
     setSelectedDevice(null);
-    setConfigForm({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
-    setConfigInitial({ targetBinFirmwareId: "", targetDesktopFirmwareId: "" });
+    setConfigForm({ targetBinFirmwareId: "", targetDesktopFirmwareId: "", targetAiModelFirmwareId: "" });
+    setConfigInitial({ targetBinFirmwareId: "", targetDesktopFirmwareId: "", targetAiModelFirmwareId: "" });
     setConfigMessage("");
   };
 
@@ -429,7 +812,7 @@ export default function DevicesPage() {
     if (!selectedDevice) return;
 
     if (!isConfigDirty) {
-      setConfigMessage("No target version changes to confirm");
+      setConfigMessage(t("noChangesDetected"));
       return;
     }
 
@@ -440,18 +823,20 @@ export default function DevicesPage() {
       await devicesAdminApi.updateAdminConfig(selectedDevice.id, {
         targetBinFirmwareId: configForm.targetBinFirmwareId || undefined,
         targetDesktopFirmwareId: configForm.targetDesktopFirmwareId || undefined,
+        targetAiModelFirmwareId: configForm.targetAiModelFirmwareId || undefined,
       });
 
       const binFirmware = firmwares.find((firmware) => firmware.id === configForm.targetBinFirmwareId);
       const desktopFirmware = firmwares.find((firmware) => firmware.id === configForm.targetDesktopFirmwareId);
-
+      const aiModelFirmware = firmwares.find((firmware) => firmware.id === configForm.targetAiModelFirmwareId);
       setDevices((current) =>
         current.map((item) =>
           item.id === selectedDevice.id
             ? {
                 ...item,
-                targetBinVersion: binFirmware?.version || item.targetBinVersion,
-                targetDesktopVersion: desktopFirmware?.version || item.targetDesktopVersion,
+                targetBinVersion: binFirmware?.version || item.binFirmware?.targetVersion,
+                targetDesktopVersion: desktopFirmware?.version || item.desktopFirmware?.targetVersion,
+                targetAiModelVersion: aiModelFirmware?.version || item.aiModelFirmware?.targetVersion,
               }
             : item
         )
@@ -460,491 +845,285 @@ export default function DevicesPage() {
         current
           ? {
               ...current,
-              targetBinVersion: binFirmware?.version || current.targetBinVersion,
-              targetDesktopVersion: desktopFirmware?.version || current.targetDesktopVersion,
+              targetBinVersion: binFirmware?.version || current.binFirmware?.targetVersion,
+              targetDesktopVersion: desktopFirmware?.version || current.desktopFirmware?.targetVersion,
+              targetAiModelVersion: aiModelFirmware?.version || current.aiModelFirmware?.targetVersion,
             }
           : current
       );
       setConfigInitial(configForm);
-      setConfigMessage("Firmware target updated");
+      setConfigMessage(t("targetVersionsUpdated"));
     } catch (error) {
-      setConfigMessage(error instanceof Error ? error.message : "Update config failed");
+      setConfigMessage(error instanceof Error ? error.message : t("saveConfigError"));
     } finally {
       setConfigLoading(false);
     }
   };
 
+  const resolveLocationText = useCallback(
+    async (latitude?: number, longitude?: number) => {
+      const key = toLocationKey(latitude, longitude);
+      if (!key) return;
+      if (locationTextByKey[key] || loadingLocationKeys[key]) return;
+
+      setLoadingLocationKeys((current) => ({ ...current, [key]: true }));
+
+      try {
+        if (!mapboxToken) {
+          setLocationTextByKey((current) => ({ ...current, [key]: toCoordinateText(latitude, longitude, t) }));
+          return;
+        }
+
+        const response = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${Number(longitude).toFixed(6)},${Number(latitude).toFixed(6)}.json?types=address,place,locality,neighborhood,region,district&limit=1&language=en&access_token=${mapboxToken}`,
+        );
+
+        if (!response.ok) {
+          setLocationTextByKey((current) => ({ ...current, [key]: toCoordinateText(latitude, longitude, t) }));
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          features?: Array<{ place_name?: string }>;
+        };
+        const placeName = payload.features?.[0]?.place_name?.trim();
+
+        setLocationTextByKey((current) => ({
+          ...current,
+          [key]: placeName || toCoordinateText(latitude, longitude, t),
+        }));
+      } catch {
+        setLocationTextByKey((current) => ({ ...current, [key]: toCoordinateText(latitude, longitude, t) }));
+      } finally {
+        setLoadingLocationKeys((current) => ({ ...current, [key]: false }));
+      }
+    },
+    [loadingLocationKeys, locationTextByKey, mapboxToken, t],
+  );
+
+  useEffect(() => {
+    if (!selectedDeviceDetails) return;
+    void resolveLocationText(selectedDeviceDetails.latitude, selectedDeviceDetails.longitude);
+  }, [resolveLocationText, selectedDeviceDetails]);
+
+  useEffect(() => {
+    const deviceId = searchParams.get("deviceId");
+    
+    if (!deviceId) {
+      setIsClosing(false); 
+      return;
+    }
+
+    if (isClosing || selectedDeviceDetails?.id === deviceId) return;
+
+    void openDeviceDetailsById(deviceId);
+  }, [openDeviceDetailsById, searchParams, selectedDeviceDetails?.id, isClosing]);
+
+  useEffect(() => {
+    if (!selectedDevice) return;
+    void resolveLocationText(selectedDevice.latitude, selectedDevice.longitude);
+  }, [resolveLocationText, selectedDevice]);
+
+  useEffect(() => {
+    devices.forEach((device) => {
+      if (device.latitude !== undefined && device.longitude !== undefined) {
+        void resolveLocationText(device.latitude, device.longitude);
+      }
+    });
+  }, [devices, resolveLocationText]);
+
+  const handleSetPage = (newPage: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("page", String(newPage));
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const handleSetSize = (newSize: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("size", String(newSize));
+    params.set("page", "1");
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const getLocationText = (lat?: number, lng?: number) => {
+    const key = toLocationKey(lat, lng);
+    const isResolving = key ? Boolean(loadingLocationKeys[key]) : false;
+    const text = key ? locationTextByKey[key] : "";
+    return isResolving ? t("resolvingAddress") : (text || toCoordinateText(lat, lng, t));
+  };
+
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
-      <Panel title="Devices" subtitle="Admin device list with server pagination">
-        <div className="max-w-full overflow-x-auto">
-          <table className="w-full min-w-300 text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-600">
-                  {canAssignDevices ? <th className="w-10 py-2 px-3 whitespace-nowrap">Select</th> : null}
-                  <th className="py-2 px-3 whitespace-nowrap">Name</th>
-                  <th className="py-2 px-3 whitespace-nowrap">MAC</th>
-                  <th className="py-2 px-3 whitespace-nowrap">Group Code</th>
-                  <th className="py-2 px-3 whitespace-nowrap">Target Bin</th>
-                  <th className="py-2 px-3 whitespace-nowrap">Target Desktop</th>
-                  <th className="py-2 px-3 whitespace-nowrap">Status</th>
-                  <th className="py-2 px-3 whitespace-nowrap">State</th>
-                  <th className="py-2 px-3 whitespace-nowrap">Desktop Ver</th>
-                  <th className="py-2 px-3 whitespace-nowrap">Bin Ver</th>
-                  <th className="py-2 px-3 whitespace-nowrap">Claimed At</th>
-                  <th className="py-2 px-3 whitespace-nowrap">Created Date</th>
-                  {canConfigureFirmware ? <th className="py-2 px-3 whitespace-nowrap">Action</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {devices.map((device) => (
-                <tr key={device.id} className={`border-b border-slate-200/70 ${selectedDeviceId === device.id ? "bg-sky-50/60" : ""}`}>
-                  {canAssignDevices ? (
-                    <td className="py-2 px-3 whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={selectedDeviceIds.includes(device.id)}
-                        onChange={() => toggleDeviceSelection(device.id)}
-                        aria-label={`Select ${device.name}`}
-                      />
-                    </td>
-                  ) : null}
-                  <td className="py-2 px-3 font-medium text-foreground whitespace-nowrap">
-                    {canControlDevice ? (
-                      <button
-                        type="button"
-                        onClick={() => openControlModal(device)}
-                        className="text-left font-medium text-sky-800 underline decoration-sky-300 underline-offset-4 hover:text-sky-900"
-                      >
-                        {device.name}
-                      </button>
-                    ) : (
-                      device.name
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.mac}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.groupCode || "-"}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.targetBinVersion || "-"}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.targetDesktopVersion || "-"}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.status}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.state || "-"}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.desktopVersion || "-"}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.binVersion || "-"}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.claimedAt ?? "-"}</td>
-                  <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{device.createdDate || "-"}</td>
-                  {canConfigureFirmware ? (
-                    <td className="py-2">
-                      <button
-                        type="button"
-                        onClick={() => void openConfig(device)}
-                        disabled={configLoading || configFetchingId === device.id}
-                        className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800"
-                      >
-                        {configFetchingId === device.id ? "Loading..." : "Configure"}
-                      </button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-          <div className="text-slate-600">Page {page} / {totalPages}</div>
+      <Panel
+        title={t("devicesTitle")}
+        subtitle={t("devicesSubtitle")}
+        action={
           <div className="flex items-center gap-2">
-            <select
-              className="rounded-lg border border-slate-200 px-2 py-1"
-              value={size}
-              onChange={(e) => {
-                setPage(1);
-                setSize(Number(e.target.value));
-              }}
+            {/* Chỉ giữ lại mỗi nút Filter */}
+            <button 
+              type="button" 
+              onClick={() => setShowFilterModal(true)} 
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              <option value={10}>10 / page</option>
-              <option value={20}>20 / page</option>
-              <option value={50}>50 / page</option>
-              <option value={100}>100 / page</option>
-            </select>
-            <button
-              className="rounded-lg border border-slate-200 px-3 py-1 disabled:opacity-50"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              type="button"
-            >
-              Prev
-            </button>
-            <button
-              className="rounded-lg border border-slate-200 px-3 py-1 disabled:opacity-50"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              type="button"
-            >
-              Next
+              {t("filterBtn")}
             </button>
           </div>
-        </div>
+        }
+      >
+        <DevicesTable
+          devices={devices}
+          selectedDeviceIds={selectedDeviceIds}
+          selectedDeviceId={selectedDeviceId}
+          canAssignDevices={canAssignDevices}
+          canControlDevice={canControlDevice}
+          canConfigureFirmware={canConfigureFirmware}
+          configLoading={configLoading}
+          configFetchingId={configFetchingId}
+          onToggleSelection={toggleDeviceSelection}
+          onOpenControlModal={openControlModal}
+          onOpenDetails={role !== 'super_admin' ? openDeviceDetails : undefined}
+          onOpenConfig={openConfig}
+          getLocationText={getLocationText}
+          t={t}
+          page={page}
+          totalPages={totalPages}
+          size={size}
+          setPage={handleSetPage}
+          setSize={handleSetSize}
+        />
       </Panel>
 
       <div className="space-y-4">
-        {canAssignDevices ? (
-          <Panel title="Assign Devices" subtitle="Pick devices once, then assign them to a group or a user in one step">
-            <form className="space-y-4" onSubmit={assignSelectedDevices}>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-foreground">Selected devices: {selectedDeviceIds.length}</p>
-                    <p>
-                      {selectedDeviceIds.length > 0
-                        ? `${selectedDeviceIds.length} device(s) are queued for assignment.`
-                        : "Select one or more devices from the table to start."}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={selectAllVisibleDevices}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                      disabled={devices.length === 0}
-                    >
-                      Select all on page
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDeviceIds([])}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                      disabled={selectedDeviceIds.length === 0}
-                    >
-                      Clear selection
-                    </button>
-                  </div>
-                </div>
-              </div>
+        <AssignDevicesPanel
+          canAssignDevices={canAssignDevices}
+          selectedDeviceIds={selectedDeviceIds}
+          devices={devices}
+          deviceGroups={deviceGroups}
+          sortedUsers={sortedUsers}
+          assignSelectedDevices={assignSelectedDevices}
+          selectAllVisibleDevices={selectAllVisibleDevices}
+          setSelectedDeviceIds={setSelectedDeviceIds}
+          assignMode={assignMode}
+          setAssignMode={setAssignMode}
+          assignGroupId={assignGroupId}
+          setAssignGroupId={setAssignGroupId}
+          assignUserId={assignUserId}
+          setAssignUserId={setAssignUserId}
+          assignMessage={assignMessage}
+          assignLoading={assignLoading}
+          t={t}
+        />
 
-              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setAssignMode("group")}
-                  className={`rounded-xl px-4 py-3 text-left transition ${
-                    assignMode === "group"
-                      ? "border border-sky-300 bg-sky-50 text-sky-800"
-                      : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  <div className="text-sm font-semibold">Assign to group</div>
-                  <div className="mt-1 text-xs">Best when devices belong to the same operational area.</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAssignMode("user")}
-                  className={`rounded-xl px-4 py-3 text-left transition ${
-                    assignMode === "user"
-                      ? "border border-sky-300 bg-sky-50 text-sky-800"
-                      : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  <div className="text-sm font-semibold">Assign to user</div>
-                  <div className="mt-1 text-xs">Best when devices should be owned by a specific account.</div>
-                </button>
-              </div>
-
-              {assignMode === "group" ? (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">Target device group</label>
-                  <select
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2"
-                    value={assignGroupId}
-                    onChange={(event) => setAssignGroupId(event.target.value)}
-                  >
-                    <option value="">Choose a group</option>
-                    {deviceGroups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.code} - {group.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-xs text-slate-500">The selected devices will be reassigned to the chosen group immediately.</p>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">Target user</label>
-                  <select
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2"
-                    value={assignUserId}
-                    onChange={(event) => setAssignUserId(event.target.value)}
-                  >
-                    <option value="">Choose a user</option>
-                    {sortedUsers.map((user) => (
-                      <option key={user.id} value={user.keycloakId}>
-                        {user.name} - {user.email} {user.state !== "ACTIVE" ? `(${user.state})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-xs text-slate-500">Only active users should usually be used for ownership assignment.</p>
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  type="submit"
-                  disabled={assignLoading || selectedDeviceIds.length === 0 || (assignMode === "group" ? !assignGroupId : !assignUserId)}
-                >
-                  {assignLoading
-                    ? "Applying..."
-                    : assignMode === "group"
-                      ? "Assign selected devices to group"
-                      : "Assign selected devices to user"}
-                </button>
-                {assignMessage ? <p className="text-sm text-slate-600">{assignMessage}</p> : null}
-              </div>
-            </form>
-          </Panel>
-        ) : null}
-
-        <Panel title="Import Devices">
-          <ImportDevicesPanel onImported={() => void load(page, size)} />
+        <Panel title={t("bulkImportTitle")}>
+          <ImportDevicesPanel onImported={() => void load()} />
         </Panel>
 
         <Panel
-          title="Quick Add (uses import API)"
-          subtitle="Open the popup editor to add a single device"
+          title={t("quickAddTitle")}
+          subtitle={t("quickAddSubtitle")}
           action={
             <button type="button" onClick={openQuickAddModal} className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white">
-              Add device
+              {t("addDeviceBtn")}
             </button>
           }
         >
-          <p className="text-sm text-slate-600">Use the popup editor when you need to add one device quickly.</p>
+          <p className="text-sm text-slate-600">{t("quickAddDesc")}</p>
         </Panel>
       </div>
 
-      {showControlModal && canControlDevice ? (
-        <Modal title="Device Control" subtitle="Choose an RPC method, review params, then send the command" onClose={closeControlModal} widthClassName="w-[min(1120px,98vw)]">
-          {selectedDevice ? (
-            <form onSubmit={executeSelectedRpc} className="space-y-5">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <p className="font-semibold text-foreground">{selectedDevice.name}</p>
-                <p>MAC: {selectedDevice.mac}</p>
-                <p>Device ID: {selectedDevice.id}</p>
-              </div>
+      <DeviceDetailsModal
+        device={selectedDeviceDetails}
+        onClose={closeDeviceDetails}
+        onSave={saveDeviceDetails}
+        editDeviceForm={editDeviceForm}
+        setEditDeviceForm={setEditDeviceForm}
+        editDeviceLoading={editDeviceLoading}
+        editDeviceMessage={editDeviceMessage}
+        editLocation={editLocation}
+        telemetryLoading={telemetryLoading}
+        telemetryMessage={telemetryMessage}
+        telemetryHistory={telemetryHistory}
+        locationTextByKey={locationTextByKey}
+        loadingLocationKeys={loadingLocationKeys}
+        t={t}
+      />
 
-              <div className="grid gap-3 lg:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="mb-3">
-                    <h4 className="text-sm font-semibold text-slate-900">ONE_WAY methods</h4>
-                    <p className="text-xs text-slate-500">Commands that do not expect a device response.</p>
-                  </div>
-                  <div className="grid gap-2">
-                    {rpcMethodOptions.filter((option) => option.type === "ONE_WAY").map((option) => (
-                      <button
-                        key={option.method}
-                        type="button"
-                        onClick={() => {
-                          setSelectedRpcMethod(option.method);
-                          setRpcParamsText(getDefaultRpcParams(option.method));
-                          setRpcMessage("");
-                          setRpcResponseText("");
-                        }}
-                        className={`rounded-xl border px-3 py-2 text-left transition ${
-                          selectedRpcMethod === option.method
-                            ? "border-sky-300 bg-sky-50 text-sky-900"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                        }`}
-                      >
-                        <div className="text-sm font-semibold">{option.label}</div>
-                        <div className="mt-1 text-xs text-slate-500">{option.method}</div>
-                        <p className="mt-1 text-xs text-slate-600">{option.description}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+      <DeviceControlModal
+        isOpen={showControlModal && canControlDevice}
+        onClose={closeControlModal}
+        onExecute={executeSelectedRpc}
+        device={selectedDevice}
+        availableRpcOptions={availableRpcOptions}
+        selectedRpcMethod={selectedRpcMethod}
+        setSelectedRpcMethod={setSelectedRpcMethod}
+        rpcParamsText={rpcParamsText}
+        setRpcParamsText={setRpcParamsText}
+        rpcMessage={rpcMessage}
+        setRpcMessage={setRpcMessage}
+        rpcLoading={rpcLoading}
+        rpcResponseText={rpcResponseText}
+        setRpcResponseText={setRpcResponseText}
+        t={t}
+      />
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="mb-3">
-                    <h4 className="text-sm font-semibold text-slate-900">TWO_WAY methods</h4>
-                    <p className="text-xs text-slate-500">Commands that typically wait for an acknowledgment.</p>
-                  </div>
-                  <div className="grid gap-2">
-                    {rpcMethodOptions.filter((option) => option.type === "TWO_WAY").map((option) => (
-                      <button
-                        key={option.method}
-                        type="button"
-                        onClick={() => {
-                          setSelectedRpcMethod(option.method);
-                          setRpcParamsText(getDefaultRpcParams(option.method));
-                          setRpcMessage("");
-                          setRpcResponseText("");
-                        }}
-                        className={`rounded-xl border px-3 py-2 text-left transition ${
-                          selectedRpcMethod === option.method
-                            ? "border-sky-300 bg-sky-50 text-sky-900"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                        }`}
-                      >
-                        <div className="text-sm font-semibold">{option.label}</div>
-                        <div className="mt-1 text-xs text-slate-500">{option.method}</div>
-                        <p className="mt-1 text-xs text-slate-600">{option.description}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+      <ConfigureFirmwareModal
+        isOpen={showConfigModal}
+        onClose={closeConfigModal}
+        onConfirm={confirmConfig}
+        device={selectedDevice}
+        form={configForm}
+        setForm={setConfigForm}
+        binFirmwares={binFirmwares}
+        desktopFirmwares={desktopFirmwares}
+        aiModelFirmwares={aiModelFirmwares}
+        isDirty={isConfigDirty}
+        isLoading={configLoading}
+        message={configMessage}
+        locationTextByKey={locationTextByKey}
+        loadingLocationKeys={loadingLocationKeys}
+        t={t}
+      />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <label className="block text-sm font-medium text-slate-700">RPC params JSON</label>
-                  <span className="text-xs text-slate-500">Selected: {getRpcMethodOption(selectedRpcMethod).method}</span>
-                </div>
-                <textarea
-                  className="min-h-35 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm"
-                  value={rpcParamsText}
-                  onChange={(event) => setRpcParamsText(event.target.value)}
-                  placeholder="{}"
-                />
-                <p className="text-xs text-slate-500">Leave it as <span className="font-mono">{`{}`}</span> for methods that do not need parameters.</p>
-              </div>
+      <AddDeviceModal
+        isOpen={showQuickAddModal}
+        onClose={closeQuickAddModal}
+        onCreate={create}
+        form={form}
+        setForm={setForm}
+        message={message}
+        createLoading={createLoading}
+        canSubmitAddDevice={canSubmitAddDevice}
+        addLocation={addLocation}
+        t={t}
+      />
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <p className="font-semibold text-foreground">Selected method: {getRpcMethodOption(selectedRpcMethod).label}</p>
-                <p>{getRpcMethodOption(selectedRpcMethod).description}</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
-                <button
-                  className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  type="submit"
-                  disabled={rpcLoading}
-                >
-                  {rpcLoading ? "Sending..." : "Send RPC command"}
-                </button>
-                <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeControlModal}>
-                  Cancel
-                </button>
-                {rpcMessage ? <p className="text-sm text-slate-600">{rpcMessage}</p> : null}
-              </div>
-
-              {rpcResponseText ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-sm text-slate-100">
-                  <div className="mb-2 text-xs uppercase tracking-wide text-slate-400">Response payload</div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap wrap-break-word font-mono text-xs leading-6">{rpcResponseText}</pre>
-                </div>
-              ) : null}
-            </form>
-          ) : (
-            <p className="text-sm text-slate-600">Choose a device to control.</p>
-          )}
+      {showFilterModal && (
+        <Modal title={t("filterDevicesTitle")} subtitle={t("applyFiltersToView")} onClose={() => setShowFilterModal(false)}>
+          <DevicesFilterPanel
+            filters={filterInputs}
+            onFiltersChange={setFilterInputs}
+            onApply={handleApplyFiltersAndClose}
+            onClear={handleClearFiltersAndClose}
+            deviceGroups={deviceGroups}
+            tenants={role === "super_admin" ? partners : undefined}
+            t={t}
+          />
         </Modal>
-      ) : null}
-
-      {showConfigModal ? (
-        <Modal title="Target Versions" subtitle="Select a device, then choose target firmware versions and confirm changes" onClose={closeConfigModal} widthClassName="w-[min(1100px,98vw)]">
-          {selectedDevice ? (
-            <form onSubmit={confirmConfig} className="space-y-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <p className="font-semibold text-foreground">{selectedDevice.name}</p>
-                <p>MAC: {selectedDevice.mac}</p>
-                <p>Current Bin Target: {selectedDevice.targetBinVersion || "-"}</p>
-                <p>Current Desktop Target: {selectedDevice.targetDesktopVersion || "-"}</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700">Target Bin Firmware</label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  value={configForm?.targetBinFirmwareId || ""}
-                  onChange={(event) => {
-                    const newId = event.target.value;
-                    console.log(`[Select] Bin firmware changed to: ${newId}`);
-                    setConfigForm((current) => ({ ...current, targetBinFirmwareId: newId }));
-                  }}
-                  disabled={binFirmwares.length === 0}
-                >
-                  <option value="">{binFirmwares.length > 0 ? "Select target bin firmware" : "No bin firmware available"}</option>
-                  {binFirmwares.map((firmware) => (
-                    <option key={firmware.id} value={firmware.id}>
-                      {firmwareLabel(firmware)}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-slate-500">Current saved version: {selectedDevice?.targetBinVersion || "-"}</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700">Target Desktop Firmware</label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  value={configForm?.targetDesktopFirmwareId || ""}
-                  onChange={(event) => {
-                    const newId = event.target.value;
-                    console.log(`[Select] Desktop firmware changed to: ${newId}`);
-                    setConfigForm((current) => ({ ...current, targetDesktopFirmwareId: newId }));
-                  }}
-                  disabled={desktopFirmwares.length === 0}
-                >
-                  <option value="">{desktopFirmwares.length > 0 ? "Select target desktop firmware" : "No desktop firmware available"}</option>
-                  {desktopFirmwares.map((firmware) => (
-                    <option key={firmware.id} value={firmware.id}>
-                      {firmwareLabel(firmware)}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-slate-500">Current saved version: {selectedDevice?.targetDesktopVersion || "-"}</p>
-              </div>
-
-              <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
-                <button
-                  className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  type="submit"
-                  disabled={!isConfigDirty || configLoading}
-                  onClick={() => console.log(`[Button] isConfigDirty=${isConfigDirty}, configLoading=${configLoading}, configForm=${JSON.stringify(configForm)}, configInitial=${JSON.stringify(configInitial)}`)}
-                >
-                  {configLoading ? "Saving..." : "Confirm change"}
-                </button>
-                <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeConfigModal}>
-                  Cancel
-                </button>
-                {configMessage ? <p className="text-sm text-slate-600">{configMessage}</p> : null}
-              </div>
-            </form>
-          ) : (
-            <p className="text-sm text-slate-600">Click Configure on a device to edit target versions.</p>
-          )}
-        </Modal>
-      ) : null}
-
-      {showQuickAddModal ? (
-        <Modal title="Quick Add Device" subtitle="Add one device via import API" onClose={closeQuickAddModal}>
-          <form onSubmit={create} className="space-y-4">
-            <input
-              className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="MAC address"
-              value={form.mac}
-              onChange={(event) => setForm((v) => ({ ...v, mac: event.target.value }))}
-              required
-            />
-            <input
-              className="w-full rounded-xl border border-slate-200 px-3 py-2"
-              placeholder="Claim code"
-              value={form.claimCode}
-              onChange={(event) => setForm((v) => ({ ...v, claimCode: event.target.value }))}
-              required
-            />
-            <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
-              <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" type="submit" disabled={createLoading}>
-                {createLoading ? "Adding..." : "Add 1 device via import"}
-              </button>
-              <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeQuickAddModal}>
-                Cancel
-              </button>
-              {message ? <p className="text-sm text-slate-600">{message}</p> : null}
-            </div>
-          </form>
-        </Modal>
-      ) : null}
+      )}
 
       {!showQuickAddModal && !showConfigModal && message ? <p className="text-sm text-slate-600">{message}</p> : null}
     </div>
   );
 }
 
+// ==========================================
+// 2. EXPORTED DEFAULT COMPONENT WRAPPED IN SUSPENSE
+// ==========================================
+export default function DevicesPage() {
+  const { t } = useLanguage();
+  return (
+    <Suspense fallback={<div className="p-4 text-slate-500">{t("loading")}...</div>}>
+      <DevicesPageContent />
+    </Suspense>
+  );
+}

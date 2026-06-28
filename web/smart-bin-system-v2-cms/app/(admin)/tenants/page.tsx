@@ -3,13 +3,17 @@
 import { FormEvent, useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
 import Modal from "@/components/ui/modal";
+import Image from "next/image";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { tenantsAdminApi } from "@/services/api/tenants-admin";
+import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 import type { TenantDto } from "@/types/tenant";
 
 const tenantStates = ["ACTIVE", "PENDING", "BLOCKED", "DELETED"] as const;
 
 export default function TenantsPage() {
+  const { t } = useLanguage(); // GỌI HOOK
+  
   const [tenants, setTenants] = useState<TenantDto[]>([]);
   const [message, setMessage] = useState("");
   const [form, setForm] = useState({ name: "", email: "" });
@@ -25,11 +29,12 @@ export default function TenantsPage() {
 
   useEffect(() => {
     void load().catch((error) => {
-      setMessage(error instanceof Error ? error.message : "Load tenants failed");
+      setMessage(error instanceof Error ? error.message : t("tenantsLoadError"));
     });
 
     const email = typeof window !== "undefined" ? localStorage.getItem("admin_email") : null;
     setCurrentEmail(email);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const createTenant = async (event: FormEvent<HTMLFormElement>) => {
@@ -40,10 +45,10 @@ export default function TenantsPage() {
     try {
       await tenantsAdminApi.createTenant({ name: form.name, email: form.email });
       setForm({ name: "", email: "" });
-      setMessage("Tenant created successfully");
+      setMessage(t("tenantCreatedSuccess"));
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Create tenant failed");
+      setMessage(error instanceof Error ? error.message : t("tenantCreateError"));
     } finally {
       setCreateLoading(false);
     }
@@ -64,10 +69,12 @@ export default function TenantsPage() {
     try {
       setUpdatingTenantId(id);
       await tenantsAdminApi.updateTenantStatus(id, { status });
-      setMessage(`Tenant ${id} updated to ${status}`);
+      // Thay thế {status} trong chuỗi dịch bằng biến status thực tế
+      const successMsg = t("tenantStatusUpdateSuccess").replace("{status}", status);
+      setMessage(successMsg);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Update tenant failed");
+      setMessage(error instanceof Error ? error.message : t("tenantStatusUpdateError"));
     } finally {
       setUpdatingTenantId(null);
     }
@@ -76,31 +83,45 @@ export default function TenantsPage() {
   return (
     <div className="space-y-4">
       <Panel
-        title="Tenants"
-        subtitle="Manage tenant accounts for super admin"
+        title={t("innoecoPartners")}
+        subtitle={t("partnersSubtitle")}
         action={
           <button type="button" onClick={openCreateModal} className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110">
-            Create tenant
+            {t("addPartnerAccount")}
           </button>
         }
       >
-        <p className="text-sm text-slate-600">Create new tenant accounts from a popup so the form remains easier to complete.</p>
+        <p className="text-sm text-slate-600">{t("partnersDescription")}</p>
       </Panel>
 
-      <Panel title="Tenant List" subtitle="Update only tenant status here">
+      <Panel title={t("partnerDirectory")} subtitle={t("partnerDirectorySubtitle")}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-240 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2">Name</th>
-                <th className="py-2">Email</th>
-                <th className="py-2">State</th>
-                <th className="py-2">Action</th>
+                <th className="py-2">{t("organizationName")}</th>
+                <th className="py-2">{t("email")}</th>
+                <th className="py-2">{t("accountState")}</th>
+                <th className="py-2">{t("action")}</th>
               </tr>
             </thead>
             <tbody>
               {tenants.map((tenant) => (
                 <tr key={tenant.id} className="border-b border-slate-200/70">
+                  <td className="py-2">
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-sky-50">
+                        {tenant.avatarUrl ? (
+                          <Image src={tenant.avatarUrl} alt={tenant.name} fill className="object-cover" sizes="36px" />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-xs font-bold text-sky-700">
+                            {(tenant.name || "T").slice(0, 1).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-medium text-foreground truncate">{tenant.name}</span>
+                    </div>
+                  </td>
                   <td className="py-2 font-medium text-foreground">{tenant.name}</td>
                   <td className="py-2 text-slate-600">{tenant.email}</td>
                   <td className="py-2 text-slate-600">{tenant.state}</td>
@@ -130,24 +151,24 @@ export default function TenantsPage() {
       </Panel>
 
       {showCreateModal ? (
-        <Modal title="Create Tenant" subtitle="Add a new tenant account" onClose={closeCreateModal}>
+        <Modal title={t("createPartnerAccount")} subtitle={t("createPartnerSubtitle")} onClose={closeCreateModal}>
           <form className="space-y-4" onSubmit={createTenant}>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Tenant name</label>
+              <label className="block text-sm font-medium text-slate-700">{t("organizationName")}</label>
               <input
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                 value={form.name}
                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="Tenant name"
+                placeholder={t("egOrganization")}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Tenant email</label>
+              <label className="block text-sm font-medium text-slate-700">{t("contactEmail")}</label>
               <input
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-sky-500"
                 value={form.email}
                 onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                placeholder="tenant@example.com"
+                placeholder={t("partnerEmailPlaceholder")}
               />
             </div>
             <div className="flex items-center gap-2 border-t border-slate-200 pt-4">
@@ -156,10 +177,10 @@ export default function TenantsPage() {
                 disabled={createLoading}
                 className="rounded-xl bg-[linear-gradient(120deg,#0b3b62,#176ea5)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(22,99,156,0.35)] transition hover:brightness-110"
               >
-                {createLoading ? "Creating..." : "Create tenant"}
+                {createLoading ? t("creating") : t("createAccount")}
               </button>
               <button type="button" className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm" onClick={closeCreateModal}>
-                Cancel
+                {t("cancel")}
               </button>
               {message ? <p className="text-sm text-slate-600">{message}</p> : null}
             </div>

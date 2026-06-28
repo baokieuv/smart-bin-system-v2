@@ -9,10 +9,12 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.13.5",
     "mapbox-gl": "^3.24.0",
     "next": "^15.3.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-easy-crop": "^6.0.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

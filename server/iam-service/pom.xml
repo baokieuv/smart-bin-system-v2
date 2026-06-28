@@ -28,10 +28,15 @@
 	</repositories>
 
 	<dependencies>
+<!--		<dependency>-->
+<!--			<groupId>com.smart-bin</groupId>-->
+<!--			<artifactId>core</artifactId>-->
+<!--			<version>0.0.1-SNAPSHOT</version>-->
+<!--		</dependency>-->
 		<dependency>
 			<groupId>com.github.baokieuv</groupId>
 			<artifactId>smart-bin-system-v2</artifactId>
-			<version>1.0.1</version>
+			<version>1.0.2</version>
 		</dependency>
 
 		<dependency>

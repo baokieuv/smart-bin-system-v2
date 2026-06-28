@@ -1,5 +1,5 @@
 server:
-  port: ${IAM_SERVICE_PORT:8080}
+  port: ${IAM_SERVICE_PORT:2106}
 
 spring:
   application:

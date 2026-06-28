@@ -3,8 +3,10 @@ package com.smart_bin.device_service.controller;
 import com.smart_bin.core.dto.ApiResponseFormat;
 import com.smart_bin.core.utils.ResponseFactory;
 import com.smart_bin.device_service.common.SuccessCode;
+import com.smart_bin.device_service.dto.request.UpdateFirmwareRequest;
 import com.smart_bin.device_service.service.ConfigService;
 import com.smart_bin.device_service.utils.HardwareSecureResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -51,6 +53,15 @@ public class ConfigController {
     @GetMapping("/devices/{deviceId}")
     public ResponseEntity<ApiResponseFormat<Object>> getConfigForWeb(@PathVariable String deviceId) {
         var response = configService.getConfig(deviceId);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @PutMapping("/devices/{deviceId}/firmware")
+    public ResponseEntity<ApiResponseFormat<Object>> updateDeviceFirmware(
+            @PathVariable String deviceId,
+            @Valid @RequestBody UpdateFirmwareRequest request
+    ) {
+        var response = configService.updateDeviceFirmware(deviceId, request);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

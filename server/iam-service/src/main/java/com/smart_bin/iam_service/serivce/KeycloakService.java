@@ -10,7 +10,9 @@ import com.smart_bin.iam_service.dto.user.request.CreateUserRequest;
 import com.smart_bin.iam_service.exception.AuthErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.FederatedIdentityRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,7 +51,7 @@ public class KeycloakService {
         this.restClient = RestClient.create();
     }
 
-    public String createUser(CreateUserRequest request) {
+    public String createUser(CreateUserRequest request, String tenantId) {
         UserRepresentation user = new UserRepresentation();
         user.setEnabled(false);
         user.setUsername(request.email());
@@ -69,6 +71,7 @@ public class KeycloakService {
 
         Map<String, List<String>> attributes = new HashMap<>();
         attributes.put("user_state", Collections.singletonList("PENDING"));
+        attributes.put("tenant_id", Collections.singletonList(tenantId));
         user.setAttributes(attributes);
 
         try (jakarta.ws.rs.core.Response response = keycloak.realm(realm).users().create(user)) {
@@ -116,6 +119,12 @@ public class KeycloakService {
                 String locationHeader = response.getHeaderString("Location");
                 String userId = locationHeader.substring(locationHeader.lastIndexOf('/') + 1);
                 updateRealmRole(userId, UserRole.ADMIN); // Gán role Tenant Admin
+
+                Map<String, String> attributes = new HashMap<>();
+                attributes.put("tenant_id", userId);
+                attributes.put("user_state", UserState.ACTIVE.name());
+                updateUserAttributes(userId, attributes);
+
                 return userId;
             } else if (response.getStatus() == 409) {
                 throw new ApiException(CoreErrorCode.BAD_REQUEST, "Email Tenant đã tồn tại trên Identity Provider");
@@ -124,8 +133,6 @@ public class KeycloakService {
             }
         }
     }
-
-    // ... (Các code cũ của KeycloakService) ...
 
     public String createSuperAdminAccount(String email, String password, String name) {
         UserRepresentation user = new UserRepresentation();
@@ -232,6 +239,36 @@ public class KeycloakService {
             keycloak.realm(realm).users().get(userId).update(user);
         } catch (Exception e) {
             log.error("Error updating attribute {} for user {} in Keycloak", key, userId, e);
+            throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi cập nhật thông tin hệ thống.");
+        }
+    }
+
+    public void updateUserAttributes(String userId, Map<String, String> newAttributes) {
+        if (newAttributes == null || newAttributes.isEmpty()) {
+            return;
+        }
+
+        try {
+            UserRepresentation user = keycloak.realm(realm).users().get(userId).toRepresentation();
+
+            Map<String, List<String>> attributes = user.getAttributes() != null
+                    ? new HashMap<>(user.getAttributes())
+                    : new HashMap<>();
+
+            // Đưa toàn bộ dữ liệu mới vào
+            for (Map.Entry<String, String> entry : newAttributes.entrySet()) {
+                if (entry.getValue() == null) {
+                    attributes.remove(entry.getKey()); // Cho phép truyền null để xóa attribute
+                } else {
+                    attributes.put(entry.getKey(), Collections.singletonList(entry.getValue()));
+                }
+            }
+
+            user.setAttributes(attributes);
+
+           keycloak.realm(realm).users().get(userId).update(user);
+        } catch (Exception e) {
+            log.error("Error updating attributes for user {} in Keycloak", userId, e);
             throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi cập nhật thông tin hệ thống.");
         }
     }
@@ -375,6 +412,43 @@ public class KeycloakService {
         } catch (Exception e) {
             log.error("Error deleting user {} from Keycloak", userId, e);
             throw new ApiException(AuthErrorCode.KEYCLOAK_OPERATION_FAILED, "Lỗi xóa tài khoản.");
+        }
+    }
+
+    public void linkGoogleAccountIfNeeded(String email, String googleId) {
+        try {
+            // 1. Tìm user trong Keycloak bằng email (trả về danh sách, thường độ dài là 1 hoặc 0)
+            List<UserRepresentation> users = keycloak.realm(realm).users().searchByEmail(email, true);
+
+            // Nếu user chưa tồn tại trong Keycloak (người dùng mới hoàn toàn) -> Bỏ qua,
+            // Token Exchange của Keycloak sẽ tự động tạo user mới.
+            if (users == null || users.isEmpty()) {
+                return;
+            }
+
+            UserRepresentation user = users.getFirst();
+            String keycloakUserId = user.getId();
+            UserResource userResource = keycloak.realm(realm).users().get(keycloakUserId);
+
+            // 2. Lấy danh sách các tài khoản mạng xã hội (Federated Identities) đã liên kết
+            List<FederatedIdentityRepresentation> identities = userResource.getFederatedIdentity();
+            boolean isGoogleLinked = identities.stream()
+                    .anyMatch(identity -> "google".equals(identity.getIdentityProvider()));
+
+            // 3. Nếu chưa liên kết với Google, tiến hành thêm liên kết
+            if (!isGoogleLinked) {
+                FederatedIdentityRepresentation googleIdentity = new FederatedIdentityRepresentation();
+                googleIdentity.setIdentityProvider("google");
+                googleIdentity.setUserId(googleId);      // ID của user bên Google (sub)
+                googleIdentity.setUserName(email);       // Username hiển thị cho liên kết này
+
+                // Gọi API Admin của Keycloak để thêm liên kết
+                userResource.addFederatedIdentity("google", googleIdentity);
+                log.info("Successfully linked Google account {} to Keycloak user {}", email, keycloakUserId);
+            }
+        } catch (Exception e) {
+            log.error("Failed to check or link Google account for email: {}", email, e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi đồng bộ tài khoản Google với hệ thống.");
         }
     }
 

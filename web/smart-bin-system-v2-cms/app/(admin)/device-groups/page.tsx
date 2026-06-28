@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
+import { TranslationKey, useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 import type { AlarmRuleDto, DeviceGroupDto } from "@/types/device-group";
 
 const alarmSeverities = ["CRITICAL", "MAJOR", "MINOR", "WARNING", "INDETERMINATE"] as const;
@@ -54,7 +55,8 @@ const createBlankForm = (): DeviceGroupFormState => ({
   alarmRules: [],
 });
 
-const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[]) => {
+// Thêm t vào param để dịch lỗi bên trong
+const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[], t: (key: TranslationKey) => string) => {
   const activeRows = alarmRules.filter(
     (rule) =>
       rule.alarmType.trim() ||
@@ -80,17 +82,17 @@ const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[]) => {
       !rule.clearOperator.trim() ||
       !rule.clearThreshold.trim()
     ) {
-      return { error: "Please complete every alarm rule row or remove the empty row" } as const;
+      return { error: t("fillAllAlertFields") } as const;
     }
 
     const threshold = Number(rule.threshold);
     if (!Number.isFinite(threshold)) {
-      return { error: `Invalid threshold for alarm ${rule.alarmType || "rule"}` } as const;
+      return { error: t("invalidThreshold").replace("{type}", rule.alarmType || "current") } as const;
     }
 
     const clearThreshold = Number(rule.clearThreshold);
     if (!Number.isFinite(clearThreshold)) {
-      return { error: `Invalid clear threshold for alarm ${rule.alarmType || "rule"}` } as const;
+      return { error: t("invalidClearThreshold").replace("{type}", rule.alarmType || "current") } as const;
     }
 
     normalized.push({
@@ -107,6 +109,8 @@ const normalizeAlarmRules = (alarmRules: AlarmRuleFormValue[]) => {
 };
 
 export default function DeviceGroupsPage() {
+  const { t } = useLanguage(); // GỌI HOOK
+  
   const [items, setItems] = useState<DeviceGroupDto[]>([]);
   const [form, setForm] = useState<DeviceGroupFormState>(createBlankForm());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -122,8 +126,9 @@ export default function DeviceGroupsPage() {
 
   useEffect(() => {
     void load().catch((error) => {
-      setMessage(error instanceof Error ? error.message : "Load failed");
+      setMessage(error instanceof Error ? error.message : t("loadDeviceGroupsError"));
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const saveDeviceGroup = async (event: FormEvent) => {
@@ -135,15 +140,17 @@ export default function DeviceGroupsPage() {
     try {
       parsedSpecs = JSON.parse(form.sharedSpecsJson || "{}");
     } catch {
-      setMessage("Invalid JSON for shared specs");
+      setMessage(t("invalidSharedSpecsJson"));
+      setSaveLoading(false);
       return;
     }
 
     try {
-      const normalizedAlarmRules = normalizeAlarmRules(form.alarmRules);
+      const normalizedAlarmRules = normalizeAlarmRules(form.alarmRules, t);
 
       if ("error" in normalizedAlarmRules) {
         setMessage(normalizedAlarmRules.error);
+        setSaveLoading(false);
         return;
       }
 
@@ -155,7 +162,7 @@ export default function DeviceGroupsPage() {
           description: form.description.trim() || undefined,
           alarmRules: normalizedAlarmRules,
         });
-        setMessage("Device group updated");
+        setMessage(t("groupUpdatedSuccess"));
       } else {
         await deviceGroupsAdminApi.createDeviceGroup({
           code: form.code.trim(),
@@ -164,14 +171,14 @@ export default function DeviceGroupsPage() {
           description: form.description.trim() || undefined,
           alarmRules: normalizedAlarmRules,
         });
-        setMessage("Device group created");
+        setMessage(t("groupCreatedSuccess"));
       }
 
       setForm(createBlankForm());
       setEditingId(null);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Save failed");
+      setMessage(error instanceof Error ? error.message : t("saveGroupError"));
     } finally {
       setSaveLoading(false);
     }
@@ -181,10 +188,10 @@ export default function DeviceGroupsPage() {
     try {
       setDeleteLoadingId(id);
       await deviceGroupsAdminApi.deleteDeviceGroup(id);
-      setMessage("Device group deleted");
+      setMessage(t("groupRemovedSuccess"));
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Delete failed");
+      setMessage(error instanceof Error ? error.message : t("removeGroupError"));
     } finally {
       setDeleteLoadingId(null);
     }
@@ -210,8 +217,8 @@ export default function DeviceGroupsPage() {
             operator: rule.operator,
             threshold: String(rule.threshold),
             severity: rule.severity,
-                clearOperator: rule.clearOperator,
-                clearThreshold: String(rule.clearThreshold),
+            clearOperator: rule.clearOperator,
+            clearThreshold: String(rule.clearThreshold),
           }))
         : [],
     });
@@ -255,17 +262,17 @@ export default function DeviceGroupsPage() {
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
-      <Panel title="Device Groups" subtitle="Admin-managed groups for assigning one or many devices">
+      <Panel title={t("deviceGroupsTitle")} subtitle={t("deviceGroupsSubtitle")}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-220 text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600">
-                <th className="py-2 px-3">Code</th>
-                <th className="py-2 px-3">Name</th>
-                <th className="py-2 px-3">Shared Specs</th>
-                <th className="py-2 px-3">Description</th>
-                <th className="py-2 px-3">Alarm Rules</th>
-                <th className="py-2 px-3">Action</th>
+                <th className="py-2 px-3">{t("codeCol")}</th>
+                <th className="py-2 px-3">{t("nameCol")}</th>
+                <th className="py-2 px-3">{t("sharedSpecsCol")}</th>
+                <th className="py-2 px-3">{t("descriptionCol")}</th>
+                <th className="py-2 px-3">{t("alertRulesCol")}</th>
+                <th className="py-2 px-3">{t("actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -289,18 +296,18 @@ export default function DeviceGroupsPage() {
                       <button
                         type="button"
                         onClick={() => openEditModal(item)}
-                        className="rounded-lg bg-slate-100 px-2 py-1 text-sm"
+                        className="rounded-lg bg-slate-100 px-2 py-1 text-sm hover:bg-slate-200 transition"
                       >
-                        Edit
+                        {t("editBtn")}
                       </button>
                       {!item.isDefault ? (
                         <button
                           type="button"
                           onClick={() => void remove(item.id)}
                           disabled={deleteLoadingId === item.id}
-                          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition disabled:opacity-50"
                         >
-                          {deleteLoadingId === item.id ? "Deleting..." : "Delete"}
+                          {deleteLoadingId === item.id ? t("deleting") : t("deleteBtn")}
                         </button>
                       ) : null}
                     </div>
@@ -312,17 +319,17 @@ export default function DeviceGroupsPage() {
         </div>
       </Panel>
 
-        <Panel title="Device Group Editor" subtitle="Open the popup editor to create or update a group, including alarm rules">
+        <Panel title={t("groupActionsTitle")} subtitle={t("groupActionsSubtitle")}>
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white"
+              className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
               onClick={openCreateModal}
             >
-              Create device group
+              {t("createDeviceGroupBtn")}
             </button>
             <p className="text-sm text-slate-600">
-              Use the popup editor for all create and update actions so alarm config stays readable.
+              {t("deviceGroupDesc")}
             </p>
           </div>
         </Panel>
@@ -333,31 +340,31 @@ export default function DeviceGroupsPage() {
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">
-                  {editingId ? "Update device group" : "Create device group"}
+                  {editingId ? t("updateGroupTitle") : t("createGroupTitle")}
                 </h3>
-                <p className="text-sm text-slate-500">Edit code, shared specs, and alarm rules in one popup.</p>
+                <p className="text-sm text-slate-500">{t("groupModalSubtitle")}</p>
               </div>
               <button
                 type="button"
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
                 onClick={closeEditorModal}
               >
-                Close
+                {t("closeBtn")}
               </button>
             </div>
 
             <form onSubmit={saveDeviceGroup} className="max-h-[calc(100vh-140px)] overflow-y-auto space-y-5 px-6 py-5">
               <div className="grid gap-4 lg:grid-cols-2">
                 <input
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Code (e.g. SMART_BIN_60L_V1)"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-sky-500 transition"
+                  placeholder={t("codePlaceholder")}
                   value={form.code}
                   onChange={(event) => setForm((prev) => ({ ...prev, code: event.target.value }))}
                   required
                 />
                 <input
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2"
-                  placeholder="Name"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-sky-500 transition"
+                  placeholder={t("friendlyNamePlaceholder")}
                   value={form.name}
                   onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
                   required
@@ -366,9 +373,9 @@ export default function DeviceGroupsPage() {
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Shared specs (JSON)</label>
+                  <label className="block text-sm font-medium text-slate-700">{t("sharedSpecsJsonLabel")}</label>
                   <textarea
-                    className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm"
+                    className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 font-mono text-sm outline-none focus:border-sky-500 transition"
                     placeholder='{"width":20, "height":30, "color":"blue"}'
                     value={form.sharedSpecsJson}
                     onChange={(event) => setForm((prev) => ({ ...prev, sharedSpecsJson: event.target.value }))}
@@ -377,10 +384,10 @@ export default function DeviceGroupsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Description</label>
+                  <label className="block text-sm font-medium text-slate-700">{t("descriptionCol")}</label>
                   <textarea
-                    className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2"
-                    placeholder="Description"
+                    className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-sky-500 transition"
+                    placeholder={t("descriptionPlaceholder")}
                     value={form.description}
                     onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                   />
@@ -390,25 +397,25 @@ export default function DeviceGroupsPage() {
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">Alarm config</p>
+                    <p className="text-sm font-semibold text-slate-800">{t("alertConfigTitle")}</p>
                     <p className="text-xs text-slate-500">
-                      Leave this section empty to clear alarm rules. Saved payload will send <span className="font-medium">alarmRules: []</span>.
+                      {t("alertConfigDesc")}
                     </p>
                   </div>
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700"
+                      className="rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50 transition"
                       onClick={addAlarmRule}
                     >
-                      Add rule
+                      {t("addRuleBtn")}
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
                       onClick={clearAlarmRules}
                     >
-                      Clear all
+                      {t("clearAllBtn")}
                     </button>
                   </div>
                 </div>
@@ -418,21 +425,23 @@ export default function DeviceGroupsPage() {
                     form.alarmRules.map((rule, index) => (
                       <div key={`${index}-${rule.alarmType}-${rule.operator}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                         <div className="mb-3 flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-slate-700">Rule {index + 1}</p>
+                          <p className="text-sm font-medium text-slate-700">
+                            {t("ruleAlarmNumber").replace("{num}", String(index + 1))}
+                          </p>
                           <button
                             type="button"
-                            className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                            className="rounded-lg px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 transition"
                             onClick={() => removeAlarmRule(index)}
                           >
-                            Remove
+                            {t("removeRuleBtn")}
                           </button>
                         </div>
 
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">alarmType</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("alarmTypeLabel")}</span>
                             <input
-                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.alarmType}
                               onChange={(event) => updateAlarmRule(index, "alarmType", event.target.value)}
                               placeholder="HIGH_AVERAGE_WASTE"
@@ -440,9 +449,9 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">operator</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("operatorLabel")}</span>
                             <select
-                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.operator}
                               onChange={(event) => updateAlarmRule(index, "operator", event.target.value)}
                             >
@@ -455,9 +464,9 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">threshold</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("thresholdLabel")}</span>
                             <input
-                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.threshold}
                               onChange={(event) => updateAlarmRule(index, "threshold", event.target.value)}
                               placeholder="80"
@@ -466,9 +475,9 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">severity</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("severityLabel")}</span>
                             <select
-                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.severity}
                               onChange={(event) => updateAlarmRule(index, "severity", event.target.value)}
                             >
@@ -481,9 +490,9 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">clearOperator</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("clearOperatorLabel")}</span>
                             <select
-                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.clearOperator}
                               onChange={(event) => updateAlarmRule(index, "clearOperator", event.target.value)}
                             >
@@ -496,9 +505,9 @@ export default function DeviceGroupsPage() {
                           </label>
 
                           <label className="block">
-                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">clearThreshold</span>
+                            <span className="block text-xs font-medium uppercase tracking-wide text-slate-500">{t("clearThresholdLabel")}</span>
                             <input
-                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-500 transition"
                               value={rule.clearThreshold}
                               onChange={(event) => updateAlarmRule(index, "clearThreshold", event.target.value)}
                               placeholder="60"
@@ -509,19 +518,19 @@ export default function DeviceGroupsPage() {
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
-                      No alarm rules yet. Add one if this device group should raise ThingsBoard alarms.
+                    <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 text-center">
+                      {t("noAlertRulesMsg")}
                     </div>
                   )}
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
-                <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" type="submit" disabled={saveLoading}>
-                  {saveLoading ? "Saving..." : editingId ? "Update device group" : "Create device group"}
+                <button className="rounded-xl bg-sky-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60 disabled:cursor-not-allowed" type="submit" disabled={saveLoading}>
+                  {saveLoading ? t("saving") : editingId ? t("updateGroupBtn") : t("createGroupBtn")}
                 </button>
-                <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm" onClick={closeEditorModal}>
-                  Cancel
+                <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm hover:bg-slate-200 transition" onClick={closeEditorModal}>
+                  {t("cancel")}
                 </button>
                 {message ? <p className="text-sm text-slate-600">{message}</p> : null}
               </div>

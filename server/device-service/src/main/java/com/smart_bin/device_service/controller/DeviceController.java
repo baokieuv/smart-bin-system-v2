@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.GrantedAuthority;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 
 @RestController
@@ -37,7 +38,7 @@ public class DeviceController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String actorId = jwt.getSubject();
-        var response = deviceService.importDevicesByTenant(request, actorId);
+        var response = deviceService.importDevicesByTenantV2(request, actorId);
         return responseFactory.response(SuccessCode.CREATED, response);
     }
 
@@ -47,7 +48,42 @@ public class DeviceController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         String userId = jwt.getSubject();
-        var response = deviceService.claimDevice(request, userId);
+        String tenantId = jwt.getClaimAsString("tenant_id");
+        var response = deviceService.claimDevice(request, userId, tenantId);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @GetMapping("/filter")
+    public ResponseEntity<ApiResponseFormat<Object>> getFilterDevices(
+            @AuthenticationPrincipal Jwt jwt,
+            Authentication authentication,
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String mac,
+            @RequestParam(required = false) String state,
+            @RequestParam(required = false) String groupId,
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "10") int size
+    ) {
+        String keycloakId = jwt.getSubject();
+        String jwtTenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
+
+        boolean isSuperAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> Objects.requireNonNull(auth.getAuthority()).equalsIgnoreCase(UserRole.SUPER_ADMIN.getRoleName()) ||
+                        auth.getAuthority().equalsIgnoreCase("ROLE_" + UserRole.SUPER_ADMIN.getRoleName()));
+
+        boolean isTenant = authentication.getAuthorities().stream()
+                .anyMatch(auth -> Objects.requireNonNull(auth.getAuthority()).equalsIgnoreCase(UserRole.ADMIN.getRoleName()) || // Tùy chỉnh Enum của bạn ở đây
+                        auth.getAuthority().equalsIgnoreCase("ROLE_" + UserRole.ADMIN.getRoleName()));
+
+        var response = deviceService.getFilterDevices(
+                keycloakId, jwtTenantId, permissions,
+                isSuperAdmin, isTenant,
+                tenantId, name, mac, state, groupId,
+                page, size
+        );
+
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -58,14 +94,17 @@ public class DeviceController {
             @RequestParam(required = false, defaultValue = "10") int size
     ){
         String keycloakId = jwt.getSubject();
-        var response = deviceService.getListDevices(keycloakId, page, size);
+        String tenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
+
+        var response = deviceService.getListDevices(keycloakId, tenantId, permissions, page, size);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
     @GetMapping("/admin")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+//    @PreAuthorize("hasAnyRole(" +
+//            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+//            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> getAllDevicesForAdmin(
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "10") int size,
@@ -73,12 +112,13 @@ public class DeviceController {
             Authentication authentication
     ){
         String actorId = jwt.getSubject();
+        String tenantId = jwt.getClaimAsString("tenant_id");
 
         boolean isSuperAdmin = authentication.getAuthorities().stream()
                 .anyMatch(auth -> Objects.requireNonNull(auth.getAuthority()).equalsIgnoreCase(UserRole.SUPER_ADMIN.getRoleName()) ||
                         auth.getAuthority().equalsIgnoreCase("ROLE_" + UserRole.SUPER_ADMIN.getRoleName()));
 
-        var response = deviceService.getAllDevicesForAdmin(page, size, actorId, isSuperAdmin);
+        var response = deviceService.getAllDevicesForAdmin(page, size, actorId, tenantId, isSuperAdmin);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -88,7 +128,10 @@ public class DeviceController {
             @PathVariable String deviceId
     ){
         String keycloakId = jwt.getSubject();
-        var response = deviceService.getDeviceDetail(keycloakId, deviceId);
+        String tenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
+
+        var response = deviceService.getDeviceDetail(keycloakId, tenantId, deviceId, permissions);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -99,7 +142,10 @@ public class DeviceController {
             @AuthenticationPrincipal Jwt jwt
     ){
         String keycloakId = jwt.getSubject();
-        var response = deviceService.updateDeviceByUser(deviceId, request, keycloakId);
+        String tenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
+
+        var response = deviceService.updateDeviceByUser(deviceId, request, keycloakId, tenantId, permissions);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -145,7 +191,10 @@ public class DeviceController {
             @PathVariable String deviceId
     ){
         String keycloakId = jwt.getSubject();
-        deviceService.deleteDevice(deviceId, keycloakId);
+        String tenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
+
+        deviceService.deleteDevice(deviceId, keycloakId, tenantId, permissions);
         return responseFactory.response(SuccessCode.OK, "Deleted device successfully!");
     }
 
@@ -158,7 +207,10 @@ public class DeviceController {
             @RequestParam(required = false) Long endTs
     ){
         String keycloakId = jwt.getSubject();
-        var response = deviceService.getTelemetries(deviceId, keycloakId, keys, startTs, endTs);
+        String tenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
+
+        var response = deviceService.getTelemetries(deviceId, keycloakId, tenantId, permissions, keys, startTs, endTs);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -170,6 +222,8 @@ public class DeviceController {
             Authentication authentication
     ){
         String keycloakId = jwt.getSubject();
+        String tenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
 
         UserRole role = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority).filter(Objects::nonNull)
@@ -185,7 +239,20 @@ public class DeviceController {
                 .max(Comparator.comparingInt(UserRole::getValue))
                .orElse(UserRole.USER);
 
-        var response = deviceService.executeRpc(deviceId, request, keycloakId, role);
+        var response = deviceService.executeRpc(deviceId, request, keycloakId, tenantId, role, permissions);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @GetMapping("/bulk-telemetries")
+    public ResponseEntity<ApiResponseFormat<Object>> getBulkTelemetries(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) List<String> keys
+    ){
+        String keycloakId = jwt.getSubject();
+        String tenantId = jwt.getClaimAsString("tenant_id");
+        String permissions = jwt.getClaimAsString("device_permissions");
+
+        var response = deviceService.getBulkTelemetries(keycloakId, tenantId, permissions, keys);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -196,9 +263,10 @@ public class DeviceController {
             @RequestHeader("metadata") String metadata,
             @RequestBody String payload,
             @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
-            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
+            @RequestHeader(value = "X-Bin-Version", required = false) String binVer,
+            @RequestHeader(value = "X-AI-Version", required = false) String aiVer
     ) {
-        var response = deviceService.getPresignedUrl(payload, signature, metadata, desktopVer, binVer);
+        var response = deviceService.getPresignedUrl(payload, signature, metadata, desktopVer, binVer, aiVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
 
@@ -209,9 +277,10 @@ public class DeviceController {
             @RequestBody String payload,
             @RequestHeader("X-Signature") String signature,
             @RequestHeader(value = "X-Desktop-Version", required = false) String desktopVer,
-            @RequestHeader(value = "X-Bin-Version", required = false) String binVer
+            @RequestHeader(value = "X-Bin-Version", required = false) String binVer,
+            @RequestHeader(value = "X-AI-Version", required = false) String aiVer
     ){
-        var response = deviceService.confirmUpload(payload, signature, metadata, desktopVer, binVer);
+        var response = deviceService.confirmUpload(payload, signature, metadata, desktopVer, binVer, aiVer);
         return responseFactory.response(SuccessCode.OK, response);
     }
 

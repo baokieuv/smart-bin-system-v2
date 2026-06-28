@@ -55,8 +55,8 @@ export default function LoginPage() {
                 localStorage.setItem('access_token', data.data.access_token);
                 localStorage.setItem('refresh_token', data.data.refresh_token);
                 await redirectAfterLogin();
-            } else {
-                setError(data.message || 'Incorrect email or password');
+            } else { // Thay đổi thông báo lỗi
+                setError(data.message || 'Email hoặc mật khẩu không chính xác');
             }
         } catch (err: unknown) {
             const systemMessage = err instanceof Error ? err.message : '';
@@ -81,10 +81,10 @@ export default function LoginPage() {
 
                     await redirectAfterLogin();
                 } else {
-                    setError(dataLogin.message || 'Google sign-in failed');
+                    setError(dataLogin.message || 'Đăng nhập bằng Google thất bại');
                 }
             } catch {
-                setError('Google sign-in failed');
+                setError('Đăng nhập bằng Google thất bại');
             }
         },
         onError: () => setError('Google Login Failed'),
@@ -92,15 +92,15 @@ export default function LoginPage() {
 
     return (
         <AuthShell
-            title="Welcome Back"
-            description="Sign in to access your dashboard and monitor smart bins in real time."
+            title="Chào mừng trở lại"
+            description="Đăng nhập để truy cập bảng điều khiển và theo dõi thùng rác thông minh theo thời gian thực."
         >
             {ToastContainer}
             {error && <StatusMessage tone="error" className="mb-4">{error}</StatusMessage>}
 
             <form onSubmit={handlePasswordLogin} className="space-y-5">
                 <div>
-                    <label className="mb-1 block text-sm font-semibold text-slate-700">Email</label>
+                    <label className="mb-1 block text-sm font-semibold text-slate-700">Địa chỉ Email</label>
                     <Input
                         type="email"
                         value={email}
@@ -111,8 +111,8 @@ export default function LoginPage() {
 
                 <div>
                     <div className="mb-1 flex items-center justify-between">
-                        <label className="block text-sm font-semibold text-slate-700">Password</label>
-                        <Link href="/auth/reset-password" className="text-sm text-emerald-700 transition hover:text-emerald-800 hover:underline">
+                        <label className="block text-sm font-semibold text-slate-700">Mật khẩu</label>
+                        <Link href="/auth/reset-password" className="text-sm text-emerald-700 transition hover:text-emerald-800 hover:underline"> {/* Thay đổi nhãn */}
                             Forgot password?
                         </Link>
                     </div>
@@ -129,13 +129,13 @@ export default function LoginPage() {
                 </div>
 
                 <Button type="submit" disabled={isLoading} className="w-full" size="lg">
-                    {isLoading ? 'Signing in...' : 'Sign In'}
+                    {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
                 </Button>
             </form>
 
             <div className="my-6 flex items-center gap-3">
-                <div className="h-px flex-1 bg-slate-200" />
-                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Or continue with</span>
+                <div className="h-px flex-1 bg-slate-200" /> {/* Thay đổi nhãn */}
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Hoặc tiếp tục với</span>
                 <div className="h-px flex-1 bg-slate-200" />
             </div>
 
@@ -147,15 +147,15 @@ export default function LoginPage() {
                     <path fill="#EA4335" d="M24 9.5c3.14 0 5.95 1.08 8.17 2.85l6.1-6.1C34.46 3.09 29.5 1 24 1 14.82 1 7.07 6.48 3.82 14.18l7.1 5.52C12.6 13.36 17.85 9.5 24 9.5z" />
                     <path fill="#4285F4" d="M46.1 24.5c0-1.6-.14-3.13-.4-4.6H24v8.71h12.42c-.54 2.9-2.18 5.36-4.65 7.01l7.1 5.52C43.18 37.13 46.1 31.27 46.1 24.5z" />
                     <path fill="#FBBC05" d="M10.92 28.3A14.6 14.6 0 0 1 9.5 24c0-1.49.26-2.93.72-4.3l-7.1-5.52A23.93 23.93 0 0 0 0 24c0 3.86.92 7.5 2.54 10.72l7.1-5.52-.72.1z" />
-                    <path fill="#34A853" d="M24 47c5.5 0 10.12-1.82 13.5-4.95l-7.1-5.52C28.6 38.1 26.42 39 24 39c-6.15 0-11.4-3.86-13.28-9.2l-7.1 5.52C7.07 43.52 14.82 47 24 47z" />
+                    <path fill="#34A853" d="M24 47c5.5 0 10.12-1.82 13.5-4.95l-7.1-5.52C28.6 38.1 26.42 39 24 39c-6.15 0-11.4-3.86-13.28-9.2l-7.1 5.52C7.07 43.52 14.82 47 24 47z" /> {/* Thay đổi nhãn */}
                 </svg>
-                Continue with Google
+                Tiếp tục với Google
             </button>
 
             <p className="mt-5 text-center text-sm text-slate-600">
-                Do not have an account?{' '}
-                <Link href="/auth/register" className="font-semibold text-emerald-700 hover:underline">
-                    Register
+                Chưa có tài khoản?{' '} {/* Thay đổi nhãn */}
+                <Link href="/auth/register" className="font-semibold text-emerald-700 hover:underline"> {/* Thay đổi nhãn */}
+                    Đăng ký
                 </Link>
             </p>
 

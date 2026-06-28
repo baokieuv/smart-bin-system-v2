@@ -1,5 +1,6 @@
 package com.smart_bin.device_service.repository;
 
+import com.smart_bin.device_service.common.DeviceState;
 import com.smart_bin.device_service.entity.Device;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,24 +25,44 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
     // Map với cột userId trong entity
     Page<Device> findByUserIdAndActiveTrue(String userId, Pageable pageable);
 
+    @Query("SELECT d FROM Device d WHERE d.active = true AND (d.userId = :id OR d.tenantId = :id)")
+    Page<Device> findActiveDevicesByUserOrTenant(@Param("id") String id, Pageable pageable);
+
     Optional<Device> findByIdAndActiveTrue(UUID id);
 
     boolean existsByDeviceGroup_IdAndActiveTrue(UUID groupId);
 
-    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceProfile LEFT JOIN FETCH d.deviceGroup",
+    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup",
             countQuery = "SELECT COUNT(d) FROM Device d")
     Page<Device> findAllForAdminWithConfig(Pageable pageable);
 
-    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceProfile LEFT JOIN FETCH d.deviceGroup WHERE d.tenantId = :tenantId",
+    @Query(value = "SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup WHERE d.tenantId = :tenantId",
             countQuery = "SELECT COUNT(d) FROM Device d WHERE d.tenantId = :tenantId")
     Page<Device> findAllByTenantIdForAdminWithConfig(@Param("tenantId") String tenantId, Pageable pageable);
 
     @Query("SELECT d FROM Device d LEFT JOIN FETCH d.deviceGroup WHERE d.mac = :mac")
     Optional<Device> findByMacWithGroup(@Param("mac") String mac);
 
-    boolean existsByDeviceProfile_IdAndActiveTrue(UUID profileId);
-
     List<Device> findByMacInAndActiveTrue(List<String> macs);
 
+    Page<Device> findByTenantIdAndActiveTrue(String tenantId, Pageable pageable);
+
     long countByUserIdAndTenantId(String userId, String tenantId);
+
+    @Query("SELECT d FROM Device d WHERE d.active = true " +
+            "AND (:targetTenantId IS NULL OR d.tenantId = :targetTenantId) " +
+            "AND (:targetUserId IS NULL OR d.userId = :targetUserId) " +
+            "AND (:name IS NULL OR LOWER(d.name) LIKE LOWER(CONCAT('%', :name, '%'))) " + // Tối ưu: Search không phân biệt hoa thường
+            "AND (:mac IS NULL OR d.mac = :mac) " +
+            "AND (:state IS NULL OR d.state = :state) " +
+            "AND (:groupId IS NULL OR d.deviceGroup.id = :groupId)") // Đã FIX: gọi vào d.deviceGroup.id
+    Page<Device> searchDevices(
+            @Param("targetTenantId") String targetTenantId,
+            @Param("targetUserId") String targetUserId,
+            @Param("name") String name,
+            @Param("mac") String mac,
+            @Param("state") DeviceState state,
+            @Param("groupId") UUID groupId,
+            Pageable pageable
+    );
 }

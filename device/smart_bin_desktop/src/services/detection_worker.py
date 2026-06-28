@@ -3,7 +3,8 @@ import uuid
 import logging
 from dataclasses import dataclass, field
 from typing import Final
-from picamera2 import Picamera2
+
+from pathlib import Path
 import cv2
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -282,6 +283,45 @@ class DetectionWorker(QThread):
             self.logger.warning("Detection worker did not stop within timeout")
         self.logger.info("Detection worker stopped and camera released")
 
+    def reload_model(self, new_model_path: str) -> bool:
+        """Hot-reload the trash classification model with new weights.
+        
+        Phải gọi ``pause_detection()`` trước khi gọi method này để đảm bảo
+        worker thread không đang inference khi model bị swap.
+
+        Returns:
+            True nếu swap thành công, False nếu có lỗi.
+        """
+        import os
+        
+        if not self._is_paused:
+            self.logger.error("Cannot hot-reload model while detection is running. Call pause_detection() first.")
+            return False
+
+        path = Path(new_model_path)
+        if not path.exists():
+            self.logger.error("Hot-reload failed: Model file does not exist at %s", new_model_path)
+            return False
+
+        self.logger.info("Attempting to hot-reload AI Model from %s", new_model_path)
+        
+        try:
+            # Create the new model instance using the factory
+            new_model = self.model_factory.create_trash_classifier(path)
+            
+            old_model = self.model_trash_classification
+            self.model_trash_classification = new_model
+            
+            # Explicitly delete the old model to free up GPU/RAM memory immediately
+            del old_model
+            
+            self.logger.info("Hot-reload successful. Trash classification model swapped.")
+            return True
+            
+        except Exception as exc:
+            self.logger.exception("Failed to hot-reload model. Keeping the old model.")
+            return False
+
     # ------------------------------------------------------------------
     # Initialisation
     # ------------------------------------------------------------------
@@ -345,3 +385,4 @@ class DetectionWorker(QThread):
             return None
         self.logger.info("Detection image saved: %s", image_file.name)
         return str(image_file)
+    

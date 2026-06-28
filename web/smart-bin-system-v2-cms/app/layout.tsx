@@ -3,7 +3,9 @@ import Script from "next/script";
 import { IBM_Plex_Mono, Manrope } from "next/font/google";
 import "mapbox-gl/dist/mapbox-gl.css";
 import ToastHost from "@/components/ui/toast-host";
+import { LanguageSwitcher } from "@/components/ui/language-switcher"; // Import component mới
 import "./globals.css";
+import { Providers } from "@/app/providers";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -17,8 +19,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Smart Bin CMS",
-  description: "Admin CMS for categories, products, orders, users, devices and notifications.",
+  title: "InnoEco - Trung tâm quản trị",
+  description: "Khu vực quản trị danh mục, sản phẩm, đơn hàng, người dùng, thiết bị và thông báo.",
 };
 
 const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
@@ -30,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="en" // Ghi chú: Thẻ lang thực tế sẽ được context update động ở phía client
       className={`${manrope.variable} ${ibmPlexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full font-sans">
@@ -41,9 +43,12 @@ export default function RootLayout({
           />
         ) : null}
         <ToastHost />
-        {children}
+        <Providers>
+          {/* Nhúng nút chuyển ngôn ngữ toàn cục tại đây */}
+          <LanguageSwitcher />
+          {children}
+        </Providers>
       </body>
     </html>
   );
 }
-

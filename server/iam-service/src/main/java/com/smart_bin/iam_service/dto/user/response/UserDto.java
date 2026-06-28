@@ -1,7 +1,9 @@
 package com.smart_bin.iam_service.dto.user.response;
 
+import com.smart_bin.core.common.DevicePermission;
 import com.smart_bin.iam_service.common.UserState;
 
+import java.util.Set;
 import java.util.UUID;
 
 public record UserDto(
@@ -11,6 +13,7 @@ public record UserDto(
         String email,
         String name,
         String avatarUrl,
-        UserState state
+        UserState state,
+        Set<DevicePermission> devicePermissions
 ) {
 }

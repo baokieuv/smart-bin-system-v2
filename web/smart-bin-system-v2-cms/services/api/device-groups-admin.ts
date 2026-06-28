@@ -8,8 +8,8 @@ import type {
 
 export const deviceGroupsAdminApi = {
   getDeviceGroups: async (params?: { page?: number; size?: number }) =>
-    api.get<DeviceGroupListPayload>("/device-groups", params, { cacheTTL: 30000 }),
-  getDeviceGroupById: async (id: string) => api.get<DeviceGroupDto>(`/device-groups/${id}`),
+    api.get<DeviceGroupListPayload>("/device-groups", params, { cacheTTL: 300000 }),
+  getDeviceGroupById: async (id: string) => api.get<DeviceGroupDto>(`/device-groups/${id}`, undefined, { cacheTTL: 300000 }),
   createDeviceGroup: async (payload: CreateDeviceGroupRequest) => api.post<DeviceGroupDto>("/device-groups", payload),
   updateDeviceGroup: async (id: string, payload: UpdateDeviceGroupRequest) =>
     api.put<DeviceGroupDto>(`/device-groups/${id}`, payload),

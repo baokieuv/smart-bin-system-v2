@@ -6,25 +6,18 @@ Next.js CMS project for Smart Bin system administrators.
 
 This project is an admin web app to configure and operate:
 
-- Categories
-- Products
-- Orders
 - Users
 - Devices
 - Device groups
-- Device profiles
 - Notifications
 
 It is mapped from the current user-facing app smart-bin-system-v2-fe.
 
 ## Mapping from User App to CMS
 
-1. Public shop browsing (/shop, /shop/products/[id]) -> CMS manages product and category source data.
-2. Cart and checkout (/shop/cart) -> CMS monitors and updates order lifecycle.
-3. Order detail (/shop/orders/[orderId]) -> CMS updates status/payment/shipping flows.
-4. Dashboard device tab (/dashboard) -> CMS manages full device inventory.
-5. Activity/notifications (/dashboard activity) -> CMS triages and marks alerts read.
-6. Auth and profile (/auth/*, /users/me) -> CMS controls account state and admin session.
+1. Dashboard device tab (/dashboard) -> CMS manages full device inventory.
+2. Activity/notifications (/dashboard activity) -> CMS triages and marks alerts read.
+3. Auth and profile (/auth/*, /users/me) -> CMS controls account state and admin session.
 
 ## Tech
 
@@ -54,19 +47,15 @@ Then open http://localhost:3000.
 
 - /auth/login
 - /dashboard
-- /categories
-- /products
-- /orders
 - /users
 - /devices
 - /device-groups
-- /device-profiles
 - /notifications
 - /settings
 
 ## Access Control
 
-- `super_admin` sees dashboard, users, devices, device profiles, firmwares, firmware mappings, notifications, and settings.
+- `super_admin` sees dashboard, users, devices, firmwares, firmware mappings, notifications, and settings.
 - `admin` sees dashboard, users, device groups, devices, notifications, and settings.
 
 ## Note

@@ -1,12 +1,12 @@
 server:
-  port: ${MEDIA_SERVICE_PORT:8080}
+  port: ${MEDIA_SERVICE_PORT:2109}
 
 spring:
   application:
     name: media-service
 
   datasource:
-    url: ${MEDIA_DB_URL:jdbc:mariadb://localhost:3306/media_db}
+    url: ${MEDIA_DB_URL:jdbc:mariadb://localhost:3306/smart-bin-v2}
     username: ${MEDIA_DB_USER:admin}
     password: ${MEDIA_DB_PASS:admin}
     driver-class-name: org.mariadb.jdbc.Driver

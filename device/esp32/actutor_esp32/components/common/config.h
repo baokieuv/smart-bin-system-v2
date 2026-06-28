@@ -84,7 +84,7 @@ typedef enum {
     WAIT_LEN_H,
     WAIT_LEN_L,
     WAIT_PAYLOAD,
-    WAIT_HMAC,
+    WAIT_CRC,
     WAIT_TAIL
 } UartState_t;
 

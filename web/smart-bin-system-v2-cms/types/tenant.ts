@@ -3,6 +3,7 @@ export interface TenantDto {
   name: string;
   email: string;
   state: string;
+  avatarUrl: string | null;
 }
 
 export interface CreateTenantRequest {

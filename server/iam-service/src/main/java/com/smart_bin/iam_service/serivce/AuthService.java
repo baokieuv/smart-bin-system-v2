@@ -3,10 +3,12 @@ package com.smart_bin.iam_service.serivce;
 import com.auth0.jwt.JWT;
 import com.smart_bin.core.common.EmailType;
 import com.smart_bin.core.exception.ApiException;
+import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.iam_service.common.TokenType;
 import com.smart_bin.iam_service.common.UserState;
 import com.smart_bin.iam_service.dto.auth.request.*;
 import com.smart_bin.iam_service.dto.auth.response.TokenResponse;
+import com.smart_bin.iam_service.dto.user.response.GoogleUserInfo;
 import com.smart_bin.iam_service.entity.Tenant;
 import com.smart_bin.iam_service.entity.User;
 import com.smart_bin.iam_service.exception.AuthErrorCode;
@@ -16,8 +18,13 @@ import com.smart_bin.iam_service.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,6 +36,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final TenantRepository tenantRepository;
     private final UserService userService;
+    private final RestClient googleUserInfoRestClient;
 
     public TokenResponse loginPassword(LoginRequest request) {
         Optional<Tenant> tenantOpt = tenantRepository.findByEmail(request.username()).filter(Tenant::isActive);
@@ -56,6 +64,11 @@ public class AuthService {
 
     @Transactional
     public TokenResponse loginGoogle(String googleToken) {
+        GoogleUserInfo googleInfo = verifyAndParseGoogleToken(googleToken);
+
+        // 2 & 3. Xử lý liên kết tài khoản trên Keycloak (Nếu user đã tồn tại nhưng chưa link)
+        keycloakService.linkGoogleAccountIfNeeded(googleInfo.email(), googleInfo.googleId());
+
         TokenResponse keycloakToken = keycloakService.exchangeGoogleToken(googleToken);
 
         var jwt = JWT.decode(keycloakToken.accessToken());
@@ -156,5 +169,37 @@ public class AuthService {
         keycloakService.logoutAllSessions(user.getKeycloakId());
 
         return "Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.";
+    }
+
+    public GoogleUserInfo verifyAndParseGoogleToken(String googleToken) {
+        try {
+            // Gọi API của Google để lấy thông tin từ Access Token
+            Map<String, Object> response = googleUserInfoRestClient.get()
+                    .uri("/oauth2/v3/userinfo")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + googleToken)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+
+            if (response == null || !response.containsKey("email")) {
+                throw new ApiException(AuthErrorCode.GOOGLE_AUTH_FAILED, "Token Google không hợp lệ hoặc không có email.");
+            }
+
+            String email = (String) response.get("email");
+            String googleId = (String) response.get("sub"); // Google User ID
+            String firstName = (String) response.get("given_name");
+            String lastName = (String) response.get("family_name");
+            String avatarUrl = (String) response.get("picture");
+
+            String fullName = (firstName != null ? firstName : "") + " " + (lastName != null ? lastName : "");
+
+            return new GoogleUserInfo(googleId, email, fullName.trim(), avatarUrl);
+
+        } catch (RestClientResponseException e) {
+            log.error("Failed to verify Google token: {}", e.getResponseBodyAsString());
+            throw new ApiException(AuthErrorCode.GOOGLE_AUTH_FAILED, "Xác thực token Google thất bại.");
+        } catch (Exception e) {
+            log.error("Error connecting to Google UserInfo API", e);
+            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Lỗi kết nối tới Google.");
+        }
     }
 }

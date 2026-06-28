@@ -6,5 +6,6 @@ public record TenantDto(
         UUID id,
         String name,
         String email,
-        String state
+        String state,
+        String avatarUrl
 ) {}

@@ -1,5 +1,5 @@
 server:
-  port: ${DEVICE_SERVICE_PORT:8080}
+  port: ${DEVICE_SERVICE_PORT:2108}
 
 spring:
   application:
@@ -46,6 +46,12 @@ spring:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/smart-bin-realm}
           jwk-set-uri: ${KEYCLOAK_JWK_URI:http://localhost:8180/realms/smart-bin-realm/protocol/openid-connect/certs}
+
+  servlet:
+    multipart:
+      enabled: ${MEDIA_MULTIPART_ENABLED:true}
+      max-file-size: ${MEDIA_MAX_FILE_SIZE:5MB}
+      max-request-size: ${MEDIA_MAX_REQUEST_SIZE:20MB}
 
 things-board:
   url: ${THINGSBOARD_URL:http://localhost:8080}

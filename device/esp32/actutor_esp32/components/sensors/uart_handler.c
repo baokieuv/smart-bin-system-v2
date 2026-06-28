@@ -5,7 +5,6 @@
 #include "esp_log.h"
 #include "driver/uart.h"
 #include "esp_ota_ops.h"
-#include "mbedtls/md.h"
 #include "nvs_storage.h"
 #include "ultrasonic_sensor.h"
 
@@ -24,70 +23,70 @@ const esp_partition_t *update_partition = NULL;
 
 QueueHandle_t step_action_queue;
 
-// Xác thực chữ ký HMAC
-bool verify_hmac(uint8_t cmd, uint16_t len, uint8_t *payload, uint8_t *received_hmac){
-    uint8_t calculated_mac[32];
-    mbedtls_md_context_t ctx;
-    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-
-    mbedtls_md_init(&ctx);
-    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
-    mbedtls_md_hmac_starts(&ctx, (const unsigned char *)SECRET_KEY, strlen(SECRET_KEY));
-
-    mbedtls_md_hmac_update(&ctx, &cmd, 1);
-    uint8_t len_bytes[2] = {(len >> 8) & 0xFF, len & 0xFF};
-    mbedtls_md_hmac_update(&ctx, len_bytes, 2);
-    if (len > 0) {
-        mbedtls_md_hmac_update(&ctx, payload, len);
+// Hàm tính CRC-8 tiêu chuẩn (Polynomial: 0x07)
+static uint8_t calculate_crc8(uint8_t cmd, uint16_t len, uint8_t *payload) {
+    uint8_t crc = 0x00; 
+    
+    // 1. Đưa Cmd và Len vào mảng tạm
+    uint8_t header_data[3] = {cmd, (uint8_t)(len >> 8), (uint8_t)(len & 0xFF)};
+    
+    // 2. Tính CRC cho header
+    for (int i = 0; i < 3; i++) {
+        crc ^= header_data[i];
+        for (int j = 0; j < 8; j++) {
+            if (crc & 0x80) {
+                crc = (crc << 1) ^ 0x07;
+            } else {
+                crc <<= 1;
+            }
+        }
     }
-    mbedtls_md_hmac_finish(&ctx, calculated_mac);
-    mbedtls_md_free(&ctx);
 
-    return (memcmp(calculated_mac, received_hmac, 32) == 0);
+    // 3. Tính CRC cho payload
+    for (int i = 0; i < len; i++) {
+        crc ^= payload[i];
+        for (int j = 0; j < 8; j++) {
+            if (crc & 0x80) {
+                crc = (crc << 1) ^ 0x07;
+            } else {
+                crc <<= 1;
+            }
+        }
+    }
+
+    return crc;
 }
 
-void send_response(uint8_t cmd) {
-    uart_send_frame_hmac(cmd, NULL, 0);
+bool verify_crc8(uint8_t cmd, uint16_t len, uint8_t *payload, uint8_t received_crc){
+    uint8_t calculated_crc = calculate_crc8(cmd, len, payload);
+    return (calculated_crc == received_crc);
 }
 
-void uart_send_frame_hmac(uint8_t cmd, uint8_t *payload, uint16_t len) {
-    uint8_t calculated_mac[32];
-    mbedtls_md_context_t ctx;
-    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+void uart_send_frame_crc8(uint8_t cmd, uint8_t *payload, uint16_t len) {
+    uint8_t crc = calculate_crc8(cmd, len, payload);
 
-    // A. TÍNH TOÁN HMAC
-    mbedtls_md_init(&ctx);
-    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
-    mbedtls_md_hmac_starts(&ctx, (const unsigned char *)SECRET_KEY, strlen(SECRET_KEY));
-
-    mbedtls_md_hmac_update(&ctx, &cmd, 1);
-    uint8_t len_bytes[2] = {(len >> 8) & 0xFF, len & 0xFF};
-    mbedtls_md_hmac_update(&ctx, len_bytes, 2);
-    if (len > 0) {
-        mbedtls_md_hmac_update(&ctx, payload, len);
-    }
-    mbedtls_md_hmac_finish(&ctx, calculated_mac);
-    mbedtls_md_free(&ctx);
-
-    // B. ĐÓNG GÓI FRAME VÀ GỬI ĐI
-    uint16_t frame_size = 5 + len + 32 + 1; // Header(2) + Cmd(1) + Len(2) + Payload + HMAC(32) + Tail(1)
+    uint16_t frame_size = 5 + len + 1 + 1; // Header(2) + Cmd(1) + Len(2) + Payload + CRC(1) + Tail(1)
     uint8_t *frame = malloc(frame_size);
-    if (frame == NULL) return; // Hết RAM
+    if (frame == NULL) return;
 
     uint16_t idx = 0;
     frame[idx++] = HEADER_1;
     frame[idx++] = HEADER_2;
     frame[idx++] = cmd;
-    frame[idx++] = len_bytes[0];
-    frame[idx++] = len_bytes[1];
+    frame[idx++] = (len >> 8) & 0xFF;
+    frame[idx++] = len & 0xFF;
     
     for(int i = 0; i < len; i++) frame[idx++] = payload[i];
-    for(int i = 0; i < 32; i++) frame[idx++] = calculated_mac[i];
-
+    
+    frame[idx++] = crc;
     frame[idx++] = TAIL;
 
     uart_write_bytes(UART_PORT_NUM, (const char *)frame, frame_size);
     free(frame);
+}
+
+void send_response(uint8_t cmd) {
+    uart_send_frame_crc8(cmd, NULL, 0);
 }
 
 static void handle_cmd_ctrl_servo(uint16_t len, uint8_t *payload) {
@@ -136,8 +135,7 @@ static void handle_cmd_set_config(uint16_t len, uint8_t *payload) {
     system_config.full_threshold_pct = new_threshold;
     
     if (nvs_save_bin_config(&system_config) == ESP_OK) {
-        ESP_LOGI(TAG, "Cap nhat Config thanh cong: Sau=%.1fcm, Nguong=%d%%", 
-                 system_config.bin_depth_cm, system_config.full_threshold_pct);
+        ESP_LOGI(TAG, "Cap nhat Config: Sau=%.1fcm, Nguong=%d%%", system_config.bin_depth_cm, system_config.full_threshold_pct);
         send_response(CMD_ACK);
     } else {
         send_response(CMD_NACK);
@@ -148,7 +146,7 @@ static void handle_cmd_get_version(void) {
     const esp_app_desc_t *app_desc = esp_app_get_description();
     uint16_t version_len = strlen(app_desc->version);
     ESP_LOGI(TAG, "Pi yeu cau check version. Hien tai: %s", app_desc->version);
-    uart_send_frame_hmac(CMD_GET_VERSION, (uint8_t *)app_desc->version, version_len);
+    uart_send_frame_crc8(CMD_GET_VERSION, (uint8_t *)app_desc->version, version_len);
 }
 
 static void handle_cmd_ota_start(void) {
@@ -186,7 +184,6 @@ static void handle_cmd_report(void) {
     TrashBinDistances_t dist = ultrasonic_read_all_bins();
 
     uint8_t fill_level[4] = {0};
-
     float depth = system_config.bin_depth_cm;
 
     if (dist.bin1_cm > 0) fill_level[0] = (uint8_t)(((depth - dist.bin1_cm) / depth) * 100);
@@ -198,7 +195,7 @@ static void handle_cmd_report(void) {
         if (fill_level[i] > 100) fill_level[i] = 100;
     }
 
-    uart_send_frame_hmac(CMD_REPORT_FILL_LEVEL, fill_level, 4);
+    uart_send_frame_crc8(CMD_REPORT_FILL_LEVEL, fill_level, 4);
 }
 
 static void handle_cmd_lid_open(void) {
@@ -220,13 +217,12 @@ static void handle_cmd_lid_close(void) {
         send_response(CMD_ACK);
         ESP_LOGI(TAG, "Dong nap (NORMAL)");
     } else {
-        ESP_LOGW(TAG, "Tu choi dong nap (thu cong): Thung rac dang bi BLOCK");
+        ESP_LOGW(TAG, "Tu choi dong nap: Thung rac dang bi BLOCK");
         send_response(CMD_NACK);
     }
 }
 
 static void handle_cmd_lid_block(void) {
-    // Luôn đóng nắp trước khi chuyển sang trạng thái Block
     set_servo_angle(SERVO_ANGLE_CLOSE);
     bin_state = BIN_STATE_BLOCKED;
     send_response(CMD_ACK);
@@ -256,27 +252,24 @@ static void handle_cmd_system_info(void) {
 
     uint8_t response_payload[10];
 
-    // Chip info
     response_payload[0] = (uint8_t)chip_info.model;
     response_payload[1] = (uint8_t)chip_info.cores;
 
-    // Flash size 
     response_payload[2] = (flash_size >> 24) & 0xFF;
     response_payload[3] = (flash_size >> 16) & 0xFF;
     response_payload[4] = (flash_size >> 8)  & 0xFF;
     response_payload[5] = flash_size         & 0xFF;
 
-    // RAM
     response_payload[6] = (total_ram >> 24) & 0xFF;
     response_payload[7] = (total_ram >> 16) & 0xFF;
     response_payload[8] = (total_ram >> 8)  & 0xFF;
     response_payload[9] = total_ram         & 0xFF;
 
-    uart_send_frame_hmac(CMD_GET_SYSTEM_INFO, response_payload, sizeof(response_payload));
+    uart_send_frame_crc8(CMD_GET_SYSTEM_INFO, response_payload, sizeof(response_payload));
 }
 
 static void process_uart_command(uint8_t cmd, uint16_t len, uint8_t *payload) {
-    ESP_LOGI(TAG, "HMAC OK! Lenh: 0x%02X", cmd);
+    ESP_LOGI(TAG, "CRC8 OK! Lenh: 0x%02X", cmd);
     
     switch (cmd) {
         case CMD_CTRL_SERVO:   handle_cmd_ctrl_servo(len, payload); break;
@@ -308,8 +301,7 @@ void uart_rx_task(void *arg) {
     uint8_t payload_buf[1024]; 
     uint16_t payload_index = 0;
 
-    uint8_t received_hmac[32];
-    uint8_t hmac_index = 0;
+    uint8_t received_crc = 0; // Thay thế biến nhận HMAC thành 1 byte CRC
 
     while (1) {
         int len = uart_read_bytes(UART_PORT_NUM, data, BUF_SIZE, 20 / portTICK_PERIOD_MS);
@@ -339,8 +331,7 @@ void uart_rx_task(void *arg) {
                     if (current_len > 0 && current_len <= sizeof(payload_buf)) {
                         state = WAIT_PAYLOAD;
                     } else if (current_len == 0) {
-                        state = WAIT_HMAC;
-                        hmac_index = 0;
+                        state = WAIT_CRC;
                     } else {
                         state = WAIT_HEADER_1;
                     }
@@ -348,23 +339,19 @@ void uart_rx_task(void *arg) {
                 case WAIT_PAYLOAD:
                     payload_buf[payload_index++] = b;
                     if (payload_index == current_len) {
-                        state = WAIT_HMAC;
-                        hmac_index = 0;
+                        state = WAIT_CRC;
                     }
                     break;
-                case WAIT_HMAC:
-                    received_hmac[hmac_index++] = b;
-                    if (hmac_index == 32) {
-                        state = WAIT_TAIL;
-                    }
+                case WAIT_CRC:
+                    received_crc = b;
+                    state = WAIT_TAIL;
                     break;
                 case WAIT_TAIL:
                     if (b == TAIL) {
-                        if (verify_hmac(current_cmd, current_len, payload_buf, received_hmac)) {
-                            ESP_LOGI(TAG, "HMAC OK! Lenh: 0x%02X", current_cmd);
+                        if (verify_crc8(current_cmd, current_len, payload_buf, received_crc)) {
                             process_uart_command(current_cmd, current_len, payload_buf);
                         } else {
-                            ESP_LOGE(TAG, "Loi HMAC! Tu choi lenh.");
+                            ESP_LOGE(TAG, "Loi CRC8! Tu choi lenh.");
                             send_response(CMD_NACK);
                         }
                     }

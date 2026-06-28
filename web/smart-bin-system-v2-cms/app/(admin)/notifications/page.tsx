@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
 import { formatDateTime, unwrapListPayload } from "@/lib/admin-utils";
 import { notificationsAdminApi } from "@/services/api/notifications-admin";
+import { useLanguage } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 import type { NotificationDto } from "@/types/notification";
 
 export default function NotificationsPage() {
+  const { t } = useLanguage(); // GỌI HOOK
+  
   const [items, setItems] = useState<NotificationDto[]>([]);
   const [message, setMessage] = useState("");
   const [markingId, setMarkingId] = useState<string | number | null>(null);
@@ -25,7 +28,7 @@ export default function NotificationsPage() {
     try {
       setMarkingId(id);
       await notificationsAdminApi.markAsRead(id);
-      setMessage(`Notification ${id} marked as read`);
+      setMessage(t("alertMarkedRead"));
       await load();
     } finally {
       setMarkingId(null);
@@ -36,7 +39,7 @@ export default function NotificationsPage() {
     try {
       setMarkAllLoading(true);
       await notificationsAdminApi.readAll();
-      setMessage("All notifications marked as read");
+      setMessage(t("allAlertsMarkedRead"));
       await load();
     } finally {
       setMarkAllLoading(false);
@@ -45,16 +48,16 @@ export default function NotificationsPage() {
 
   return (
     <Panel
-      title="Notifications"
-      subtitle="Admin alert center from notification feed"
+      title={t("systemAlertsTitle")}
+      subtitle={t("systemAlertsSubtitle")}
       action={
         <button
           type="button"
           onClick={() => void markAll()}
           disabled={markAllLoading}
-          className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white"
+          className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {markAllLoading ? "Marking..." : "Mark all as read"}
+          {markAllLoading ? t("marking") : t("markAllAsRead")}
         </button>
       }
     >
@@ -73,12 +76,14 @@ export default function NotificationsPage() {
                   type="button"
                   onClick={() => void mark(item.id)}
                   disabled={markingId === item.id}
-                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700"
+                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100 disabled:opacity-60"
                 >
-                  {markingId === item.id ? "Marking..." : "Mark read"}
+                  {markingId === item.id ? t("marking") : t("markAsRead")}
                 </button>
               ) : (
-                <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Read</span>
+                <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                  {t("readStatus")}
+                </span>
               )}
             </div>
           </article>
@@ -88,4 +93,3 @@ export default function NotificationsPage() {
     </Panel>
   );
 }
-
