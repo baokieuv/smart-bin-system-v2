@@ -320,7 +320,7 @@ public class DeviceService {
     }
 
     public DeviceDto getDeviceDetail(String keycloakId, String tenantId, String deviceId, String permissions){
-        verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.VIEW_DEVICE.name());
 
         Device device = getDeviceAndVerifyOwnership(deviceId, keycloakId, tenantId);
         return mapper.toDto(device);
@@ -332,7 +332,7 @@ public class DeviceService {
             evict = { @CacheEvict(value = "device_list", allEntries = true) }
     )
     public DeviceDto updateDeviceByUser(String id, UpdateDeviceUserRequest request, String keycloakId, String tenantId, String permissions) {
-        verifyPermission(permissions, DevicePermission.EDIT_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.EDIT_DEVICE.name());
 
         Device device = getDeviceAndVerifyOwnership(id, keycloakId, tenantId);
         Map<String, Object> tbAttributes = new HashMap<>();
@@ -502,7 +502,7 @@ public class DeviceService {
 
     @Transactional
     public void deleteDevice(String id, String keycloakId, String tenantId, String permissions) {
-        verifyPermission(permissions, DevicePermission.DELETE_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.DELETE_DEVICE.name());
 
         Device device = getDeviceAndVerifyOwnership(id, keycloakId, tenantId);
 
@@ -581,7 +581,8 @@ public class DeviceService {
     }
 
     public JsonNode getTelemetries(String id, String keycloakId, String tenantId, String permissions, String keys, Long startTs, Long endTs) {
-        verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.VIEW_DEVICE.name());
+
 
         Device device = getDeviceAndVerifyOwnership(id, keycloakId, tenantId);
 
@@ -631,7 +632,7 @@ public class DeviceService {
     }
 
     public JsonNode executeRpc(String deviceId, RpcRequest request, String actorId, String tenantId, UserRole role, String permissions) {
-        verifyPermission(permissions, DevicePermission.CONTROL_DEVICE.name(), actorId, tenantId);
+        verifyPermission(actorId, tenantId, permissions, DevicePermission.CONTROL_DEVICE.name());
 
         RpcMethod rpcMethod = RpcMethod.fromMethodName(request.method());
         if (!rpcMethod.isAllowed(role)) {
@@ -645,7 +646,7 @@ public class DeviceService {
 
     public Map<String, Double> getBulkTelemetries(String keycloakId, String tenantId, String permissions, List<String> keys) {
 
-        verifyPermission(permissions, DevicePermission.VIEW_DEVICE.name(), keycloakId, tenantId);
+        verifyPermission(keycloakId, tenantId, permissions, DevicePermission.VIEW_DEVICE.name());
 
         Pageable pageable = PageRequest.of(0, 1000);
         Page<Device> devices;
@@ -864,11 +865,14 @@ public class DeviceService {
 
     private void autoAssignFirmware(Device device) {
         List<FirmwareMapping> rules = mappingRepository.findAllByActiveTrueOrderByPriorityDesc();
+        calculateAndAssignTargetFirmware(device, rules);
+    }
+
+    private void calculateAndAssignTargetFirmware(Device device, List<FirmwareMapping> sortedRules) {
+        Set<FirmwareType> assignedTypes = new HashSet<>();
         Map<String, Object> deviceMeta = device.getHwMetadata();
 
-        Set<FirmwareType> assignedTypes = new HashSet<>();
-
-        for (FirmwareMapping rule : rules) {
+        for (FirmwareMapping rule : sortedRules) {
             Firmware targetFw = rule.getTargetFirmware();
 
             if (assignedTypes.contains(targetFw.getType())) {
@@ -881,14 +885,16 @@ public class DeviceService {
                 log.info("Device MAC {} matched Firmware Rule ID {} for Type {}", device.getMac(), rule.getId(), targetFw.getType());
             }
         }
-
-        if (assignedTypes.isEmpty()) {
-            log.warn("Không tìm thấy Firmware phù hợp cho Device MAC {}", device.getMac());
-        }
     }
 
     private boolean isMetadataMatched(Map<String, Object> deviceMeta, Map<String, Object> ruleCriteria) {
-        if (ruleCriteria == null || ruleCriteria.isEmpty()) return false;
+        if (ruleCriteria == null || ruleCriteria.isEmpty()) {
+            return true;
+        }
+
+        if (deviceMeta == null || deviceMeta.isEmpty()) {
+            return false;
+        }
 
         for (Map.Entry<String, Object> entry : ruleCriteria.entrySet()) {
             if (!deviceMeta.containsKey(entry.getKey())) return false;
@@ -1033,8 +1039,10 @@ public class DeviceService {
 
     @Async
     @Transactional
-    public void applyFirmwareMappingToExistingDevices(FirmwareMapping rule) {
-        log.info("Bắt đầu Job ngầm gán Firmware {} cho các thiết bị khớp rule...", rule.getTargetFirmware().getVersion());
+    public void applyFirmwareMappingToExistingDevices(FirmwareMapping newRule) {
+        log.info("Bắt đầu Job ngầm gán Firmware {} cho các thiết bị khớp rule...", newRule.getTargetFirmware().getVersion());
+
+        List<FirmwareMapping> allActiveRules = mappingRepository.findAllByActiveTrueOrderByPriorityDesc();
 
         int page = 0;
         int size = 500;
@@ -1045,15 +1053,15 @@ public class DeviceService {
             List<Device> devicesToUpdate = new ArrayList<>();
 
             for (Device device : devicePage.getContent()) {
-                if (isMetadataMatched(device.getHwMetadata(), rule.getMetadataCriteria())) {
-                    updateFirmwareState(device, rule.getTargetFirmware().getType(), null, rule.getTargetFirmware());
+                if (isMetadataMatched(device.getHwMetadata(), newRule.getMetadataCriteria())) {
+                    calculateAndAssignTargetFirmware(device, allActiveRules);
                     devicesToUpdate.add(device);
                 }
             }
 
             if (!devicesToUpdate.isEmpty()) {
                 repository.saveAll(devicesToUpdate);
-                log.info("Đã update target firmware cho {} thiết bị ở page {}", devicesToUpdate.size(), page);
+                log.info("Đã cập nhật target firmware cho {} thiết bị ở page {}", devicesToUpdate.size(), page);
             }
 
             page++;
