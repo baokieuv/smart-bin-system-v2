@@ -150,9 +150,9 @@ class ViewModelConfig:
 
 @dataclass(frozen=True)
 class ApiConfig:
-    device_base_url: str = _env_str("SMART_BIN_DEVICE_API_BASE", "http://localhost:80/api/v1/devices/public")
-    config_base_url: str = _env_str("SMART_BIN_CONFIG_API_BASE", "http://localhost:80/api/v1/configs")
-    thingsboard_base_url: str = _env_str("SMART_BIN_THINGSBOARD_API_BASE", "http://localhost:8082/api/v1")
+    device_base_url: str = _env_str("SMART_BIN_DEVICE_API_BASE", "https://api.kvbhust.id.vn/api/v1/devices/public")
+    config_base_url: str = _env_str("SMART_BIN_CONFIG_API_BASE", "https://api.kvbhust.id.vn/api/v1/configs")
+    thingsboard_base_url: str = _env_str("SMART_BIN_THINGSBOARD_API_BASE", "https://thingsboard.kvbhust.id.vn/api/v1")
     request_timeout_seconds: int = _env_int("SMART_BIN_API_TIMEOUT", 10)
 
 
