@@ -4,6 +4,8 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 
+#if 0
+
 // STEP MOTOR PIN
 #define IN1         GPIO_NUM_15
 #define IN2         GPIO_NUM_16
@@ -31,6 +33,38 @@
 #define UART_TX_PIN        GPIO_NUM_10
 #define UART_RX_PIN        GPIO_NUM_11
 #define BUF_SIZE           2048
+
+#endif
+
+#if 1
+// STEP MOTOR PIN
+#define IN1         GPIO_NUM_25
+#define IN2         GPIO_NUM_26
+#define IN3         GPIO_NUM_27
+#define IN4         GPIO_NUM_33
+
+// SERVO PIN
+#define SERVO_PIN   GPIO_NUM_32
+
+// BUZZER + BUTTON + LED PIN
+#define BUZZER_PIN      GPIO_NUM_4
+#define BUTTON_PIN      GPIO_NUM_13
+#define LED_PIN         GPIO_NUM_2
+
+// ULTRASONIC SENSOR PINS
+#define ULTRASONIC_TRIG_PIN    GPIO_NUM_19
+#define ULTRASONIC_ECHO1_PIN   GPIO_NUM_34
+#define ULTRASONIC_ECHO2_PIN   GPIO_NUM_35
+#define ULTRASONIC_ECHO3_PIN   GPIO_NUM_18
+#define ULTRASONIC_ECHO4_PIN   GPIO_NUM_19
+
+// UART
+#define UART_PORT_NUM      UART_NUM_0
+#define UART_BAUD_RATE     115200
+#define UART_TX_PIN        GPIO_NUM_17
+#define UART_RX_PIN        GPIO_NUM_16
+#define BUF_SIZE           2048
+#endif
 
 // Frame
 #define HEADER_1           0xAA
@@ -103,7 +137,7 @@ typedef enum {
 // Cấu trúc lưu trữ cấu hình hệ thống
 typedef struct {
     float bin_depth_cm;         // Độ sâu thực tế của thùng rác (cm)
-    uint8_t full_threshold_pct; // Ngưỡng báo đầy (% - ví dụ: 90%)
+    uint8_t full_threshold_pct; // Ngưỡng báo đầy (cm - ví dụ: 2cm)
     char firm_version[16];      // Version of firmware
 } SmartBinConfig_t;
 

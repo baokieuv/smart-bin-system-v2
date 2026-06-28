@@ -128,12 +128,12 @@ public class DeviceGroupService {
 
                     List<AlarmRuleDto> defaultAlarms = List.of(
                             new AlarmRuleDto(
-                                    "HIGH_AVERAGE_WASTE", // alarmType
-                                    "GREATER_OR_EQUAL",   // operator
-                                    85.0,                 // threshold
+                                    "BIN_FULL_ALARM",     // alarmType mới
+                                    "LESS_OR_EQUAL",      // operator: Khoảng cách NHỎ HƠN HOẶC BẰNG
+                                    3.0,                 // threshold: 3cm là báo đầy
                                     "CRITICAL",           // severity
-                                    "LESS",               // clearOperator
-                                    70.0                  // clearThreshold
+                                    "GREATER",            // clearOperator: Khoảng cách LỚN HƠN thì xóa cảnh báo
+                                    6.0                  // clearThreshold: > 6cm thì hết cảnh báo
                             )
                     );
 
@@ -194,8 +194,8 @@ public class DeviceGroupService {
             ObjectNode keyNode = conditionNode.putObject("key");
             keyNode.put("type", "TIME_SERIES");
 
-            String telemetryKey = rule.alarmType().equalsIgnoreCase("HIGH_AVERAGE_WASTE")
-                    ? "avg_fill_level"
+            String telemetryKey = rule.alarmType().equalsIgnoreCase("BIN_FULL_ALARM")
+                    ? "min_distance"
                     : rule.alarmType().toLowerCase();
             keyNode.put("key", telemetryKey);
 

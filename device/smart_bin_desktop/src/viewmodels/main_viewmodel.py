@@ -381,6 +381,8 @@ class MainViewModel(QObject):
         payload: dict = {
             "timestamp": now_ms,
             "total_waste_count": self._disposal_count_total,
+            "weight": 100,
+            "pin": 50
         }
  
         # Thêm mức đầy từng thùng nếu có dữ liệu

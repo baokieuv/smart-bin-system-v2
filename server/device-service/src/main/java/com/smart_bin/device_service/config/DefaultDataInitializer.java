@@ -31,12 +31,12 @@ public class DefaultDataInitializer {
 
             List<AlarmRuleDto> defaultAlarms = List.of(
                     new AlarmRuleDto(
-                            "HIGH_AVERAGE_WASTE", // alarmType
-                            "GREATER_OR_EQUAL",   // operator
-                            85.0,                 // threshold
+                            "BIN_FULL_ALARM",     // alarmType mới
+                            "LESS_OR_EQUAL",      // operator: Khoảng cách NHỎ HƠN HOẶC BẰNG
+                            3.0,                 // threshold: 3cm là báo đầy
                             "CRITICAL",           // severity
-                            "LESS",               // clearOperator
-                            70.0                  // clearThreshold
+                            "GREATER",            // clearOperator: Khoảng cách LỚN HƠN thì xóa cảnh báo
+                            6.0                  // clearThreshold: > 6cm thì hết cảnh báo
                     )
             );
 
