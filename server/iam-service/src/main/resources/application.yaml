@@ -70,7 +70,7 @@ keycloak:
 
 app:
   internal:
-    secret: ${IAM_INTERNAL_SECRET:SUPER_SECRET_INTERNAL_KEY}
+    secret: ${IAM_INTERNAL_SECRET:SUPER_IAM_SECRET_INTERNAL_KEY}
   frontend:
     url: ${APP_FRONTEND_URL:http://localhost:3000}
   kafka:

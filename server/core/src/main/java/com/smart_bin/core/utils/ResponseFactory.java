@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 
@@ -55,6 +56,36 @@ public class ResponseFactory {
 
         // Return the full ResponseEntity with the correct status code
         return new ResponseEntity<>(body, responseCode.getHttpStatus());
+    }
+
+    public <T> ResponseEntity<ApiResponseFormat<Object>> response(ApiResponseCode responseCode, T data, HttpHeaders headers) {
+        // Get the current request's locale
+        Locale locale = LocaleContextHolder.getLocale();
+
+        // Resolve the message key to get the localized message
+        String localizedMessage = messageSource.getMessage(
+                responseCode.getMessage(), // e.g., "success.user.exists"
+                null,
+                locale
+        );
+        ApiResponseFormat.ApiData<T> apiData = new ApiResponseFormat.ApiData<>(
+                responseCode.isSuccess(),
+                responseCode.getCode(),
+                localizedMessage,
+                data
+        );
+        // Create the final response body
+        ApiResponseFormat<Object> body = new ApiResponseFormat<>(
+                getCurrentTraceId(),
+                System.currentTimeMillis(),
+                apiData.success(),
+                apiData.code(),
+                apiData.message(),
+                apiData.details()
+        );
+
+        // Return the full ResponseEntity with the correct status code and headers
+        return new ResponseEntity<>(body, headers, responseCode.getHttpStatus());
     }
 
     public ApiResponseFormat<Object> response(ApiResponseFormat.ApiData data) {

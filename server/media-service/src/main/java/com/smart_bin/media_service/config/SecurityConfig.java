@@ -28,7 +28,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/v1/media/internal/**").permitAll()
+                        .requestMatchers("/api/v1/stream/public/**").permitAll()
                         .requestMatchers("/api/v1/media/**").authenticated()
+                        .requestMatchers("/api/v1/stream/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
@@ -62,7 +64,8 @@ public class SecurityConfig {
                         "https://cms.kvbhust.id.vn",
                         "http://localhost:3000",
                         "http://localhost:3001",
-                        "http://localhost:3002"
+                        "http://localhost:3002",
+                        "http://localhost"
                 )
         );
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));

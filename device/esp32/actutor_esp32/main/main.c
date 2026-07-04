@@ -21,8 +21,6 @@ void sensor_report_task(void *arg){
 
         uint8_t fill_level[4] = {0};
 
-        float depth = system_config.bin_depth_cm;
-
         if (dist.bin1_cm > 0) fill_level[0] = dist.bin1_cm;
         if (dist.bin2_cm > 0) fill_level[1] = dist.bin2_cm;
         if (dist.bin3_cm > 0) fill_level[2] = dist.bin3_cm;

@@ -45,7 +45,7 @@ class RequestsHttpClient:
     def _should_attach_version_headers(url: str) -> bool:
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
-        return host == "api.kvbhust.id.vn" or host.endswith(".api.kvbhust.id.vn")
+        return host == "api.localhost" or host.endswith(".api.localhost")
 
     @staticmethod
     def _inject_version_headers(kwargs: dict[str, Any], url: str) -> None:

@@ -17,6 +17,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal, pyqtSlot
  
+from src.services.hls_manager import HlsUploaderWorker
 from src.models.device_config_dto import DeviceConfigDto
 from src.models.trash_model import TrashData
 from src.repository.actuator_repository import ActuatorRepository
@@ -80,7 +81,13 @@ class MainViewModel(QObject):
         # --- Repositories & services ---
         self.actuator_client = ActuatorRepository()
         self.device_client = DeviceClient(actuator_client=self.actuator_client)
-        self.thingsboard_client = ThingsboardClient(handler=self._rpc_handler, logger=self.logger)
+        self.thingsboard_client = ThingsboardClient(
+            port=80, 
+            tls_enabled=False, 
+            connect_timeout=15,
+            handler=self._rpc_handler, 
+            logger=self.logger
+        )
         self.device_config_store = DeviceConfigStore(APP_CONFIG.paths.device_config_cache_path, self.logger)
         self.metadata_store = DetectionMetadataStore(APP_CONFIG.paths.detection_metadata_dir, self.logger)
         self.upload_manager = DetectionUploadManager(self.metadata_store, self.device_client, self.logger)
@@ -113,6 +120,8 @@ class MainViewModel(QObject):
         self._ai_model_ota_running: bool = False  # Guard riêng cho AI model OTA
         self._telemetry_reauth_running: bool = False
         self._ota_update_active: bool = False
+        
+        self.hls_uploader = None
  
         # Pending Qt state closure từ background thread (xem _apply_config_qt_state)
         self._pending_qt_state_fn = None
@@ -177,6 +186,7 @@ class MainViewModel(QObject):
 
     def shutdown(self) -> None:
         """Dừng tất cả timer, đóng serial, join worker thread."""
+        self.stop_video_stream()
         self.worker.pause_detection()
         for timer in self._all_timers():
             timer.stop()
@@ -446,6 +456,8 @@ class MainViewModel(QObject):
             APP_CONFIG.rpc_method.close_lid: self.actuator_client.close_lid,
             APP_CONFIG.rpc_method.block_lid: self.actuator_client.block_lid,
             APP_CONFIG.rpc_method.unblock_lid: self.actuator_client.unblock_lid,
+            APP_CONFIG.rpc_method.start_stream: self.start_video_stream,
+            APP_CONFIG.rpc_method.stop_stream: self.stop_video_stream,
         }
  
         if method in rpc_dispatch:
@@ -464,6 +476,56 @@ class MainViewModel(QObject):
         self.logger.warning("Unknown RPC method: %s", method)
         return {"status": "error", "message": f"Unknown method: {method}"}
     
+    # ------------------------------------------------------------------
+    # HLS Stream RPC Handlers
+    # ------------------------------------------------------------------
+
+    def start_video_stream(self) -> tuple[bool, str]:
+        self.logger.info("Starting video stream from RPC...")
+        try:
+            # QUAN TRỌNG: phải khởi động FFmpeg encoder TRƯỚC khi bật Uploader.
+            # HlsEncoder.start() gọi shutil.rmtree(STREAM_DIR) rồi mkdir lại để
+            # dọn rác phiên trước. Nếu Uploader (watchdog Observer) đã schedule
+            # watch lên STREAM_DIR từ trước đó, thao tác rmtree/mkdir này sẽ xóa
+            # mất inode đang được watch → Observer bị "ignored" âm thầm và các
+            # segment .ts/.m3u8 sinh ra sau đó sẽ không bao giờ được upload,
+            # dù FFmpeg vẫn chạy bình thường không báo lỗi gì.
+            ok = self.worker.start_stream()
+            if not ok:
+                return False, "Failed to start FFmpeg encoder"
+
+            # Bật Uploader Worker (Watchdog) SAU khi thư mục stream đã ổn định
+            if not getattr(self, 'hls_uploader', None) or not self.hls_uploader.isRunning():
+                # Lấy base root của Backend Spring Boot
+                base_url = f"{APP_CONFIG.api.api_base_url}/stream"
+                mac_addr = self.get_device_mac_address()
+                token = self.access_token or ""
+
+                self.hls_uploader = HlsUploaderWorker(mac_address=mac_addr, upload_url=base_url, token=token)
+                self.hls_uploader.start()
+
+            return True, ""
+        except Exception as e:
+            self.logger.error("Error starting video stream: %s", e)
+            return False, str(e)
+        
+    def stop_video_stream(self) -> tuple[bool, str]:
+        self.logger.info("Stopping video stream from RPC...")
+        try:
+            # Dừng Uploader (watchdog Observer) trước để nó thoát watch loop
+            # một cách sạch sẽ, rồi mới dừng Encoder — vì HlsEncoder.stop() sẽ
+            # rmtree(STREAM_DIR) để dọn RAM disk. Tránh trường hợp Observer vẫn
+            # đang watch trong lúc thư mục bị xóa.
+            if getattr(self, 'hls_uploader', None):
+                self.hls_uploader.stop()
+                self.hls_uploader = None
+
+            self.worker.stop_stream()
+
+            return True, ""
+        except Exception as e:
+            self.logger.error("Error stopping video stream: %s", e)
+            return False, str(e)
 
     # ------------------------------------------------------------------
     # Internal helpers

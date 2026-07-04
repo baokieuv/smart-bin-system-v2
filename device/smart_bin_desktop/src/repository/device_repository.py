@@ -117,8 +117,8 @@ class DeviceClient:
         actuator_client: ActuatorRepository | None = None,
     ) -> None:
         self.logger = logging.getLogger("smart_bin.device_repository")
-        self._base_url = APP_CONFIG.api.device_base_url
-        self._config_base_url = APP_CONFIG.api.config_base_url
+        self._base_url = f"{APP_CONFIG.api.api_base_url}/devices/public"
+        self._config_base_url = f"{APP_CONFIG.api.api_base_url}/configs"
         self._timeout = APP_CONFIG.api.request_timeout_seconds
  
         self._key_manager = DeviceKeyManager(APP_CONFIG.paths.devices_key_dir, self.logger)

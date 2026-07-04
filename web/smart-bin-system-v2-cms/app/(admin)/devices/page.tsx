@@ -23,6 +23,7 @@ import DeviceControlModal from "@/components/devices/device-control-modal";
 import DeviceDetailsModal from "@/components/devices/device-details-modal";
 import DevicesFilterPanel, { type FilterProps } from "@/components/devices/devices-filter-panel";
 import DevicesTable from "@/components/devices/devices-table";
+import DeviceCameraModal from "@/components/devices/device-camera-modal";
 import {
   CLAIM_CODE_PATTERN,
   firmwareTimestamp,
@@ -118,6 +119,14 @@ function DevicesPageContent() {
   const [locationTextByKey, setLocationTextByKey] = useState<Record<string, string>>({});
   const [loadingLocationKeys, setLoadingLocationKeys] = useState<Record<string, boolean>>({});
   const [isClosing, setIsClosing] = useState(false);
+
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraDevice, setCameraDevice] = useState<DeviceDto | null>(null);
+
+  const openLiveCamera = (device: DeviceDto) => {
+    setCameraDevice(device);
+    setShowCameraModal(true);
+  };
 
   const sortedFirmwares = useMemo(
     () =>
@@ -984,6 +993,7 @@ function DevicesPageContent() {
           onOpenDetails={role !== 'super_admin' ? openDeviceDetails : undefined}
           onOpenConfig={openConfig}
           getLocationText={getLocationText}
+          onOpenLiveCamera={openLiveCamera}
           t={t}
           page={page}
           totalPages={totalPages}
@@ -1110,6 +1120,16 @@ function DevicesPageContent() {
           />
         </Modal>
       )}
+
+      <DeviceCameraModal
+        isOpen={showCameraModal}
+        onClose={() => {
+          setShowCameraModal(false);
+          setCameraDevice(null);
+        }}
+        device={cameraDevice}
+        t={t}
+      />
 
       {!showQuickAddModal && !showConfigModal && message ? <p className="text-sm text-slate-600">{message}</p> : null}
     </div>

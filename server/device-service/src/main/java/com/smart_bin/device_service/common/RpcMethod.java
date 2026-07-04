@@ -19,6 +19,8 @@ public enum RpcMethod {
     UNLOCK_BIN("unlockBin", RpcType.TWO_WAY, Arrays.asList(UserRole.USER, UserRole.ADMIN)),
     FORCE_SYNC("forceSync", RpcType.ONE_WAY, Arrays.asList(UserRole.USER, UserRole.ADMIN)),
     TRIGGER_ALARM_ALERT("triggerAlarmAlert", RpcType.ONE_WAY, Arrays.asList(UserRole.USER, UserRole.ADMIN)),
+    START_STREAM("startStream", RpcType.TWO_WAY, Arrays.asList(UserRole.USER, UserRole.ADMIN)),
+    STOP_STREAM("stopStream", RpcType.TWO_WAY, Arrays.asList(UserRole.USER, UserRole.ADMIN)),
 
     // ==========================================
     // 2. CÁC LỆNH ĐẶC QUYỀN CHỈ DÀNH CHO ADMIN
