@@ -178,8 +178,8 @@ services:
       - "8554:8554/udp"
       - "8889:8889/tcp"
       - "8189:8189/udp"
-    # environment:
-      # - MTX_WEBRTCADDITIONALHOSTS=IP_PUBLIC_CỦA_SERVER
+    environment:
+      - MTX_WEBRTCADDITIONALHOSTS: ${VPS_IP_ADDRESS}
     networks:
       - smart_bin_network
 
