@@ -34,6 +34,8 @@ void init_servo() {
 }
 
 void set_servo_angle(int angle) {
+    angle += 10;
+    
     if (angle < 0) angle = 0;
     if (angle > SERVO_MAX_DEGREE) angle = SERVO_MAX_DEGREE;
 

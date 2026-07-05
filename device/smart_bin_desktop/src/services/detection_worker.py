@@ -11,6 +11,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from src.models.trash_model import TrashData
 from src.services.inference_protocols import InferenceModel, InferenceModelFactory, TFLiteModelFactory
 from src.utils.config import APP_CONFIG
+from src.services.stream_manager import RtspEncoder
 
 
 # Mapping model class → (material_code, display_name, bg_color).
@@ -108,6 +109,8 @@ class DetectionWorker(QThread):
 
         self._state = _DetectionState()
         self._last_state_log_at = 0.0
+        
+        self.stream_encoder = None
 
         # self.picam2 = Picamera2()
         # config = self.picam2.create_video_configuration({"size": (640, 640)})
@@ -133,17 +136,18 @@ class DetectionWorker(QThread):
         cfg = APP_CONFIG.detection
         
         while self._is_running:
-            if self._is_paused:
-                time.sleep(cfg.pause_sleep_seconds)
-                continue
-
-            # frame = self.picam2.capture_array()
+            
             ret, frame = self.cap.read()
+            if not ret:
+                self.logger.warning("Failed to read frame from camera")
+                time.sleep(cfg.exception_sleep_seconds)
+                continue
+            
+            encoder = self.stream_encoder
+            if encoder is not None:
+                encoder.push_frame(frame)
 
-            # Kiểm tra xem camera có trả về ảnh trống không
-            if frame is None or frame.size == 0:
-                self.logger.warning("Lỗi: Camera trả về frame rỗng!")
-                time.sleep(0.1)
+            if self._is_paused:
                 continue
 
             # --- Gate 1: hand detection ---
@@ -275,6 +279,8 @@ class DetectionWorker(QThread):
     def stop(self) -> None:
         """Gracefully stop the thread and release the camera."""
         self._is_running = False
+        self.stop_stream()
+         
         if self.cap is not None:
             self.cap.release()
             self.cap = None
@@ -386,3 +392,33 @@ class DetectionWorker(QThread):
         self.logger.info("Detection image saved: %s", image_file.name)
         return str(image_file)
     
+    # ------------------------------------------------------------------
+    # HLS Stream Controls
+    # ------------------------------------------------------------------
+
+    def start_stream(self, rtsp_url: str) -> bool:
+        """Khởi động bộ nén FFmpeg ngầm để bắt đầu Live Stream qua RTSP"""
+        if self.stream_encoder is not None:
+            return True
+            
+        try:
+            if self.cap is None or not self.cap.isOpened():
+                self.logger.error("Camera is not opened, cannot start RTSP stream.")
+                return False
+                
+            width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            self.stream_encoder = RtspEncoder(width=width, height=height, rtsp_url=rtsp_url, fps=15)
+            self.stream_encoder.start()
+            return True
+        except Exception as e:
+            self.logger.error("Failed to start RTSP Encoder: %s", e)
+            return False
+
+    def stop_stream(self) -> None:
+        """Dừng FFmpeg để giải phóng CPU"""
+        encoder = self.stream_encoder
+        if encoder is not None:
+            self.stream_encoder = None
+            encoder.stop()

@@ -292,4 +292,24 @@ public class DeviceController {
         var response = deviceService.provisionDevice(request, signature);
         return responseFactory.response(SuccessCode.OK, response);
     }
+
+    @PostMapping("/internal/{deviceMac}/rpc")
+    public ResponseEntity<ApiResponseFormat<Object>> executeInternalCommand(
+            @RequestBody RpcRequest request,
+            @PathVariable String deviceMac,
+            @RequestHeader("X-Internal-Secret") String internalSecret
+    ) {
+        var response = deviceService.executeInternalRpc(deviceMac, request, internalSecret);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
+
+    @GetMapping("/internal/verify-permission")
+    public ResponseEntity<ApiResponseFormat<Object>> verifyPermission(
+            @RequestParam(required = true) String deviceMac,
+            @RequestParam(required = true) String tenantId,
+            @RequestHeader("X-Internal-Secret") String internalSecret
+    ) {
+        var response = deviceService.verifyPermissionInternal(deviceMac, tenantId, internalSecret);
+        return responseFactory.response(SuccessCode.OK, response);
+    }
 }

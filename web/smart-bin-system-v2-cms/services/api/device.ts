@@ -45,5 +45,5 @@ export const deviceApi = {
       { keys: keys.join(',') },
       { cacheTTL: 60000 }
     );
-  }
+  },
 };

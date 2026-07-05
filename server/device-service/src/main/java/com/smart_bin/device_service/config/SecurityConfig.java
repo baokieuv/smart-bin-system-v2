@@ -32,6 +32,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/configs/public/**").permitAll()
                         .requestMatchers("/api/v1/devices/public/**").permitAll()
+                        .requestMatchers("/api/v1/devices/internal/**").permitAll()
                         .requestMatchers("/api/v1/things-board/**").permitAll()
                         .requestMatchers("/api/v1/devices/**").authenticated()
                         .anyRequest().authenticated()
@@ -74,7 +75,8 @@ public class SecurityConfig {
                         "https://cms.kvbhust.id.vn",
                         "http://localhost:3000",
                         "http://localhost:3001",
-                        "http://localhost:3002"
+                        "http://localhost:3002",
+                        "http://localhost"
                 )
         );
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));

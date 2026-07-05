@@ -23,7 +23,7 @@ public class MediaController {
     private final ResponseFactory responseFactory;
     private final MediaStorageService mediaStorageService;
 
-    @Value("${media.internal-secret}")
+    @Value("${media.internal-secret:SUPER_MEDIA_SECRET_INTERNAL_KEY}")
     private String internalSecret;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

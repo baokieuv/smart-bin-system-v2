@@ -64,8 +64,11 @@ public class DeviceService {
 
     private static final String CLAIM_CACHE_PREFIX = "claim:mac:";
 
-    @Value("${app.media-service.internal-secret:SUPER_SECRET_INTERNAL_KEY}")
-    private String internalSecret;
+    @Value("${app.media-service.internal-secret:SUPER_MEDIA_SECRET_INTERNAL_KEY}")
+    private String mediaSecret;
+
+    @Value("${app.device-service.internal-secret:SUPER_DEVICE_SECRET_INTERNAL_KEY}")
+    private String deviceSecret;
 
     @Value("${app.secret-key:DEFAULT_CLAIM_SECRET_KEY}")
     private String claimSecret;
@@ -451,7 +454,7 @@ public class DeviceService {
 
     public List<DeviceOperationResult> assignDevicesToUser(AssignDeviceToUserRequest request, String tenantId){
         try{
-            var response = iamServiceClient.verifyUserInTenant(internalSecret, tenantId, request.userId());
+            var response = iamServiceClient.verifyUserInTenant(mediaSecret, tenantId, request.userId());
             if (response == null || !response.get("data").asBoolean()) {
                 throw new ApiException(DeviceErrorCode.USER_NOT_FOUND_IN_TENANT);
             }
@@ -601,7 +604,7 @@ public class DeviceService {
         Device device = verifyDeviceSignatureAndMetadata(payload, signature, desktopVer, binVer, aiModelVer);
 
         JsonNode mediaResponse = mediaServiceClient.getInternalPresignedUrl(
-                internalSecret, device.getMac(), fileInfo.filename(), fileInfo.contentType()
+                mediaSecret, device.getMac(), fileInfo.filename(), fileInfo.contentType()
         );
 
         String objectPath = mediaResponse.get("data").get("objectName").asString();
@@ -642,6 +645,33 @@ public class DeviceService {
         Device device = getDeviceAndVerifyOwnership(deviceId, actorId, tenantId);
 
         return thingsBoardService.sendRpcCommand(device.getDeviceId(), rpcMethod.getMethodName(), request.params(), false);
+    }
+
+    public JsonNode executeInternalRpc(String deviceMac, RpcRequest request, String internalSecret) {
+        if (!this.deviceSecret.equals(internalSecret)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Yêu cầu RPC nội bộ không hợp lệ!");
+        }
+
+        RpcMethod rpcMethod = RpcMethod.fromMethodName(request.method());
+        Device device = repository.findByMacAndActiveTrue(deviceMac)
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        return thingsBoardService.sendRpcCommand(device.getDeviceId(), rpcMethod.getMethodName(), request.params(), false);
+    }
+
+    public DeviceDto verifyPermissionInternal(String deviceMac, String tenantId, String internalSecret) {
+        if (!this.deviceSecret.equals(internalSecret)) {
+            throw new ApiException(CoreErrorCode.FORBIDDEN_ACCESS, "Yêu cầu RPC nội bộ không hợp lệ!");
+        }
+
+        Device device = repository.findByMacAndActiveTrue(deviceMac)
+                .orElseThrow(() -> new ApiException(DeviceErrorCode.DEVICE_NOT_FOUND));
+
+        if (!Objects.equals(tenantId, device.getTenantId())) {
+            throw new ApiException(DeviceErrorCode.DEVICE_FORBIDDEN_ACCESS);
+        }
+
+        return mapper.toDto(device);
     }
 
     public Map<String, Double> getBulkTelemetries(String keycloakId, String tenantId, String permissions, List<String> keys) {

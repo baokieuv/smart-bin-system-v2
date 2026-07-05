@@ -17,6 +17,7 @@ interface DevicesTableProps {
   onOpenDetails?: (device: DeviceDto) => void;
   onOpenConfig: (device: DeviceDto) => void;
   getLocationText: (lat?: number, lng?: number) => string;
+  onOpenLiveCamera?: (device: DeviceDto) => void;
   t: (key: TranslationKey) => string;
   page: number;
   totalPages: number;
@@ -39,6 +40,7 @@ export default function DevicesTable({
   onOpenDetails,
   onOpenConfig,
   getLocationText,
+  onOpenLiveCamera,
   t,
   page,
   totalPages,
@@ -92,6 +94,11 @@ export default function DevicesTable({
                   {onOpenDetails && (
                     <button type="button" onClick={() => onOpenDetails(device)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
                       {t("detailsBtn")}
+                    </button>
+                  )}
+                  {onOpenLiveCamera && (
+                    <button type="button" onClick={() => onOpenLiveCamera(device)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                      {t("liveCameraBtn")}
                     </button>
                   )}
                   {canConfigureFirmware ? (

@@ -13,10 +13,13 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+import threading
 from typing import Any
+from urllib.parse import urlparse
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal, pyqtSlot
- 
+import requests
+
 from src.models.device_config_dto import DeviceConfigDto
 from src.models.trash_model import TrashData
 from src.repository.actuator_repository import ActuatorRepository
@@ -80,7 +83,13 @@ class MainViewModel(QObject):
         # --- Repositories & services ---
         self.actuator_client = ActuatorRepository()
         self.device_client = DeviceClient(actuator_client=self.actuator_client)
-        self.thingsboard_client = ThingsboardClient(handler=self._rpc_handler, logger=self.logger)
+        self.thingsboard_client = ThingsboardClient(
+            # port=80, 
+            # tls_enabled=False, 
+            connect_timeout=15,
+            handler=self._rpc_handler, 
+            logger=self.logger
+        )
         self.device_config_store = DeviceConfigStore(APP_CONFIG.paths.device_config_cache_path, self.logger)
         self.metadata_store = DetectionMetadataStore(APP_CONFIG.paths.detection_metadata_dir, self.logger)
         self.upload_manager = DetectionUploadManager(self.metadata_store, self.device_client, self.logger)
@@ -177,6 +186,7 @@ class MainViewModel(QObject):
 
     def shutdown(self) -> None:
         """Dừng tất cả timer, đóng serial, join worker thread."""
+        self.stop_video_stream()
         self.worker.pause_detection()
         for timer in self._all_timers():
             timer.stop()
@@ -381,6 +391,8 @@ class MainViewModel(QObject):
         payload: dict = {
             "timestamp": now_ms,
             "total_waste_count": self._disposal_count_total,
+            "weight": 100,
+            "pin": 50
         }
  
         # Thêm mức đầy từng thùng nếu có dữ liệu
@@ -444,6 +456,8 @@ class MainViewModel(QObject):
             APP_CONFIG.rpc_method.close_lid: self.actuator_client.close_lid,
             APP_CONFIG.rpc_method.block_lid: self.actuator_client.block_lid,
             APP_CONFIG.rpc_method.unblock_lid: self.actuator_client.unblock_lid,
+            APP_CONFIG.rpc_method.start_stream: self.start_video_stream,
+            APP_CONFIG.rpc_method.stop_stream: self.stop_video_stream,
         }
  
         if method in rpc_dispatch:
@@ -462,6 +476,56 @@ class MainViewModel(QObject):
         self.logger.warning("Unknown RPC method: %s", method)
         return {"status": "error", "message": f"Unknown method: {method}"}
     
+    # ------------------------------------------------------------------
+    # Stream RPC Handlers
+    # ------------------------------------------------------------------
+
+    def start_video_stream(self) -> tuple[bool, str]:
+        self.logger.info("Starting video stream from RPC...")
+        try:
+            # 1. Khởi tạo RTSP URL dựa vào IP của Backend Server
+            base_url = APP_CONFIG.api.api_base_url
+            parsed_url = urlparse(base_url)
+            server_host = parsed_url.hostname
+            
+            mac_addr = self.get_device_mac_address()
+            stream_name = mac_addr.replace(":", "-") # Định dạng map với MediaMTX và Backend
+            
+            rtsp_url = f"rtsp://64.177.119.217:8554/{stream_name}"
+
+            # 2. Bật FFmpeg đẩy luồng
+            ok = self.worker.start_stream(rtsp_url)
+            if not ok:
+                return False, "Failed to start FFmpeg encoder"
+
+            # 3. Thông báo cho Spring Boot biết luồng đã sẵn sàng (Async để không block RPC)
+            def notify_ready():
+                api_ready_url = f"{base_url}/stream/ready"
+                headers = {
+                    "X-Device-Mac": mac_addr
+                }
+             
+                try:
+                    requests.post(api_ready_url, headers=headers, timeout=5)
+                    self.logger.info("Notified Spring Boot that RTSP stream is ready.")
+                except Exception as e:
+                    self.logger.warning("Failed to notify server stream status: %s", e)
+            
+            threading.Thread(target=notify_ready, daemon=True).start()
+
+            return True, ""
+        except Exception as e:
+            self.logger.error("Error starting video stream: %s", e)
+            return False, str(e)
+        
+    def stop_video_stream(self) -> tuple[bool, str]:
+        self.logger.info("Stopping video stream from RPC...")
+        try:
+            self.worker.stop_stream()
+            return True, ""
+        except Exception as e:
+            self.logger.error("Error stopping video stream: %s", e)
+            return False, str(e)
 
     # ------------------------------------------------------------------
     # Internal helpers

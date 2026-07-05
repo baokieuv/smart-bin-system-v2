@@ -184,12 +184,11 @@ static void handle_cmd_report(void) {
     TrashBinDistances_t dist = ultrasonic_read_all_bins();
 
     uint8_t fill_level[4] = {0};
-    float depth = system_config.bin_depth_cm;
 
-    if (dist.bin1_cm > 0) fill_level[0] = (uint8_t)(((depth - dist.bin1_cm) / depth) * 100);
-    if (dist.bin2_cm > 0) fill_level[1] = (uint8_t)(((depth - dist.bin2_cm) / depth) * 100);
-    if (dist.bin3_cm > 0) fill_level[2] = (uint8_t)(((depth - dist.bin3_cm) / depth) * 100);
-    if (dist.bin4_cm > 0) fill_level[3] = (uint8_t)(((depth - dist.bin4_cm) / depth) * 100);
+    if (dist.bin1_cm > 0) fill_level[0] = dist.bin1_cm;
+    if (dist.bin2_cm > 0) fill_level[1] = dist.bin2_cm;
+    if (dist.bin3_cm > 0) fill_level[2] = dist.bin3_cm;
+    if (dist.bin4_cm > 0) fill_level[3] = dist.bin4_cm;
 
     for(int i = 0; i < 4; i++) {
         if (fill_level[i] > 100) fill_level[i] = 100;

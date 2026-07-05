@@ -34,7 +34,7 @@ class ThingsboardClient:
             self.host = host
         else:
             parsed = urlparse(APP_CONFIG.api.thingsboard_base_url)
-            self.host = parsed.hostname or "localhost:8082"
+            self.host = parsed.hostname or "thingsboard.localhost"
 
         self.port = port
         self.path = path

@@ -550,6 +550,9 @@ const enTranslations = {
   uploading: "Uploading...",
   currentWasteWeight: "Waste Weight",
   totalWasteCount: "Total Waste Count",
+  connectingToDevice: "Connecting to device...",
+  waitingForStream: "Waiting for data stream...",
+  liveCameraBtn: "Live Camera",
 } as const;
 
 export type TranslationKey = keyof typeof enTranslations;
@@ -1095,6 +1098,9 @@ const translations: Record<LanguageCode, Record<TranslationKey, string>> = {
     totalWasteCount: "Tổng số lượng rác",
     aiModelFirmwareLabel: "Firmware mô hình AI",
     currentAiModelTarget: "Mục tiêu mô hình AI hiện tại:",
+    connectingToDevice: "Đang kết nối với thiết bị...",
+    waitingForStream: "Đang chờ dữ liệu từ thiết bị...",
+    liveCameraBtn: "Xem camera trực tiếp",
   },
 };
 

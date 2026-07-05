@@ -168,6 +168,20 @@ services:
       - ./kafka_data:/tmp/kafka-logs
     networks:
       - smart_bin_network
+    
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    restart: unless-stopped
+    ports:
+      - "8554:8554/tcp"
+      - "8554:8554/udp"
+      - "8889:8889/tcp"
+      - "8189:8189/udp"
+    # environment:
+      # - MTX_WEBRTCADDITIONALHOSTS=IP_PUBLIC_CỦA_SERVER
+    networks:
+      - smart_bin_network
 
   iam-service:
     image: baokieu/iam-service:latest
@@ -253,22 +267,22 @@ services:
     networks:
       - smart_bin_network
 
-  # frontend:
-  #   image: baokieu/smart-bin-fe:latest
-  #   container_name: nextjs_frontend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - NODE_ENV=production
-  #     - NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn
-  #     - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
-  #     - NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
-  #     - NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
-  #   depends_on:
-  #     - iam-service
-  #   networks:
-  #     - smart_bin_network
+  frontend:
+    image: baokieu/smart-bin-fe:latest
+    container_name: nextjs_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+      - NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+      - NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
+    depends_on:
+      - iam-service
+    networks:
+      - smart_bin_network
   cms:
     image: baokieu/smart-bin-cms:latest
     container_name: nextjs_cms

@@ -117,8 +117,8 @@ class DeviceClient:
         actuator_client: ActuatorRepository | None = None,
     ) -> None:
         self.logger = logging.getLogger("smart_bin.device_repository")
-        self._base_url = APP_CONFIG.api.device_base_url
-        self._config_base_url = APP_CONFIG.api.config_base_url
+        self._base_url = f"{APP_CONFIG.api.api_base_url}/devices/public"
+        self._config_base_url = f"{APP_CONFIG.api.api_base_url}/configs"
         self._timeout = APP_CONFIG.api.request_timeout_seconds
  
         self._key_manager = DeviceKeyManager(APP_CONFIG.paths.devices_key_dir, self.logger)
@@ -137,7 +137,7 @@ class DeviceClient:
         # mac_num = hex(uuid.getnode()).replace('0x', '').zfill(12).upper()
         # return ':'.join(mac_num[i: i + 2] for i in range(0, 11, 2))
        
-        return "5A:F7:12:EE:C4:8F"
+        return "6C:BE:C6:D7:2B:7A"
 
     def get_claim_code(self) -> str:
         """Trả về mã claim ngắn (6 ký tự) hiển thị trên màn hình device-link."""

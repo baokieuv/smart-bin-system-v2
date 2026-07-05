@@ -2,6 +2,7 @@ package com.smart_bin.media_service.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -28,7 +29,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/v1/media/internal/**").permitAll()
+                        .requestMatchers( HttpMethod.POST,"/api/v1/stream/ready").permitAll()
                         .requestMatchers("/api/v1/media/**").authenticated()
+                        .requestMatchers("/api/v1/stream/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
@@ -62,7 +65,8 @@ public class SecurityConfig {
                         "https://cms.kvbhust.id.vn",
                         "http://localhost:3000",
                         "http://localhost:3001",
-                        "http://localhost:3002"
+                        "http://localhost:3002",
+                        "http://localhost"
                 )
         );
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
