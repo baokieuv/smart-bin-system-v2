@@ -61,6 +61,10 @@ media:
 device:
   internal-secret: ${DEVICE_INTERNAL_SECRET:SUPER_DEVICE_SECRET_INTERNAL_KEY}
 
+app:
+  device-service:
+    url: ${DEVICE_SERVICE_URL:http://localhost:2108}
+
 management:
   endpoints:
     web:

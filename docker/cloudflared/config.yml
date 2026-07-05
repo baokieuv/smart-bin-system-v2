@@ -26,4 +26,7 @@ ingress:
   - hostname: s3.kvbhust.id.vn
     service: http://nginx:80
 
+  - hostname: webrtc.kvbhust.id.vn
+    service: http://nginx:80
+
   - service: http_status:404
