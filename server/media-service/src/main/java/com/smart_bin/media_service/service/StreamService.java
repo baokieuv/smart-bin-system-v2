@@ -1,25 +1,13 @@
 package com.smart_bin.media_service.service;
 
-import com.smart_bin.core.exception.ApiException;
-import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.media_service.config.DeviceServiceClient;
 import com.smart_bin.media_service.dto.request.RpcRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.util.FileSystemUtils;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,119 +19,121 @@ public class StreamService {
 
     private final DeviceServiceClient deviceClient;
 
+    // Quản lý danh sách người dùng đang xem của mỗi thiết bị (Key: deviceMac, Value: Set of userIds)
     private final Map<String, Set<String>> activeStreams = new ConcurrentHashMap<>();
 
+    // Theo dõi heartbeat của người dùng để đóng luồng nếu họ bị ngắt kết nối đột ngột
     private final Map<String, Map<String, Long>> heartbeatTracker = new ConcurrentHashMap<>();
 
-    private static final long TIMEOUT_THRESHOLD_MS = 15000;
+    // Danh sách các thiết bị ĐÃ XÁC NHẬN khởi tạo luồng thành công
+    private final Set<String> streamingDevices = ConcurrentHashMap.newKeySet();
 
-    @Value("${stream.storage.path:D:/tmp/server/stream-data}")
-    private String baseStreamPath;
+    private static final long TIMEOUT_THRESHOLD_MS = 15000;
 
     @Value("${device.internal-secret:SUPER_DEVICE_SECRET_INTERNAL_KEY}")
     private String deviceSecret;
 
-    public void startViewingStream(String deviceMac, String userId, String tenantId) {
+    @Value("${webrtc.server.url:http://localhost:8889}")
+    private String webrtcServerUrl;
+
+    /**
+     * Client gọi để lấy URL WebRTC và bắt đầu phiên xem.
+     */
+    public String startViewingStream(String deviceMac, String userId, String tenantId) {
+        // 1. Kiểm tra quyền của người dùng với thiết bị
         deviceClient.verifyPermission(deviceSecret, deviceMac, tenantId);
 
+        // 2. Xử lý logic tạo luồng
         activeStreams.compute(deviceMac, (mac, viewers) -> {
             if (viewers == null || viewers.isEmpty()) {
                 viewers = ConcurrentHashMap.newKeySet();
+                log.info("First viewer ({}). Sending RPC to device {} to START stream", userId, mac);
+                // Gửi lệnh RPC yêu cầu thiết bị mở luồng camera
                 deviceClient.deviceRPC(deviceSecret, mac, new RpcRequest("startStream", null));
+            } else {
+                log.info("Stream already requested for device {}. Adding viewer ({}).", mac, userId);
             }
             viewers.add(userId);
             return viewers;
         });
 
-        // Mark the stream start time
+        // 3. Đánh dấu heartbeat cho User
         updateStreamHeartbeat(deviceMac, userId);
+
+        // 4. Trả về URL Signaling cho WebRTC
+        return getWebRtcSignalingAddress(deviceMac);
     }
 
-    public void stopViewingStream(String deviceMac, String userId, String tenantId) {
-        // Verify permission (only for API calls with tenantId)
-        deviceClient.verifyPermission(deviceSecret, deviceMac, tenantId);
+    /**
+     * Sinh URL Signaling cho WebRTC dựa trên MAC thiết bị
+     */
+    private String getWebRtcSignalingAddress(String deviceMac) {
+        String streamName = deviceMac.replaceAll(":", "-");
+        return String.format("%s/%s/whep", webrtcServerUrl, streamName);
+    }
 
-        // Call the shared processing logic
+    /**
+     * API dành cho Thiết bị gọi lên khi đã đẩy luồng thành công
+     */
+    public void onDeviceStreamStarted(String deviceMac) {
+        streamingDevices.add(deviceMac);
+        log.info("Device {} confirmed stream is LIVE and pushing to Media Server.", deviceMac);
+    }
+
+    /**
+     * Kiểm tra xem thiết bị đã thực sự đẩy luồng lên Media Server chưa
+     */
+    public boolean isDeviceStreamReady(String deviceMac) {
+        return streamingDevices.contains(deviceMac);
+    }
+
+    /**
+     * Client chủ động gọi khi dừng xem luồng
+     */
+    public void stopViewingStream(String deviceMac, String userId, String tenantId) {
+        deviceClient.verifyPermission(deviceSecret, deviceMac, tenantId);
         internalStopViewingStream(deviceMac, userId);
     }
 
     /**
-     * Internal method used to handle stream stopping logic without verifyPermission.
+     * Cập nhật thời gian sống (heartbeat) của user đang xem
+     */
+    public void updateStreamHeartbeat(String deviceMac, String userId) {
+        heartbeatTracker.computeIfAbsent(deviceMac, k -> new ConcurrentHashMap<>())
+                .put(userId, System.currentTimeMillis());
+    }
+
+    /**
+     * Xử lý logic nội bộ để dừng luồng và dọn dẹp biến trên RAM
      */
     private void internalStopViewingStream(String deviceMac, String userId) {
         activeStreams.computeIfPresent(deviceMac, (mac, viewers) -> {
             viewers.remove(userId);
 
             if (viewers.isEmpty()) {
+                log.info("No viewers left for device {}. Sending RPC to STOP stream", mac);
+                // Không còn ai xem -> Bắn RPC yêu cầu thiết bị tắt camera
                 deviceClient.deviceRPC(deviceSecret, mac, new RpcRequest("stopStream", null));
 
+                // Dọn dẹp dữ liệu bộ nhớ
                 heartbeatTracker.remove(mac);
-                clearStreamFiles(mac);
+                streamingDevices.remove(mac);
 
-                return null; // Return null so the Map automatically removes this Key (deviceMac)
+                return null; // Tự động xóa key `deviceMac` khỏi Map
             }
             return viewers;
         });
 
-        // Remove User from heartbeat tracker
+        // Xóa User khỏi heartbeat tracker
         Map<String, Long> userHeartbeats = heartbeatTracker.get(deviceMac);
         if (userHeartbeats != null) {
             userHeartbeats.remove(userId);
         }
     }
 
-    public void updateStreamHeartbeat(String deviceMac, String userId) {
-        heartbeatTracker.computeIfAbsent(deviceMac, k -> new ConcurrentHashMap<>())
-                .put(userId, System.currentTimeMillis());
-    }
-
-    public Resource getVideoFile(String deviceMac, String fileName) throws Exception {
-        // Find file in directory: /tmp/stream-data/{deviceId}/{fileName}
-        String sanitizedDeviceMac = deviceMac.replaceAll(":", "-");
-        Path filePath = Paths.get(baseStreamPath, sanitizedDeviceMac, fileName).normalize();
-        Resource resource = new UrlResource(filePath.toUri());
-
-        if (resource.exists() && resource.isReadable()) {
-            return resource;
-        } else {
-            throw new FileNotFoundException("Stream file not found: " + fileName);
-        }
-    }
-
-    public void saveStreamFile(String deviceMac, MultipartFile file, String fileName){
-        String sanitizedDeviceMac = deviceMac.replaceAll(":", "-");
-        Path deviceDir = Paths.get(baseStreamPath, sanitizedDeviceMac).normalize();
-
-        try {
-            // Create directory if it does not exist
-            if (!Files.exists(deviceDir)) {
-                Files.createDirectories(deviceDir);
-            }
-
-            Path targetPath = deviceDir.resolve(fileName).normalize();
-
-            // Overwrite the file
-            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new ApiException(CoreErrorCode.BAD_REQUEST, "Cannot save stream file: " + e.getMessage());
-        }
-    }
-
-    public void clearStreamFiles(String deviceMac) {
-        try {
-            String sanitizedDeviceMac = deviceMac.replaceAll(":", "-");
-            Path deviceDir = Paths.get(baseStreamPath, sanitizedDeviceMac).normalize();
-            if (Files.exists(deviceDir)) {
-                // Delete the entire directory and the .ts, .m3u8 files inside
-                FileSystemUtils.deleteRecursively(deviceDir);
-                log.info("Cleaned up stream data for device: {}", deviceMac);
-            }
-        } catch (IOException e) {
-            log.error("Error while cleaning up stream files for device {}: {}", deviceMac, e.getMessage());
-            throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Cannot clean up stream files: " + e.getMessage());
-        }
-    }
-
+    /**
+     * Quét định kỳ 5s/lần để đóng các luồng mà user bị mất kết nối (rớt mạng/đóng tab đột ngột)
+     */
     @Scheduled(fixedRate = 5000)
     public void scanForStreamTimeouts() {
         long now = System.currentTimeMillis();
@@ -152,7 +142,6 @@ public class StreamService {
             users.forEach((userId, lastBeat) -> {
                 if (now - lastBeat > TIMEOUT_THRESHOLD_MS) {
                     log.warn("[TIMEOUT] Detected User {} disconnected / closed tab unexpectedly!", userId);
-                    // Call internal method to bypass verifyPermission and handle Camera shutdown logic
                     internalStopViewingStream(deviceMac, userId);
                 }
             });

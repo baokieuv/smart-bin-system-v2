@@ -1,9 +1,9 @@
 server:
   port: ${MEDIA_SERVICE_PORT:2109}
 
-stream:
-  storage:
-    path: ${STREAM_STORAGE:D:/tmp/server/stream-data}
+webrtc:
+  server:
+    url: "http://webrtc.localhost"
 
 spring:
   application:

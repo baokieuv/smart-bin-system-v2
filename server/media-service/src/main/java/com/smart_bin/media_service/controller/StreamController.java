@@ -1,24 +1,20 @@
 package com.smart_bin.media_service.controller;
 
-
 import com.smart_bin.core.dto.ApiResponseFormat;
-import com.smart_bin.core.exception.CoreErrorCode;
 import com.smart_bin.core.utils.ResponseFactory;
 import com.smart_bin.media_service.common.SuccessCode;
-import org.springframework.core.io.Resource;
 import com.smart_bin.media_service.service.StreamService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/stream")
 @RequiredArgsConstructor
 public class StreamController {
+
     private final ResponseFactory responseFactory;
     private final StreamService service;
 
@@ -29,8 +25,12 @@ public class StreamController {
     {
         String userId = jwt.getSubject();
         String tenantId = jwt.getClaimAsString("tenant_id");
-        service.startViewingStream(deviceMac, userId, tenantId);
-        return responseFactory.response(SuccessCode.OK,"Đã cấp quyền xem HLS và gọi thiết bị");
+
+        // Gọi service xử lý RPC và lấy URL Signaling của WebRTC
+        String webrtcSignalingUrl = service.startViewingStream(deviceMac, userId, tenantId);
+
+        // Trả URL về cho Client để Client thực hiện kết nối WebRTC
+        return responseFactory.response(SuccessCode.OK, webrtcSignalingUrl);
     }
 
     @PostMapping("/stop")
@@ -40,8 +40,10 @@ public class StreamController {
     ) {
         String userId = jwt.getSubject();
         String tenantId = jwt.getClaimAsString("tenant_id");
+
         service.stopViewingStream(deviceMac, userId, tenantId);
-        return responseFactory.response(SuccessCode.OK, "Đã dừng xem HLS");
+
+        return responseFactory.response(SuccessCode.OK, "Đã dừng xem luồng");
     }
 
     @PostMapping("/heartbeat")
@@ -54,38 +56,27 @@ public class StreamController {
         return responseFactory.response(SuccessCode.OK, "Heartbeat OK");
     }
 
-    @GetMapping("/live/{deviceMac}/{fileName}")
-    public ResponseEntity<Resource> getLiveStreamFile(
-            @PathVariable String deviceMac,
-            @PathVariable String fileName)
+    @GetMapping("/status")
+    public ResponseEntity<ApiResponseFormat<Object>> checkStreamStatus(
+            @RequestParam String deviceMac)
     {
-        try {
-            Resource resource = service.getVideoFile(deviceMac, fileName);
-
-            String contentType = fileName.endsWith(".m3u8")
-                    ? "application/vnd.apple.mpegurl"
-                    : "video/MP2T";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.add(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate");
-            headers.add(HttpHeaders.CONTENT_TYPE, contentType);
-
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .body(resource);
-
-        } catch (Exception e) {
-            return ResponseEntity.notFound().build();
-        }
+        // Web Client gọi định kỳ API này để kiểm tra xem thiết bị đã mở camera thành công chưa
+        boolean isReady = service.isDeviceStreamReady(deviceMac);
+        return responseFactory.response(SuccessCode.OK, isReady);
     }
 
-    @PostMapping("/public/{deviceMac}/upload")
-    public ResponseEntity<ApiResponseFormat<Object>> uploadStreamFile(
-            @PathVariable String deviceMac,
-            @RequestParam("file") MultipartFile file,
-            @RequestParam("fileName") String fileName)
+
+    // =========================================================================
+    // API DÀNH CHO THIẾT BỊ EDGE (CAMERA/RASPBERRY PI)
+    // =========================================================================
+
+    @PostMapping("/ready")
+    public ResponseEntity<ApiResponseFormat<Object>> confirmStreamReady(
+            @RequestHeader("X-Device-Mac") String deviceMac)
+    // Có thể bổ sung @RequestHeader("X-Device-Secret") ở đây để tăng cường bảo mật
     {
-        service.saveStreamFile(deviceMac, file, fileName);
-        return responseFactory.response(SuccessCode.OK, "Đã lưu file: " + fileName);
+        // Thiết bị gọi API này khi tiến trình đẩy luồng (VD: FFmpeg) đã chạy thành công
+        service.onDeviceStreamStarted(deviceMac);
+        return responseFactory.response(SuccessCode.OK, "Thiết bị báo cáo luồng đã sẵn sàng");
     }
 }

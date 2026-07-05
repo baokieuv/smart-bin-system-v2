@@ -12,6 +12,7 @@ from src.models.trash_model import TrashData
 from src.services.inference_protocols import InferenceModel, InferenceModelFactory, YoloModelFactory
 from src.utils.config import APP_CONFIG
 from src.services.hls_manager import HlsEncoder
+from src.services.stream_manager import RtspEncoder
 
 
 # Mapping model class → (material_code, display_name, bg_color).
@@ -110,7 +111,7 @@ class DetectionWorker(QThread):
         self._state = _DetectionState()
         self._last_state_log_at = 0.0
         
-        self.hls_encoder = None
+        self.stream_encoder = None
 
     # ------------------------------------------------------------------
     # QThread entry point
@@ -129,22 +130,19 @@ class DetectionWorker(QThread):
     def _run_loop(self) -> None:
         cfg = APP_CONFIG.detection
         while self._is_running:
-            if self._is_paused:
-                time.sleep(cfg.pause_sleep_seconds)
-                continue
-
+            
             ret, frame = self.cap.read()
             if not ret:
                 self.logger.warning("Failed to read frame from camera")
+                time.sleep(cfg.exception_sleep_seconds)
                 continue
             
-            # Đọc self.hls_encoder vào biến local 1 lần duy nhất (tránh
-            # check-then-act race: RPC/MQTT thread có thể set self.hls_encoder
-            # về None đúng lúc giữa dòng check và dòng gọi push_frame(), gây
-            # AttributeError làm crash luôn cả detection thread).
-            encoder = self.hls_encoder
+            encoder = self.stream_encoder
             if encoder is not None:
                 encoder.push_frame(frame)
+
+            if self._is_paused:
+                continue
 
             # --- Gate 1: hand detection ---
             try:
@@ -366,31 +364,29 @@ class DetectionWorker(QThread):
     # HLS Stream Controls
     # ------------------------------------------------------------------
 
-    def start_stream(self) -> bool:
-        """Khởi động bộ nén FFmpeg ngầm để bắt đầu Live Stream"""
-        if self.hls_encoder is not None:
+    def start_stream(self, rtsp_url: str) -> bool:
+        """Khởi động bộ nén FFmpeg ngầm để bắt đầu Live Stream qua RTSP"""
+        if self.stream_encoder is not None:
             return True
             
         try:
             if self.cap is None or not self.cap.isOpened():
-                self.logger.error("Camera is not opened, cannot start HLS stream.")
+                self.logger.error("Camera is not opened, cannot start RTSP stream.")
                 return False
                 
             width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             
-            self.hls_encoder = HlsEncoder(width=width, height=height, fps=15)
-            self.hls_encoder.start()
-            self.logger.info("HLS Encoder started via RPC.")
+            self.stream_encoder = RtspEncoder(width=width, height=height, rtsp_url=rtsp_url, fps=15)
+            self.stream_encoder.start()
             return True
         except Exception as e:
-            self.logger.error("Failed to start HLS Encoder: %s", e)
+            self.logger.error("Failed to start RTSP Encoder: %s", e)
             return False
 
     def stop_stream(self) -> None:
         """Dừng FFmpeg để giải phóng CPU"""
-        encoder = self.hls_encoder
+        encoder = self.stream_encoder
         if encoder is not None:
-            self.hls_encoder = None
+            self.stream_encoder = None
             encoder.stop()
-            self.logger.info("HLS Encoder stopped via RPC.")

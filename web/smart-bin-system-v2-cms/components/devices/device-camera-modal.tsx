@@ -26,6 +26,26 @@ export default function DeviceCameraModal({
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const [initError, setInitError] = useState<string | null>(null);
+  const [signalingUrl, setSignalingUrl] = useState<string | null>(null);
+
+  const extractSignalingUrl = (data: unknown): string | null => {
+    if (typeof data === "string") {
+      return data;
+    }
+
+    if (data && typeof data === "object") {
+      const record = data as Record<string, unknown>;
+
+      for (const key of ["signalingUrl", "webrtcSignalingUrl", "url", "endpoint"]) {
+        const value = record[key];
+        if (typeof value === "string" && value.length > 0) {
+          return value;
+        }
+      }
+    }
+
+    return null;
+  };
 
   useEffect(() => {
     if (!isOpen || !device) return;
@@ -33,33 +53,34 @@ export default function DeviceCameraModal({
     let cancelled = false;
 
     setInitError(null);
+    setSignalingUrl(null);
 
-    const startStream = async (): Promise<boolean> => {
+    const startStream = async (): Promise<string | null> => {
       try {
         const response = await mediaApi.startStream(device.mac);
-        // const response = await fetch(
-        //   `${apiUrl}/api/v1/stream/start?deviceId=${device.id}&userId=${userId}`,
-        //   {
-        //     method: "POST",
-        //     headers: {
-        //       Authorization: `Bearer ${token}`,
-        //     },
-        //   }
-        // );
 
         if (!response.success) {
           if (!cancelled) {
             setInitError("Không thể yêu cầu hệ thống bật camera.");
           }
-          return false;
+          return null;
         }
 
-        return true;
+        const url = extractSignalingUrl(response.data);
+
+        if (!url) {
+          if (!cancelled) {
+            setInitError("Server không trả về signaling URL cho WebRTC.");
+          }
+          return null;
+        }
+
+        return url;
       } catch {
         if (!cancelled) {
           setInitError("Lỗi kết nối tới máy chủ streaming.");
         }
-        return false;
+        return null;
       }
     };
 
@@ -72,11 +93,13 @@ export default function DeviceCameraModal({
     };
 
     const initialize = async () => {
-      const success = await startStream();
+      const url = await startStream();
 
-      if (!success || cancelled) {
+      if (!url || cancelled) {
         return;
       }
+
+      setSignalingUrl(url);
 
       heartbeatIntervalRef.current = setInterval(sendHeartbeat, 5000);
     };
@@ -112,18 +135,22 @@ export default function DeviceCameraModal({
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-600">
             {initError}
           </div>
-        ) : (
+        ) : signalingUrl ? (
           <div className="aspect-video overflow-hidden rounded-xl border border-slate-200 bg-black">
             <LiveStreamPlayer
-              deviceMac={device.mac}
+              signalingUrl={signalingUrl}
             />
+          </div>
+        ) : (
+          <div className="flex aspect-video items-center justify-center rounded-xl border border-slate-200 bg-black text-sm text-slate-300">
+            Đang khởi tạo WebRTC...
           </div>
         )}
 
         <div className="flex items-center justify-between border-t border-slate-200 pt-4">
           <p className="text-xs text-slate-500">
-            Luồng HLS có thể trễ từ 3–8 giây do quá trình mã hóa và truyền tải
-            video.
+            Luồng WebRTC có độ trễ thấp hơn HLS và được khởi tạo qua signaling
+            URL do server trả về.
           </p>
 
           <button

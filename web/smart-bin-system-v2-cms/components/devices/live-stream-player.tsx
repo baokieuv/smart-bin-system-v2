@@ -1,330 +1,304 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Hls from "hls.js";
 import { useLanguage } from "@/lib/language";
 
 interface LiveStreamPlayerProps {
-  deviceMac: string;
+  signalingUrl: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9999/api/v1";
-const MIN_BUFFERED_SEGMENTS = 3;
-const STREAM_READY_RETRY_MS = 1500;
-const STREAM_READY_PROBE_TIMEOUT_MS = 1500;
+const SIGNALING_REQUEST_TIMEOUT_MS = 10000;
+const SIGNALING_RETRY_DELAY_MS = 1500;
 
-type FragmentLike = {
-  relurl?: string;
-  url?: string;
+type SignalingResponse = {
+  type?: RTCSdpType;
+  sdp?: string;
+  answer?: string;
+  data?: unknown;
+  message?: string;
 };
 
-const getFragmentFileName = (fragment?: FragmentLike | null) => {
-  if (!fragment) return null;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
 
-  const rawUrl = fragment.relurl || fragment.url;
-  if (!rawUrl) return null;
-
-  const normalizedUrl = rawUrl.startsWith("http") ? rawUrl : `${API_BASE_URL}/${rawUrl.replace(/^\/+/, "")}`;
-
-  try {
-    const parsedUrl = new URL(normalizedUrl);
-    const fileName = parsedUrl.pathname.split("/").filter(Boolean).pop();
-
-    return fileName ? decodeURIComponent(fileName) : null;
-  } catch {
-    const cleanPath = rawUrl.split("?")[0].split("#")[0];
-    const fileName = cleanPath.split("/").filter(Boolean).pop();
-
-    return fileName ? decodeURIComponent(fileName) : null;
+const extractSdpAnswer = (payload: unknown): RTCSessionDescriptionInit | null => {
+  if (typeof payload === "string") {
+    return { type: "answer", sdp: payload };
   }
+
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const nestedPayload = payload.data;
+  if (typeof nestedPayload === "string") {
+    return { type: "answer", sdp: nestedPayload };
+  }
+
+  if (isRecord(nestedPayload)) {
+    const nestedSdp = nestedPayload.sdp;
+    const nestedAnswer = nestedPayload.answer;
+    const nestedType = nestedPayload.type;
+
+    if (typeof nestedSdp === "string") {
+      return {
+        type: typeof nestedType === "string" ? (nestedType as RTCSdpType) : "answer",
+        sdp: nestedSdp,
+      };
+    }
+
+    if (typeof nestedAnswer === "string") {
+      return { type: "answer", sdp: nestedAnswer };
+    }
+  }
+
+  const sdp = payload.sdp;
+  const answer = payload.answer;
+  const type = payload.type;
+
+  if (typeof sdp === "string") {
+    return {
+      type: typeof type === "string" ? (type as RTCSdpType) : "answer",
+      sdp,
+    };
+  }
+
+  if (typeof answer === "string") {
+    return { type: "answer", sdp: answer };
+  }
+
+  return null;
 };
 
 export default function LiveStreamPlayer({
-  deviceMac,
+  signalingUrl,
 }: LiveStreamPlayerProps) {
   const { t } = useLanguage();
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const hlsRef = useRef<Hls | null>(null);
-  const bufferedFragmentsRef = useRef<Set<string>>(new Set());
-  const consumedFragmentsRef = useRef<Set<string>>(new Set());
-  const currentFragmentRef = useRef<string | null>(null);
-  const playbackStartedRef = useRef(false);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(true);
 
   useEffect(() => {
     const video = videoRef.current;
-    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
-    let isPollingManifest = false;
-    let cleanupNativePlayback: (() => void) | null = null;
 
     if (!video) return;
-
-    const createStreamUrl = () =>
-      `${API_BASE_URL}/stream/live/${deviceMac}/output.m3u8?ts=${Date.now()}`;
 
     const getAccessToken = () =>
       typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
-    const destroyHls = () => {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-    };
-
-    const resetPlaybackState = () => {
-      bufferedFragmentsRef.current = new Set();
-      consumedFragmentsRef.current = new Set();
-      currentFragmentRef.current = null;
-      playbackStartedRef.current = false;
-    };
-
-    const deleteFragmentLocally = (fragment?: FragmentLike | null) => {
-      const fileName = getFragmentFileName(fragment);
-
-      if (!fileName || consumedFragmentsRef.current.has(fileName)) {
-        return;
-      }
-
-      consumedFragmentsRef.current.add(fileName);
-      bufferedFragmentsRef.current.delete(fileName);
-    };
-
-    const maybeStartPlayback = async () => {
-      if (!video || playbackStartedRef.current) {
-        return;
-      }
-
-      if (bufferedFragmentsRef.current.size < MIN_BUFFERED_SEGMENTS) {
-        return;
-      }
-
-      playbackStartedRef.current = true;
-      setIsBuffering(false);
-
-      try {
-        await video.play();
-      } catch {
-        console.log("Autoplay was blocked");
-      }
-    };
-
     const cleanupVideoSource = () => {
       video.pause();
       video.removeAttribute("src");
+      video.srcObject = null;
       video.load();
     };
 
-    const wait = (durationMs: number) =>
+    const cleanupPeerConnection = () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.ontrack = null;
+        peerConnectionRef.current.onconnectionstatechange = null;
+        peerConnectionRef.current.oniceconnectionstatechange = null;
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => track.stop());
+        localStreamRef.current = null;
+      }
+    };
+
+    const delay = (durationMs: number) =>
       new Promise<void>((resolve) => {
-        retryTimeout = setTimeout(resolve, durationMs);
+        reconnectTimeoutRef.current = setTimeout(resolve, durationMs);
       });
 
-    const probeManifest = async (): Promise<boolean> => {
+    const parseSignalingPayload = async (response: Response): Promise<RTCSessionDescriptionInit> => {
+      const contentType = response.headers.get("content-type") || "";
+
+      if (contentType.includes("application/json")) {
+        const payload = (await response.json()) as SignalingResponse | unknown;
+        const answer = extractSdpAnswer(payload);
+
+        if (answer) {
+          return answer;
+        }
+
+        throw new Error("Signaling response did not include SDP answer.");
+      }
+
+      const text = await response.text();
+      const trimmed = text.trim();
+
       try {
-        const accessToken = getAccessToken();
+        const parsed = JSON.parse(trimmed) as unknown;
+        const answer = extractSdpAnswer(parsed);
 
-        const response = await fetch(createStreamUrl(), {
-          method: "GET",
-          cache: "no-store",
-          headers: accessToken
-            ? {
-                Authorization: `Bearer ${accessToken}`,
-              }
-            : undefined,
-          signal: AbortSignal.timeout(STREAM_READY_PROBE_TIMEOUT_MS),
-        });
-
-        return response.ok;
+        if (answer) {
+          return answer;
+        }
       } catch {
-        return false;
+        // fall through to plain SDP handling
       }
+
+      if (trimmed.startsWith("v=")) {
+        return { type: "answer", sdp: text };
+      }
+
+      throw new Error("Unsupported signaling response format.");
     };
 
-    const startWhenReady = async () => {
-      if (cancelled || isPollingManifest) {
-        return;
-      }
-
-      isPollingManifest = true;
-      setError(null);
-      setIsBuffering(true);
-
-      destroyHls();
-      cleanupVideoSource();
-      resetPlaybackState();
-
-      while (!cancelled) {
-        const isReady = await probeManifest();
-
-        if (cancelled) {
-          break;
-        }
-
-        if (isReady) {
-          isPollingManifest = false;
-          void startPlayback();
-          return;
-        }
-
-        console.log("Waiting for stream manifest...");
-        await wait(STREAM_READY_RETRY_MS);
-      }
-
-      isPollingManifest = false;
-    };
-
-    const attachHlsPlayer = () => {
-      if (cancelled || !video) {
-        return;
-      }
-
-      const hls = new Hls({
-        autoStartLoad: false,
-        backBufferLength: 0,
-        liveSyncDurationCount: 4,
-        liveMaxLatencyDurationCount: 6,
-        lowLatencyMode: true,
-        maxBufferLength: 60,
-        maxMaxBufferLength: 90,
-        maxBufferHole: 0.5,
-
-        xhrSetup: (xhr, url) => {
-          const accessToken = getAccessToken();
-
-          if (accessToken && url.includes(`/stream/live/${deviceMac}`)) {
-            xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
-          }
-        },
-      });
-
-      hlsRef.current = hls;
-
-      const streamUrl = createStreamUrl();
-
-      hls.loadSource(streamUrl);
-      hls.attachMedia(video);
-
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        hls.startLoad();
-      });
-
-      hls.on(Hls.Events.FRAG_BUFFERED, (_, data) => {
-        const fragmentKey = getFragmentFileName(data.frag as FragmentLike);
-
-        if (fragmentKey) {
-          bufferedFragmentsRef.current.add(fragmentKey);
-        }
-
-        void maybeStartPlayback();
-      });
-
-      hls.on(Hls.Events.FRAG_CHANGED, (_, data) => {
-        const fragmentKey = getFragmentFileName(data.frag as FragmentLike);
-
-        if (fragmentKey) {
-          if (currentFragmentRef.current && currentFragmentRef.current !== fragmentKey) {
-            deleteFragmentLocally({ relurl: currentFragmentRef.current });
-          }
-
-          currentFragmentRef.current = fragmentKey;
-        }
-      });
-
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (!data.fatal || cancelled) return;
-
-        switch (data.type) {
-          case Hls.ErrorTypes.NETWORK_ERROR:
-            console.log("Stream not ready or interrupted, retrying...");
-            destroyHls();
-            void startWhenReady();
-            break;
-
-          case Hls.ErrorTypes.MEDIA_ERROR:
-            hls.recoverMediaError();
-            break;
-
-          default:
-            destroyHls();
-            void startWhenReady();
-            break;
-        }
-      });
-    };
-
-    const startNativePlayback = () => {
-      if (cancelled || !video) {
-        return;
-      }
-
-      const streamUrl = createStreamUrl();
-      video.src = streamUrl;
-
-      const handleLoaded = () => {
-        video.play().catch(() => {});
-        setIsBuffering(false);
-      };
-
-      const handleError = () => {
-        cleanupNativePlayback?.();
-        cleanupNativePlayback = null;
-        destroyHls();
-        cleanupVideoSource();
-        void startWhenReady();
-      };
-
-      video.addEventListener("loadedmetadata", handleLoaded);
-      video.addEventListener("error", handleError);
-
-      cleanupNativePlayback = () => {
-        video.removeEventListener("loadedmetadata", handleLoaded);
-        video.removeEventListener("error", handleError);
-      };
-    };
-
-    const startPlayback = () => {
+    const connectWebRtc = async (): Promise<void> => {
       if (cancelled) {
         return;
       }
 
-      if (Hls.isSupported()) {
-        attachHlsPlayer();
-        return;
+      setError(null);
+      setIsBuffering(true);
+
+      cleanupVideoSource();
+      cleanupPeerConnection();
+
+      const peerConnection = new RTCPeerConnection({
+        iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
+      });
+
+      peerConnectionRef.current = peerConnection;
+      localStreamRef.current = new MediaStream();
+      video.srcObject = localStreamRef.current;
+
+      peerConnection.ontrack = (event) => {
+        if (cancelled || !localStreamRef.current) {
+          return;
+        }
+
+        event.streams[0]?.getTracks().forEach((track) => {
+          if (!localStreamRef.current) {
+            return;
+          }
+
+          const existingTrack = localStreamRef.current.getTracks().find((item) => item.id === track.id);
+          if (!existingTrack) {
+            localStreamRef.current.addTrack(track);
+          }
+        });
+
+        setIsBuffering(false);
+        void video.play().catch(() => {
+          console.log("Autoplay was blocked");
+        });
+      };
+
+      peerConnection.onconnectionstatechange = () => {
+        if (cancelled) {
+          return;
+        }
+
+        if (peerConnection.connectionState === "failed" || peerConnection.connectionState === "disconnected") {
+          cleanupPeerConnection();
+          void delay(SIGNALING_RETRY_DELAY_MS).then(connectWebRtc);
+        }
+      };
+
+      peerConnection.oniceconnectionstatechange = () => {
+        if (cancelled) {
+          return;
+        }
+
+        if (peerConnection.iceConnectionState === "failed" || peerConnection.iceConnectionState === "disconnected") {
+          cleanupPeerConnection();
+          void delay(SIGNALING_RETRY_DELAY_MS).then(connectWebRtc);
+        }
+      };
+
+      peerConnection.addTransceiver("video", { direction: "recvonly" });
+      // peerConnection.addTransceiver("audio", { direction: "recvonly" });
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      if (!peerConnection.localDescription) {
+        throw new Error("Failed to create local WebRTC offer.");
       }
 
-      if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        startNativePlayback();
-        return;
+      const accessToken = getAccessToken();
+      const response = await fetch(signalingUrl, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/sdp",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: peerConnection.localDescription.sdp,
+        signal: AbortSignal.timeout(SIGNALING_REQUEST_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        if (response.status === 404 && !cancelled) {
+          console.log("Camera chưa lên luồng, đang thử lại...");
+          // Đợi 1.5s (dùng hằng số SIGNALING_RETRY_DELAY_MS đã có sẵn)
+          await delay(SIGNALING_RETRY_DELAY_MS);
+          // Gọi lại chính hàm này để thực hiện quy trình SDP Offer mới
+          return connectWebRtc(); 
+        }
+        
+        throw new Error(`Signaling request failed: ${response.status}`);
       }
 
-      setError("Trình duyệt không hỗ trợ HLS.");
+      if (!response.ok) {
+        throw new Error(`Signaling request failed: ${response.status}`);
+      }
+
+      const answer = await parseSignalingPayload(response);
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+
+      if (!cancelled) {
+        setIsBuffering(false);
+        void video.play().catch(() => {
+          console.log("Autoplay was blocked");
+        });
+      }
     };
 
-    // Cleanup HLS cũ nếu đổi device
-    destroyHls();
+    const initialize = () => {
+      if (!signalingUrl) {
+        setError("Thiếu signaling URL để khởi tạo WebRTC.");
+        setIsBuffering(false);
+        return;
+      }
 
-    setError(null);
-    setIsBuffering(true);
+      setError(null);
+      setIsBuffering(true);
 
-    void startWhenReady();
+      void connectWebRtc().catch((streamError) => {
+        console.error("WebRTC stream failed:", streamError);
+        if (!cancelled) {
+          setError("Không thể kết nối WebRTC stream.");
+          setIsBuffering(false);
+        }
+      });
+    };
+
+    initialize();
 
     return () => {
       cancelled = true;
 
-      if (retryTimeout) {
-        clearTimeout(retryTimeout);
-      }
-
-      cleanupNativePlayback?.();
-      cleanupNativePlayback = null;
-      destroyHls();
+      cleanupPeerConnection();
+      cleanupVideoSource();
     };
-  }, [deviceMac]);
+  }, [signalingUrl]);
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg bg-black">
@@ -333,12 +307,11 @@ export default function LiveStreamPlayer({
           <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-white border-t-transparent" />
 
           <p className="font-semibold">
-            {t("connectingToDevice") ?? "Đang kết nối đến thiết bị..."}
+            {t("connectingToDevice") ?? "Đang kết nối WebRTC..."}
           </p>
 
           <p className="mt-2 text-sm text-slate-300">
-            {t("waitingForStream") ??
-              "Đang chờ Raspberry Pi nén và tải video lên"}
+            {t("waitingForStream") ?? "Đang chờ thiết bị khởi tạo luồng WebRTC"}
           </p>
         </div>
       )}

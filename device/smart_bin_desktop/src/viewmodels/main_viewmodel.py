@@ -13,9 +13,12 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+import threading
 from typing import Any
+from urllib.parse import urlparse
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal, pyqtSlot
+import requests
  
 from src.services.hls_manager import HlsUploaderWorker
 from src.models.device_config_dto import DeviceConfigDto
@@ -120,8 +123,6 @@ class MainViewModel(QObject):
         self._ai_model_ota_running: bool = False  # Guard riêng cho AI model OTA
         self._telemetry_reauth_running: bool = False
         self._ota_update_active: bool = False
-        
-        self.hls_uploader = None
  
         # Pending Qt state closure từ background thread (xem _apply_config_qt_state)
         self._pending_qt_state_fn = None
@@ -477,32 +478,41 @@ class MainViewModel(QObject):
         return {"status": "error", "message": f"Unknown method: {method}"}
     
     # ------------------------------------------------------------------
-    # HLS Stream RPC Handlers
+    # Stream RPC Handlers
     # ------------------------------------------------------------------
 
     def start_video_stream(self) -> tuple[bool, str]:
         self.logger.info("Starting video stream from RPC...")
         try:
-            # QUAN TRỌNG: phải khởi động FFmpeg encoder TRƯỚC khi bật Uploader.
-            # HlsEncoder.start() gọi shutil.rmtree(STREAM_DIR) rồi mkdir lại để
-            # dọn rác phiên trước. Nếu Uploader (watchdog Observer) đã schedule
-            # watch lên STREAM_DIR từ trước đó, thao tác rmtree/mkdir này sẽ xóa
-            # mất inode đang được watch → Observer bị "ignored" âm thầm và các
-            # segment .ts/.m3u8 sinh ra sau đó sẽ không bao giờ được upload,
-            # dù FFmpeg vẫn chạy bình thường không báo lỗi gì.
-            ok = self.worker.start_stream()
+            # 1. Khởi tạo RTSP URL dựa vào IP của Backend Server
+            base_url = APP_CONFIG.api.api_base_url
+            parsed_url = urlparse(base_url)
+            server_host = parsed_url.hostname
+            
+            mac_addr = self.get_device_mac_address()
+            stream_name = mac_addr.replace(":", "-") # Định dạng map với MediaMTX và Backend
+            
+            rtsp_url = f"rtsp://localhost:8554/{stream_name}"
+
+            # 2. Bật FFmpeg đẩy luồng
+            ok = self.worker.start_stream(rtsp_url)
             if not ok:
                 return False, "Failed to start FFmpeg encoder"
 
-            # Bật Uploader Worker (Watchdog) SAU khi thư mục stream đã ổn định
-            if not getattr(self, 'hls_uploader', None) or not self.hls_uploader.isRunning():
-                # Lấy base root của Backend Spring Boot
-                base_url = f"{APP_CONFIG.api.api_base_url}/stream"
-                mac_addr = self.get_device_mac_address()
-                token = self.access_token or ""
-
-                self.hls_uploader = HlsUploaderWorker(mac_address=mac_addr, upload_url=base_url, token=token)
-                self.hls_uploader.start()
+            # 3. Thông báo cho Spring Boot biết luồng đã sẵn sàng (Async để không block RPC)
+            def notify_ready():
+                api_ready_url = f"{base_url}/stream/ready"
+                headers = {
+                    "X-Device-Mac": mac_addr
+                }
+             
+                try:
+                    requests.post(api_ready_url, headers=headers, timeout=5)
+                    self.logger.info("Notified Spring Boot that RTSP stream is ready.")
+                except Exception as e:
+                    self.logger.warning("Failed to notify server stream status: %s", e)
+            
+            threading.Thread(target=notify_ready, daemon=True).start()
 
             return True, ""
         except Exception as e:
@@ -512,16 +522,7 @@ class MainViewModel(QObject):
     def stop_video_stream(self) -> tuple[bool, str]:
         self.logger.info("Stopping video stream from RPC...")
         try:
-            # Dừng Uploader (watchdog Observer) trước để nó thoát watch loop
-            # một cách sạch sẽ, rồi mới dừng Encoder — vì HlsEncoder.stop() sẽ
-            # rmtree(STREAM_DIR) để dọn RAM disk. Tránh trường hợp Observer vẫn
-            # đang watch trong lúc thư mục bị xóa.
-            if getattr(self, 'hls_uploader', None):
-                self.hls_uploader.stop()
-                self.hls_uploader = None
-
             self.worker.stop_stream()
-
             return True, ""
         except Exception as e:
             self.logger.error("Error stopping video stream: %s", e)
