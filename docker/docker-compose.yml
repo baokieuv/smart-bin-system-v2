@@ -183,122 +183,122 @@ services:
     networks:
       - smart_bin_network
 
-  # iam-service:
-  #   image: baokieu/iam-service:latest
-  #   restart: unless-stopped
-  #   env_file: 
-  #     - .env
-  #   environment:
-  #     - IAM_SERVICE_PORT=8080
-  #   depends_on:
-  #     - mariadb
-  #     - redis
-  #     - kafka
-  #     - keycloak
-  #   networks:
-  #     - smart_bin_network
+  iam-service:
+    image: baokieu/iam-service:latest
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      - IAM_SERVICE_PORT=8080
+    depends_on:
+      - mariadb
+      - redis
+      - kafka
+      - keycloak
+    networks:
+      - smart_bin_network
 
-  # device-service:
-  #   image: baokieu/device-service:latest
-  #   restart: unless-stopped
-  #   env_file: 
-  #     - .env
-  #   environment:
-  #     - DEVICE_SERVICE_PORT=8080
-  #   depends_on:
-  #     - mariadb
-  #     - redis
-  #     - kafka
-  #   networks:
-  #     - smart_bin_network
+  device-service:
+    image: baokieu/device-service:latest
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      - DEVICE_SERVICE_PORT=8080
+    depends_on:
+      - mariadb
+      - redis
+      - kafka
+    networks:
+      - smart_bin_network
 
-  # noti-service:
-  #   image: baokieu/noti-service:latest
-  #   restart: unless-stopped
-  #   env_file: 
-  #     - .env
-  #   environment:
-  #     - NOTI_SERVICE_PORT=8080
-  #   depends_on:
-  #     - mariadb
-  #     - redis
-  #     - kafka
-  #   networks:
-  #     - smart_bin_network
+  noti-service:
+    image: baokieu/noti-service:latest
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      - NOTI_SERVICE_PORT=8080
+    depends_on:
+      - mariadb
+      - redis
+      - kafka
+    networks:
+      - smart_bin_network
 
-  # media-service:
-  #   image: baokieu/media-service:latest
-  #   restart: unless-stopped
-  #   env_file: 
-  #     - .env
-  #   environment:
-  #     - MEDIA_SERVICE_PORT=8080
-  #   depends_on:
-  #     - mariadb
-  #     - redis
-  #     - minio
-  #   networks:
-  #     - smart_bin_network
+  media-service:
+    image: baokieu/media-service:latest
+    restart: unless-stopped
+    env_file: 
+      - .env
+    environment:
+      - MEDIA_SERVICE_PORT=8080
+    depends_on:
+      - mariadb
+      - redis
+      - minio
+    networks:
+      - smart_bin_network
 
-  # nginx:
-  #   image: nginx:alpine
-  #   container_name: nginx_proxy
-  #   restart: unless-stopped
-  #   ports:
-  #     - "80:80"   # Mở port 80 để tiếp nhận traffic từ proxy/tunnel nếu cần
-  #   volumes:
-  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-  #   depends_on:
-  #     - iam-service
-  #     - device-service
-  #   networks:
-  #     - smart_bin_network
+  nginx:
+    image: nginx:alpine
+    container_name: nginx_proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"   # Mở port 80 để tiếp nhận traffic từ proxy/tunnel nếu cần
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - iam-service
+      - device-service
+    networks:
+      - smart_bin_network
 
-  # cloudflared:
-  #   image: cloudflare/cloudflared:latest
-  #   container_name: cloudflared_tunnel
-  #   restart: unless-stopped
-  #   command: tunnel --config /etc/cloudflared/config.yml run
-  #   volumes:
-  #     - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
-  #     - ./cloudflared/d1ebb6d2-bb41-46ee-a24b-c18a2f68d540.json:/etc/cloudflared/d1ebb6d2-bb41-46ee-a24b-c18a2f68d540.json:ro
-  #   depends_on:
-  #     - nginx
-  #   networks:
-  #     - smart_bin_network
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared_tunnel
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ./cloudflared/d1ebb6d2-bb41-46ee-a24b-c18a2f68d540.json:/etc/cloudflared/d1ebb6d2-bb41-46ee-a24b-c18a2f68d540.json:ro
+    depends_on:
+      - nginx
+    networks:
+      - smart_bin_network
 
-  # frontend:
-  #   image: baokieu/smart-bin-fe:latest
-  #   container_name: nextjs_frontend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - NODE_ENV=production
-  #     - NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn
-  #     - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
-  #     - NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
-  #     - NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
-  #   depends_on:
-  #     - iam-service
-  #   networks:
-  #     - smart_bin_network
-  # cms:
-  #   image: baokieu/smart-bin-cms:latest
-  #   container_name: nextjs_cms
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - NODE_ENV=production
-  #     - NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn
-  #     - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
-  #     - NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
-  #     - NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
-  #   depends_on:
-  #     - iam-service
-  #   networks:
-  #     - smart_bin_network
+  frontend:
+    image: baokieu/smart-bin-fe:latest
+    container_name: nextjs_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+      - NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+      - NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
+    depends_on:
+      - iam-service
+    networks:
+      - smart_bin_network
+  cms:
+    image: baokieu/smart-bin-cms:latest
+    container_name: nextjs_cms
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=https://api.kvbhust.id.vn
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+      - NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+      - NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=${NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}
+    depends_on:
+      - iam-service
+    networks:
+      - smart_bin_network
 networks:
   smart_bin_network:
     driver: bridge

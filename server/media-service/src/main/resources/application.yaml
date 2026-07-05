@@ -3,7 +3,7 @@ server:
 
 webrtc:
   server:
-    url: "http://webrtc.localhost"
+    url: ${MEDIA_WEBRTC_URL:http://webrtc.localhost}
 
 spring:
   application:
