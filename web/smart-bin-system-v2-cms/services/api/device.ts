@@ -16,11 +16,11 @@ export const deviceApi = {
   },
 
   getList: async (params?: { page?: number; size?: number }) => {
-    return api.get<ListPayload>("/devices", params, { cacheTTL: 300000 });
+    return api.get<ListPayload>("/devices", params, { cacheTTL: 3000 });
   },
 
   getDetail: async (deviceId: string) => {
-    return api.get<DeviceDto>(`/devices/${deviceId}`, { cacheTTL: 300000 });
+    return api.get<DeviceDto>(`/devices/${deviceId}`, { cacheTTL: 3000 });
   },
 
   update: async (deviceId: string, formData: UpdateDeviceRequest) => {
@@ -32,7 +32,7 @@ export const deviceApi = {
   },
 
   getTelemetries: async (deviceId: string, params?: TelemetryParams) => {
-    return api.get(`/devices/${deviceId}/telemetries`, params, { cacheTTL: 60000 });
+    return api.get(`/devices/${deviceId}/telemetries`, params, { cacheTTL: 6000 });
   },
 
   executeRpc: async (deviceId: string, payload: RpcRequestPayload) => {
@@ -43,7 +43,7 @@ export const deviceApi = {
     return api.get<Record<string, number>>(
       `/devices/bulk-telemetries`, 
       { keys: keys.join(',') },
-      { cacheTTL: 60000 }
+      { cacheTTL: 6000 }
     );
   },
 };

@@ -372,8 +372,8 @@ public class DeviceService {
             }
             if (request.fullThreshold() != null) {
                 currentConfigs.put("full_threshold", request.fullThreshold());
-                sharedAttributes.put("max_high_average_waste_threshold", request.fullThreshold());
-                sharedAttributes.put("clear_high_average_waste_threshold", request.fullThreshold() - 10.0);
+                sharedAttributes.put("max_bin_full_alarm_threshold", request.fullThreshold());
+                sharedAttributes.put("clear_bin_full_alarm_threshold", request.fullThreshold() + 3.0);
             }
 
             device.setUserConfigs(currentConfigs);
@@ -785,8 +785,8 @@ public class DeviceService {
         if (device.getUserConfigs() == null || device.getUserConfigs().isEmpty()) {
             log.info("Thiết bị MAC {} chưa có cấu hình riêng. Tiến hành sao chép cấu hình từ Device Group...", device.getMac());
 
-            AtomicReference<Double> fullThreshold = new AtomicReference<>(80.0);
-            AtomicReference<Double> clearThreshold = new AtomicReference<>(70.0);
+            AtomicReference<Double> fullThreshold = new AtomicReference<>(3.0);
+            AtomicReference<Double> clearThreshold = new AtomicReference<>(6.0);
             int pollingInterval = 300;
 
             if (device.getDeviceGroup() != null) {
@@ -810,8 +810,8 @@ public class DeviceService {
 
             Map<String, Object> sharedAttrs = new HashMap<>();
             sharedAttrs.put("polling_interval", pollingInterval);
-            sharedAttrs.put("max_high_average_waste_threshold", fullThreshold.get());
-            sharedAttrs.put("clear_high_average_waste_threshold", clearThreshold.get());
+            sharedAttrs.put("max_bin_full_alarm_threshold", fullThreshold.get());
+            sharedAttrs.put("clear_bin_full_alarm_threshold", clearThreshold.get());
 
             if (device.getDeviceId() != null) {
                 thingsBoardService.updateAttributes(device.getDeviceId(), Constants.THINGSBOARD_SCOPE.SHARED_SCOPE.name(), sharedAttrs);
