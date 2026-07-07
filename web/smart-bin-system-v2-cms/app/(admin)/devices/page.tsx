@@ -49,7 +49,7 @@ function DevicesPageContent() {
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
   const { t } = useLanguage(); 
 
-  const [partners, setPartners] = useState<{ id: string; name: string }[]>([]);
+  const [partners, setPartners] = useState<{ id: string; name: string; keycloakId: string }[]>([]);
   // const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [filterInputs, setFilterInputs] = useState<FilterProps>({
@@ -333,7 +333,7 @@ function DevicesPageContent() {
         try {
           const response = await tenantsAdminApi.getTenants({ page: 1, size: 100 });
           const items = unwrapListPayload(response.data);
-          setPartners(items.map((item) => ({ id: item.id, name: item.name })));
+          setPartners(items.map((item) => ({ id: item.id, name: item.name, keycloakId: item.keycloakId })));
         } catch {
           // ignore
         }

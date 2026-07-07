@@ -4,6 +4,7 @@ import java.util.UUID;
 
 public record TenantDto(
         UUID id,
+        String keycloakId,
         String name,
         String email,
         String state,

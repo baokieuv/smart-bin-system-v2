@@ -16,7 +16,7 @@ interface DevicesFilterPanelProps {
   onApply: () => void;
   onClear: () => void;
   deviceGroups: { id: string; code: string; name: string }[];
-  tenants?: { id: string; name: string }[]; // Optional for admin
+  tenants?: { id: string; name: string; keycloakId: string }[]; // Optional for admin
   t: (key: TranslationKey) => string;
 }
 
@@ -90,7 +90,7 @@ export default function DevicesFilterPanel({
             <select value={filters.tenantId} onChange={(e) => handleInputChange("tenantId", e.target.value)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white">
               <option value="">{t("allTenants")}</option>
               {tenants.map((tenant) => (
-                <option key={tenant.id} value={tenant.id}>
+                <option key={tenant.keycloakId} value={tenant.keycloakId}>
                   {tenant.name}
                 </option>
               ))}

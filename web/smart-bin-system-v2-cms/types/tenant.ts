@@ -1,5 +1,6 @@
 export interface TenantDto {
   id: string;
+  keycloakId: string;
   name: string;
   email: string;
   state: string;
