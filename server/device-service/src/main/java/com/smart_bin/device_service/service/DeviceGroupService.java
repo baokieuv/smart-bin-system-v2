@@ -124,7 +124,7 @@ public class DeviceGroupService {
                     defaultGroup.setDefault(true);
 
                     // Khởi tạo Profile mặc định trên ThingsBoard
-                    JsonNode tbProfileResponse = thingsBoardService.addDeviceProfile(defaultGroup.getName(), defaultGroup.getDescription());
+                    JsonNode tbProfileResponse = thingsBoardService.addDeviceProfile(defaultGroup.getCode(), defaultGroup.getDescription());
 
                     List<AlarmRuleDto> defaultAlarms = List.of(
                             new AlarmRuleDto(
