@@ -11,6 +11,7 @@ import { deviceApi } from "@/services/api/device";
 import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
 import { devicesAdminApi } from "@/services/api/devices-admin";
 import { firmwaresAdminApi } from "@/services/api/firmwares-admin";
+import { tenantsAdminApi } from "@/services/api/tenants-admin";
 import { usersAdminApi } from "@/services/api/users-admin";
 import type { DeviceDto, TelemetryPayload } from "@/types/device";
 import type { FirmwareDto } from "@/types/firmware";
@@ -330,11 +331,9 @@ function DevicesPageContent() {
     if (role === "super_admin") {
       (async () => {
         try {
-          // TODO: Replace with actual API call to fetch partners/tenants
-          // For example:
-          // const response = await partnersAdminApi.getPartners({ page: 1, size: 500 });
-          // const items = unwrapListPayload(response.data);
-          // setPartners(items.map((item) => ({ id: item.id, name: item.name })));
+          const response = await tenantsAdminApi.getTenants({ page: 1, size: 100 });
+          const items = unwrapListPayload(response.data);
+          setPartners(items.map((item) => ({ id: item.id, name: item.name })));
         } catch {
           // ignore
         }
