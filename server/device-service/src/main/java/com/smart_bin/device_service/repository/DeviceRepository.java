@@ -1,6 +1,7 @@
 package com.smart_bin.device_service.repository;
 
 import com.smart_bin.device_service.common.DeviceState;
+import com.smart_bin.device_service.common.DeviceStatus;
 import com.smart_bin.device_service.entity.Device;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -61,7 +62,7 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
             @Param("targetUserId") String targetUserId,
             @Param("name") String name,
             @Param("mac") String mac,
-            @Param("state") DeviceState state,
+            @Param("status") DeviceStatus status,
             @Param("groupId") UUID groupId,
             Pageable pageable
     );
