@@ -115,8 +115,8 @@ export default function DashboardPage() {
       deviceApi.getList({ page: 1, size: 1000 })
         .then((devicesResponse) => {
           if (cancelled) return;
-          if (devicesResponse.success && Array.isArray(devicesResponse.data)) {
-            setMapDevices(devicesResponse.data);
+          if (devicesResponse.success) {
+            setMapDevices(unwrapListPayload<DeviceDto>(devicesResponse.data as PagedPayload<DeviceDto>));
           }
         })
         .catch(console.error); // Lỗi API này không làm sập Profile hay Telemetry

@@ -794,7 +794,7 @@ public class DeviceService {
 
                 if (group.getAlarmRules() != null) {
                     group.getAlarmRules().stream()
-                            .filter(rule -> "HIGH_AVERAGE_WASTE".equals(rule.alarmType()))
+                            .filter(rule -> "BIN_FULL_ALARM".equals(rule.alarmType()))
                             .findFirst()
                             .ifPresent(rule -> {
                                 fullThreshold.set(rule.threshold());
