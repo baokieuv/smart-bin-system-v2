@@ -94,6 +94,7 @@ public class DeviceService {
 
             Optional<Device> deviceOpt = repository.findByMac(mac);
             Device targetDevice;
+            String successMessage;
 
             if (deviceOpt.isPresent()) {
                 Device device = deviceOpt.get();
@@ -106,13 +107,13 @@ public class DeviceService {
                     continue;
                 } else {
                     targetDevice = device;
-                    results.add(new ImportDeviceResponse(mac, "SUCCESS", "Gán Tenant thành công cho thiết bị đã tồn tại."));
+                    successMessage = "Gán Tenant thành công cho thiết bị đã tồn tại.";
                 }
             } else {
                 targetDevice = new Device();
                 targetDevice.setMac(mac);
                 targetDevice.setState(DeviceState.PENDING);
-                results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));
+                successMessage = "Import thiết bị mới thành công (chờ kích hoạt).";
             }
 
             // Đảm bảo luôn khởi tạo sẵn các FirmwareState
@@ -126,18 +127,21 @@ public class DeviceService {
             targetDevice.setDeviceGroup(defaultGroup);
             targetDevice.setName(item.name() != null ? item.name() : "SmartBin-" + mac.replace(":", "").replace("-", ""));
 
-            syncWithThingsBoard(targetDevice, mac);
-            assignGroupToDevice(targetDevice);
+            // Đưa tiến trình làm việc với ThingsBoard vào try-catch
+            try {
+                syncWithThingsBoard(targetDevice, mac);
+                assignGroupToDevice(targetDevice); // Hàm này cũng có gọi API TB
 
-            if (tbProfileId != null && targetDevice.getDeviceId() != null) {
-                try {
+                if (tbProfileId != null && targetDevice.getDeviceId() != null) {
                     thingsBoardService.assignProfileToDevice(targetDevice.getDeviceId(), tbProfileId);
-                } catch (Exception e) {
-                    log.error("Lỗi khi gán profile cho thiết bị {} lúc import", mac, e);
                 }
-            }
 
-            repository.save(targetDevice);
+                repository.save(targetDevice);
+                results.add(new ImportDeviceResponse(mac, "SUCCESS", successMessage));
+            } catch (Exception e) {
+                log.error("Lỗi khi tạo hoặc đồng bộ thiết bị {} trên ThingsBoard", mac, e);
+                results.add(new ImportDeviceResponse(mac, "FAILED", "Lỗi tạo thiết bị trên ThingsBoard."));
+            }
         }
 
         return results;
@@ -153,7 +157,10 @@ public class DeviceService {
                 .collect(Collectors.toMap(Device::getMac, d -> d));
 
         List<ImportDeviceResponse> results = Collections.synchronizedList(new ArrayList<>());
-        List<Device> validDevicesToSync = Collections.synchronizedList(new ArrayList<>());
+
+        // Tạo một record nội bộ để map Device với message thành công tương ứng
+        record DeviceCandidate(Device device, String successMsg) {}
+        List<DeviceCandidate> validCandidates = new ArrayList<>();
 
         for (DeviceImportItem item : request.devices()) {
             String mac = item.mac();
@@ -169,6 +176,7 @@ public class DeviceService {
 
             Device targetDevice;
             Device deviceInMap = existingDeviceMap.get(mac);
+            String successMsg;
 
             if (deviceInMap != null) {
                 if (deviceInMap.getTenantId() != null && !deviceInMap.getTenantId().equals(tenantId)) {
@@ -179,16 +187,15 @@ public class DeviceService {
                     continue;
                 } else {
                     targetDevice = deviceInMap;
-                    results.add(new ImportDeviceResponse(mac, "SUCCESS", "Gán Tenant thành công cho thiết bị đã tồn tại."));
+                    successMsg = "Gán Tenant thành công cho thiết bị đã tồn tại.";
                 }
             } else {
                 targetDevice = new Device();
                 targetDevice.setMac(mac);
                 targetDevice.setState(DeviceState.PENDING);
-                results.add(new ImportDeviceResponse(mac, "SUCCESS", "Import thiết bị mới thành công (chờ kích hoạt)."));
+                successMsg = "Import thiết bị mới thành công (chờ kích hoạt).";
             }
 
-            // Đảm bảo khởi tạo FirmwareState
             initializeDefaultFirmwareStates(targetDevice);
 
             if (item.latitude() != null) targetDevice.setLatitude(item.latitude());
@@ -199,23 +206,34 @@ public class DeviceService {
             targetDevice.setDeviceGroup(defaultGroup);
             targetDevice.setName(item.name() != null ? item.name() : "SmartBin-" + mac.replace(":", "").replace("-", ""));
 
-            validDevicesToSync.add(targetDevice);
+            validCandidates.add(new DeviceCandidate(targetDevice, successMsg));
         }
 
-        if (!validDevicesToSync.isEmpty()) {
-            int poolSize = Math.min(validDevicesToSync.size(), 20);
+        if (!validCandidates.isEmpty()) {
+            int poolSize = Math.min(validCandidates.size(), 20);
             ExecutorService executor = Executors.newFixedThreadPool(poolSize);
 
-            List<CompletableFuture<Void>> futures = validDevicesToSync.stream()
-                    .map(device -> CompletableFuture.runAsync(() -> {
+            // Danh sách những device tạo trên TB trót lọt để đem đi save
+            List<Device> successfullySyncedDevices = Collections.synchronizedList(new ArrayList<>());
+
+            List<CompletableFuture<Void>> futures = validCandidates.stream()
+                    .map(candidate -> CompletableFuture.runAsync(() -> {
+                        Device device = candidate.device();
                         try {
                             syncWithThingsBoard(device, device.getMac());
+
+                            assignGroupToDevice(device);
 
                             if (tbProfileId != null && device.getDeviceId() != null) {
                                 thingsBoardService.assignProfileToDevice(device.getDeviceId(), tbProfileId);
                             }
+
+                            // Nếu mọi thao tác với TB thành công, đưa vào danh sách để lưu DB
+                            successfullySyncedDevices.add(device);
+                            results.add(new ImportDeviceResponse(device.getMac(), "SUCCESS", candidate.successMsg()));
                         } catch (Exception e) {
                             log.error("Lỗi xử lý gọi API ThingsBoard cho thiết bị MAC: {}", device.getMac(), e);
+                            results.add(new ImportDeviceResponse(device.getMac(), "FAILED", "Lỗi tạo hoặc cấu hình thiết bị trên ThingsBoard."));
                         }
                     }, executor))
                     .toList();
@@ -223,11 +241,9 @@ public class DeviceService {
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             executor.shutdown();
 
-            for (Device device : validDevicesToSync) {
-                assignGroupToDevice(device);
+            if (!successfullySyncedDevices.isEmpty()) {
+                repository.saveAll(successfullySyncedDevices);
             }
-
-            repository.saveAll(validDevicesToSync);
         }
 
         return new ArrayList<>(results);
@@ -829,7 +845,7 @@ public class DeviceService {
                 device.setName(defaultName);
             }
 
-            JsonNode tbResponse = thingsBoardService.addDevice(device.getName(), "SmartBin");
+            JsonNode tbResponse = thingsBoardService.addDevice(device.getMac(), "SmartBin");
             String tbDeviceId = tbResponse.get("id").get("id").asString();
 
             attributes.put("macAddress", mac);
