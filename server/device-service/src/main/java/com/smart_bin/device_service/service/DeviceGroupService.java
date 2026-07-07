@@ -65,10 +65,31 @@ public class DeviceGroupService {
             String tbProfileId = tbProfileResponse.get("id").get("id").asString();
             group.setTbProfileId(tbProfileId); // Lưu ID vào Database
 
+            // 1. Khởi tạo danh sách rule mặc định cho Group mới
+            List<AlarmRuleDto> rulesToApply = new java.util.ArrayList<>();
+            rulesToApply.add(new AlarmRuleDto(
+                    "BIN_FULL_ALARM",     // alarmType
+                    "LESS_OR_EQUAL",      // operator
+                    3.0,                  // threshold
+                    "CRITICAL",           // severity
+                    "GREATER",            // clearOperator
+                    6.0                   // clearThreshold
+            ));
+
+            // 2. Gộp thêm các rules từ request truyền lên (nếu có)
             if (request.alarmRules() != null && !request.alarmRules().isEmpty()) {
-                JsonNode tbAlarmConfig = buildThingsBoardAlarmConfig(request.alarmRules());
-                thingsBoardService.configAlarmRules(tbProfileId, tbAlarmConfig);
+                request.alarmRules().forEach(rule -> {
+                    // Bỏ qua nếu user truyền lên rule trùng tên để tránh lỗi duplicate
+                    if (!"BIN_FULL_ALARM".equalsIgnoreCase(rule.alarmType())) {
+                        rulesToApply.add(rule);
+                    }
+                });
             }
+
+            // 3. Build và push config lên ThingsBoard
+            JsonNode tbAlarmConfig = buildThingsBoardAlarmConfig(rulesToApply);
+            thingsBoardService.configAlarmRules(tbProfileId, tbAlarmConfig);
+
         } else {
             throw new ApiException(CoreErrorCode.INTERNAL_SERVER_ERROR, "Không thể tạo Profile trên ThingsBoard");
         }
