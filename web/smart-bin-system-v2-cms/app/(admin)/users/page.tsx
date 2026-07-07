@@ -4,7 +4,9 @@ import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
 import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
+import { getCmsAccessRole } from "@/lib/auth-session";
 import { getRecaptchaToken } from "@/lib/recaptcha";
+import { emitToast } from "@/lib/toast";
 import { usersAdminApi } from "@/services/api/users-admin";
 import { useLanguage, type TranslationKey } from "@/lib/language"; // IMPORT HOOK NGÔN NGỮ
 import type { CreateUserRequest } from "@/types/auth";
@@ -54,6 +56,7 @@ export default function UsersPage() {
   
   const [users, setUsers] = useState<UserDto[]>([]);
   const [message, setMessage] = useState("");
+  const [role, setRole] = useState<"super_admin" | "admin" | "user" | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string | null>(null);
   
   // Create User State
@@ -75,7 +78,34 @@ export default function UsersPage() {
     setUsers(unwrapListPayload(response.data));
   };
 
+  const loadRole = () => {
+    const cachedRole = typeof window !== "undefined" ? localStorage.getItem("admin_role") : null;
+    if (cachedRole === "super_admin" || cachedRole === "admin" || cachedRole === "user") {
+      setRole(cachedRole);
+      return;
+    }
+
+    const cachedRoles = typeof window !== "undefined" ? localStorage.getItem("admin_roles") : null;
+    if (!cachedRoles) {
+      setRole(null);
+      return;
+    }
+
+    try {
+      const parsedRoles = JSON.parse(cachedRoles) as unknown;
+      if (Array.isArray(parsedRoles)) {
+        const accessRole = getCmsAccessRole(parsedRoles.filter((candidate): candidate is string => typeof candidate === "string"));
+        setRole(accessRole);
+      } else {
+        setRole(null);
+      }
+    } catch {
+      setRole(null);
+    }
+  };
+
   useEffect(() => {
+    loadRole();
     void load().catch((error) => {
       setMessage(error instanceof Error ? error.message : t("loadUserListError"));
     });
@@ -88,11 +118,10 @@ export default function UsersPage() {
     try {
       setUpdatingUserId(id);
       await usersAdminApi.updateUserState(id, state);
-      const successMsg = t("userStatusUpdateSuccess").replace("{state}", formatStateLabel(state, t));
-      setMessage(successMsg);
+      emitToast(t("userStatusUpdateSuccess").replace("{state}", formatStateLabel(state, t)), "success");
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("userStatusUpdateError"));
+      emitToast(error instanceof Error ? error.message : t("userStatusUpdateError"), "error");
     } finally {
       setUpdatingUserId(null);
     }
@@ -125,12 +154,12 @@ export default function UsersPage() {
       };
 
       await usersAdminApi.createUser(request);
-      setMessage(t("userCreatedSuccess"));
+      emitToast(t("userCreatedSuccess"), "success");
       setIsCreateOpen(false);
       setCreateForm(emptyCreateUserForm);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("userCreateError"));
+      emitToast(error instanceof Error ? error.message : t("userCreateError"), "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -167,16 +196,17 @@ export default function UsersPage() {
     
     try {
       await usersAdminApi.updateUserPermissions(selectedUserForPerms.id, permissionsForm);
-      const successMsg = t("permsUpdateSuccess").replace("{name}", selectedUserForPerms.name);
-      setMessage(successMsg);
+      emitToast(t("permsUpdateSuccess").replace("{name}", selectedUserForPerms.name), "success");
       setIsPermsOpen(false);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("permsUpdateError"));
+      emitToast(error instanceof Error ? error.message : t("permsUpdateError"), "error");
     } finally {
       setIsUpdatingPerms(false);
     }
   };
+
+  const canCreateUser = role === "admin" || role === "user";
 
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase();
@@ -187,7 +217,7 @@ export default function UsersPage() {
       <Panel
         title={t("innoecoUsers")}
         subtitle={t("manageUsersSubtitle")}
-        action={
+        action={canCreateUser ? (
           <button
             type="button"
             onClick={openCreateUser}
@@ -195,7 +225,7 @@ export default function UsersPage() {
           >
             {t("addUserBtn")}
           </button>
-        }
+        ) : null}
       >
         <div className="overflow-x-auto">
           <table className="w-full min-w-240 text-left text-sm">

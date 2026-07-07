@@ -111,7 +111,7 @@ export default function DeviceDetailsModal({
                   <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                       <div className="text-xs text-slate-500">{t("latestFillLevel")}</div>
-                      <div className="mt-1 text-lg font-semibold text-foreground">{telemetryHistory.length > 0 && telemetryHistory[0].fillLevel !== null ? `${telemetryHistory[0].fillLevel}%` : "-"}</div>
+                      <div className="mt-1 text-lg font-semibold text-foreground">{telemetryHistory.length > 0 && telemetryHistory[0].fillLevel !== null ? `${telemetryHistory[0].fillLevel}cm` : "-"}</div>
                     </div>
                     <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                       <div className="text-xs text-slate-500">{t("latestThrows")}</div>

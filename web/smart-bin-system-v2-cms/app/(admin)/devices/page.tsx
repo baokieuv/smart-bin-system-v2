@@ -6,6 +6,7 @@ import Panel from "@/components/ui/panel";
 import { unwrapListPayload } from "@/lib/admin-utils";
 import { getCmsAccessRole } from "@/lib/auth-session";
 import { useLanguage, type TranslationKey } from "@/lib/language";
+import { emitToast } from "@/lib/toast";
 import { deviceApi } from "@/services/api/device";
 import { deviceGroupsAdminApi } from "@/services/api/device-groups-admin";
 import { devicesAdminApi } from "@/services/api/devices-admin";
@@ -177,6 +178,7 @@ function DevicesPageContent() {
   const canAssignDevices = role === "super_admin" || role === "admin";
   const canConfigureFirmware = role === "super_admin";
   const canControlDevice = role === "super_admin" || role === "admin" || role === "user";
+  const canCreateDevice = role === "admin" || role === "user";
   
   const addLocation = parseCoordinatePair(form.latitude, form.longitude);
   const editLocation = parseCoordinatePair(editDeviceForm.latitude, editDeviceForm.longitude);
@@ -305,7 +307,7 @@ function DevicesPageContent() {
 
   useEffect(() => {
     void loadFirmwares().catch(() => {
-      setConfigMessage(t("loadFirmwareListError"));
+      emitToast(t("loadFirmwareListError"), "error");
     });
     void (async () => {
       try {
@@ -408,22 +410,21 @@ function DevicesPageContent() {
     event.preventDefault();
 
     if (!selectedDeviceIds.length) {
-      setAssignMessage(t("selectDeviceFirst"));
+      emitToast(t("selectDeviceFirst"), "error");
       return;
     }
 
     if (assignMode === "group" && !assignGroupId) {
-      setAssignMessage(t("chooseTargetGroup"));
+      emitToast(t("chooseTargetGroup"), "error");
       return;
     }
 
     if (assignMode === "user" && !assignUserId) {
-      setAssignMessage(t("chooseTargetUser"));
+      emitToast(t("chooseTargetUser"), "error");
       return;
     }
 
     setAssignLoading(true);
-    setAssignMessage("");
 
     try {
       const selectedDevices = devices.filter((device) => selectedDeviceIds.includes(device.id));
@@ -435,7 +436,7 @@ function DevicesPageContent() {
         });
 
         const updatedCount = response.data?.length ?? selectedDevices.length;
-        setAssignMessage(t("assignGroupSuccess").replace("{count}", String(updatedCount)));
+        emitToast(t("assignGroupSuccess").replace("{count}", String(updatedCount)), "success");
       } else {
         const response = await devicesAdminApi.assignDevicesToUser({
           userId: assignUserId,
@@ -445,16 +446,14 @@ function DevicesPageContent() {
         const results = response.data ?? [];
         const successCount = results.filter((item) => item.status).length;
         const failedCount = results.length - successCount;
-        
-        if (failedCount > 0) {
-          const msg = t("assignUserSuccessPartial")
-            .replace("{successCount}", String(successCount))
-            .replace("{total}", String(results.length))
-            .replace("{failedCount}", String(failedCount));
-          setAssignMessage(msg);
-        } else {
-          setAssignMessage(t("assignUserSuccess").replace("{count}", String(successCount)));
-        }
+
+        const toastMessage = failedCount > 0
+          ? t("assignUserSuccessPartial")
+              .replace("{successCount}", String(successCount))
+              .replace("{total}", String(results.length))
+              .replace("{failedCount}", String(failedCount))
+          : t("assignUserSuccess").replace("{count}", String(successCount));
+        emitToast(toastMessage, failedCount > 0 ? "info" : "success");
       }
 
       setSelectedDeviceIds([]);
@@ -462,7 +461,7 @@ function DevicesPageContent() {
       setAssignUserId("");
       await load();
     } catch (error) {
-      setAssignMessage(error instanceof Error ? error.message : t("assignmentFailed"));
+      emitToast(error instanceof Error ? error.message : t("assignmentFailed"), "error");
     } finally {
       setAssignLoading(false);
     }
@@ -476,27 +475,26 @@ function DevicesPageContent() {
     const normalizedName = form.name.trim();
 
     if (!MAC_PATTERN.test(normalizedMac)) {
-      setMessage(t("invalidMacFormat"));
+      emitToast(t("invalidMacFormat"), "error");
       return;
     }
 
     if (!CLAIM_CODE_PATTERN.test(normalizedClaimCode)) {
-      setMessage(t("invalidClaimCode"));
+      emitToast(t("invalidClaimCode"), "error");
       return;
     }
 
     if (!normalizedName) {
-      setMessage(t("deviceNameRequired"));
+      emitToast(t("deviceNameRequired"), "error");
       return;
     }
 
     if (!addLocation) {
-      setMessage(t("invalidLocationSelected"));
+      emitToast(t("invalidLocationSelected"), "error");
       return;
     }
 
     setCreateLoading(true);
-    setMessage("");
 
     try {
       const claimResponse = await deviceApi.add({
@@ -508,7 +506,7 @@ function DevicesPageContent() {
       });
 
       if (!claimResponse.success || !claimResponse.data) {
-        setMessage(claimResponse.message || t("addDeviceError"));
+        emitToast(claimResponse.message || t("addDeviceError"), "error");
         return;
       }
 
@@ -528,7 +526,7 @@ function DevicesPageContent() {
         });
 
         if (!updateResponse.success) {
-          setMessage(updateResponse.message || t("deviceConfigFailed"));
+          emitToast(updateResponse.message || t("deviceConfigFailed"), "error");
           return;
         }
       }
@@ -542,11 +540,11 @@ function DevicesPageContent() {
         pollingInterval: "",
         fullThreshold: "",
       });
-      setMessage(t("deviceAddedSuccess"));
+      emitToast(t("deviceAddedSuccess"), "success");
       setShowQuickAddModal(false);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("addDeviceError"));
+      emitToast(error instanceof Error ? error.message : t("addDeviceError"), "error");
     } finally {
       setCreateLoading(false);
     }
@@ -562,7 +560,6 @@ function DevicesPageContent() {
       pollingInterval: "",
       fullThreshold: "",
     });
-    setMessage("");
     setShowQuickAddModal(true);
   };
 
@@ -603,16 +600,16 @@ function DevicesPageContent() {
 
       if (!response || !response.success || !response.data) {
         setTelemetryHistory([]);
-        setTelemetryMessage(response?.message || t("noTelemetryData"));
+        emitToast(response?.message || t("noTelemetryData"), "info");
         return;
       }
 
       const history = buildTelemetryHistory(response.data as TelemetryPayload);
       setTelemetryHistory(history);
-      if (history.length === 0) setTelemetryMessage(t("noTelemetryPoints"));
+      if (history.length === 0) emitToast(t("noTelemetryPoints"), "info");
     } catch (err) {
       setTelemetryHistory([]);
-      setTelemetryMessage(err instanceof Error ? err.message : t("loadTelemetryError"));
+      emitToast(err instanceof Error ? err.message : t("loadTelemetryError"), "error");
     } finally {
       setTelemetryLoading(false);
     }
@@ -634,9 +631,9 @@ function DevicesPageContent() {
           return;
         }
 
-        setMessage(t("loadDeviceError"));
+        emitToast(t("loadDeviceError"), "error");
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : t("loadDeviceError"));
+        emitToast(error instanceof Error ? error.message : t("loadDeviceError"), "error");
       }
     },
     [devices, openDeviceDetails, t],
@@ -658,11 +655,10 @@ function DevicesPageContent() {
     if (!selectedDeviceDetails) return;
 
     setEditDeviceLoading(true);
-    setEditDeviceMessage("");
 
     const loc = parseCoordinatePair(editDeviceForm.latitude, editDeviceForm.longitude);
     if (!loc && (editDeviceForm.latitude || editDeviceForm.longitude)) {
-      setEditDeviceMessage(t("provideValidCoordinates"));
+      emitToast(t("provideValidCoordinates"), "error");
       setEditDeviceLoading(false);
       return;
     }
@@ -678,7 +674,7 @@ function DevicesPageContent() {
         additionalAttributes: {},
       });
 
-      setEditDeviceMessage(t("deviceDetailsUpdated"));
+      emitToast(t("deviceDetailsUpdated"), "success");
       await load();
       
       setSelectedDeviceDetails(current => 
@@ -692,7 +688,7 @@ function DevicesPageContent() {
         } : null
       );
     } catch (error) {
-      setEditDeviceMessage(error instanceof Error ? error.message : t("updateDeviceDetailsError"));
+      emitToast(error instanceof Error ? error.message : t("updateDeviceDetailsError"), "error");
     } finally {
       setEditDeviceLoading(false);
     }
@@ -702,7 +698,6 @@ function DevicesPageContent() {
     setConfigFetchingId(device.id);
     setSelectedDeviceId(device.id);
     setSelectedDevice(device);
-    setConfigMessage("");
     setConfigLoading(true);
     setShowConfigModal(true);
 
@@ -738,7 +733,7 @@ function DevicesPageContent() {
       const fallbackAiModel = getLatestFirmware(firmwares.length > 0 ? firmwares : await loadFirmwares(), "AI_MODEL")?.id || "";
       setConfigForm({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop, targetAiModelFirmwareId: fallbackAiModel });
       setConfigInitial({ targetBinFirmwareId: fallbackBin, targetDesktopFirmwareId: fallbackDesktop, targetAiModelFirmwareId: fallbackAiModel });
-      setConfigMessage(error instanceof Error ? error.message : t("loadCurrentConfigError"));
+      emitToast(error instanceof Error ? error.message : t("loadCurrentConfigError"), "error");
     } finally {
       setConfigLoading(false);
       setConfigFetchingId(null);
@@ -754,7 +749,6 @@ function DevicesPageContent() {
     setSelectedDevice(device);
     setSelectedRpcMethod(defaultMethod);
     setRpcParamsText(getDefaultRpcParams(defaultMethod));
-    setRpcMessage("");
     setRpcResponseText("");
     setShowControlModal(true);
   };
@@ -768,7 +762,6 @@ function DevicesPageContent() {
     const defaultMethod = availableRpcOptions[0]?.method ?? "openLid";
     setSelectedRpcMethod(defaultMethod);
     setRpcParamsText(getDefaultRpcParams(defaultMethod));
-    setRpcMessage("");
     setRpcResponseText("");
   };
 
@@ -782,13 +775,12 @@ function DevicesPageContent() {
       try {
         parsedParams = JSON.parse(rpcParamsText);
       } catch {
-        setRpcMessage(t("invalidJsonParams"));
+        emitToast(t("invalidJsonParams"), "error");
         return;
       }
     }
 
     setRpcLoading(true);
-    setRpcMessage("");
     setRpcResponseText("");
 
     try {
@@ -798,9 +790,9 @@ function DevicesPageContent() {
       });
 
       setRpcResponseText(JSON.stringify(response.data ?? response, null, 2));
-      setRpcMessage(response.message || t("commandSentSuccess"));
+      emitToast(response.message || t("commandSentSuccess"), "success");
     } catch (error) {
-      setRpcMessage(error instanceof Error ? error.message : t("sendCommandError"));
+      emitToast(error instanceof Error ? error.message : t("sendCommandError"), "error");
     } finally {
       setRpcLoading(false);
     }
@@ -821,12 +813,11 @@ function DevicesPageContent() {
     if (!selectedDevice) return;
 
     if (!isConfigDirty) {
-      setConfigMessage(t("noChangesDetected"));
+      emitToast(t("noChangesDetected"), "info");
       return;
     }
 
     setConfigLoading(true);
-    setConfigMessage("");
 
     try {
       await devicesAdminApi.updateAdminConfig(selectedDevice.id, {
@@ -861,9 +852,9 @@ function DevicesPageContent() {
           : current
       );
       setConfigInitial(configForm);
-      setConfigMessage(t("targetVersionsUpdated"));
+      emitToast(t("targetVersionsUpdated"), "success");
     } catch (error) {
-      setConfigMessage(error instanceof Error ? error.message : t("saveConfigError"));
+      emitToast(error instanceof Error ? error.message : t("saveConfigError"), "error");
     } finally {
       setConfigLoading(false);
     }
@@ -1031,11 +1022,11 @@ function DevicesPageContent() {
         <Panel
           title={t("quickAddTitle")}
           subtitle={t("quickAddSubtitle")}
-          action={
+          action={canCreateDevice ? (
             <button type="button" onClick={openQuickAddModal} className="rounded-xl bg-sky-800 px-3 py-2 text-xs font-semibold text-white">
               {t("addDeviceBtn")}
             </button>
-          }
+          ) : null}
         >
           <p className="text-sm text-slate-600">{t("quickAddDesc")}</p>
         </Panel>
