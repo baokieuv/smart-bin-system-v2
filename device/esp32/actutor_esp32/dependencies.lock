@@ -1,4 +1,28 @@
 dependencies:
+  espressif/button:
+    component_hash: 30a3f495c3862d505ce6e41adbbd218b2750e9723ab2151feff00e9fe685b326
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: 0.*
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 3.5.0
+  espressif/cmake_utilities:
+    component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 0.5.3
   idf:
     source:
       type: idf
@@ -17,9 +41,10 @@ dependencies:
       type: local
     version: 1.0.4
 direct_dependencies:
+- espressif/button
 - espressif/onewire_bus
 - idf
 - lvgl/lvgl
-manifest_hash: 7cdd30dcefdfe9fc5321c865cfbec3866feff10c258d751e25824bf052cd04e3
-target: esp32s3
+manifest_hash: 48b43168caf78d9c9cda9ccb87974cc341fa238e4ff7ff84aeb1ca30fd5a15b5
+target: esp32
 version: 2.0.0

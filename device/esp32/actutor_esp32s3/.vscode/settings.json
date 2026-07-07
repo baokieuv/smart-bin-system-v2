@@ -1,7 +1,7 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
   "idf.openOcdConfigs": [
-    "board/esp32s3-bridge.cfg"
+    "board/esp32-bridge.cfg"
   ],
   "idf.currentSetup": "d:\\Embedded\\ESP\\esp\\v5.3\\esp-idf",
   "idf.customExtraVars": {

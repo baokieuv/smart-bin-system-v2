@@ -185,10 +185,10 @@ static void handle_cmd_report(void) {
 
     uint8_t fill_level[4] = {0};
 
-    if (dist.bin1_cm > 0) fill_level[0] = dist.bin1_cm;
-    if (dist.bin2_cm > 0) fill_level[1] = dist.bin2_cm;
-    if (dist.bin3_cm > 0) fill_level[2] = dist.bin3_cm;
-    if (dist.bin4_cm > 0) fill_level[3] = dist.bin4_cm;
+    if (dist.bin1_cm > 0) fill_level[0] = (uint8_t) dist.bin1_cm;
+    if (dist.bin2_cm > 0) fill_level[1] = (uint8_t) dist.bin2_cm;
+    if (dist.bin3_cm > 0) fill_level[2] = (uint8_t) dist.bin3_cm;
+    if (dist.bin4_cm > 0) fill_level[3] = (uint8_t) dist.bin4_cm;
 
     for(int i = 0; i < 4; i++) {
         if (fill_level[i] > 100) fill_level[i] = 100;

@@ -19,7 +19,7 @@ void sensor_report_task(void *arg){
     while(1) {
         TrashBinDistances_t dist = ultrasonic_read_all_bins();
 
-        uint8_t fill_level[4] = {0};
+        uint32_t fill_level[4] = {0};
 
         if (dist.bin1_cm > 0) fill_level[0] = dist.bin1_cm;
         if (dist.bin2_cm > 0) fill_level[1] = dist.bin2_cm;
@@ -54,7 +54,7 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    esp_log_level_set("*", ESP_LOG_NONE);
+    // esp_log_level_set("*", ESP_LOG_NONE);
     
     ESP_LOGI(TAG, "Khoi tao he thong Smart Bin v1.2...");
 

@@ -4,10 +4,10 @@
 #include "esp_err.h"
 
 typedef struct {
-    float bin1_cm;
-    float bin2_cm;
-    float bin3_cm;
-    float bin4_cm;
+    uint32_t bin1_cm;
+    uint32_t bin2_cm;
+    uint32_t bin3_cm;
+    uint32_t bin4_cm;
 } TrashBinDistances_t;
 
 

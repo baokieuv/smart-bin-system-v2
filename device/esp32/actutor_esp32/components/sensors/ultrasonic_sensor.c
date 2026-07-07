@@ -46,7 +46,7 @@ esp_err_t ultrasonic_sensor_init() {
     return ESP_OK;
 }
 
-static float ultrasonic_sensor_read_raw(uint8_t echo_pin)
+static uint32_t ultrasonic_sensor_read_raw(uint8_t echo_pin)
 {
     // Trigger 10us
     gpio_set_level(ULTRASONIC_TRIG_PIN, 0);
@@ -64,7 +64,7 @@ static float ultrasonic_sensor_read_raw(uint8_t echo_pin)
     {
         if ((esp_timer_get_time() - timeout_start) > ECHO_TIMEOUT)
         {
-            return -1.0f;
+            return 100;
         }
     }
 
@@ -76,7 +76,7 @@ static float ultrasonic_sensor_read_raw(uint8_t echo_pin)
     {
         if ((esp_timer_get_time() - start_time) > ECHO_TIMEOUT)
         {
-            return -1.0f;
+            return 100;
         }
     }
 
@@ -86,21 +86,21 @@ static float ultrasonic_sensor_read_raw(uint8_t echo_pin)
     int64_t duration = end_time - start_time;
 
     // cm
-    float distance = (duration * SOUND_SPEED) / 20000.0f;
+    uint32_t distance = (duration * SOUND_SPEED) / 20000;
 
     return distance;
 }
 
 // Hàm lọc nhiễu Median cho 1 cảm biến
-static float ultrasonic_read_median(uint8_t echo_pin) {
-    float readings[5] = { 0 };
+static uint32_t ultrasonic_read_median(uint8_t echo_pin) {
+    uint32_t readings[5] = { 0 };
     int valid_count = 0;
 
     // Lấy 5 mẫu
     for(int i = 0; i < 5; i++){
-        float distance = ultrasonic_sensor_read_raw(echo_pin);
+        uint32_t distance = ultrasonic_sensor_read_raw(echo_pin);
         
-        if(distance >= ULTRASONIC_MIN_DISTANCE && distance <= ULTRASONIC_MAX_DISTANCE){
+        if(distance <= ULTRASONIC_MAX_DISTANCE){
             readings[valid_count++] = distance;
         }
         
@@ -109,14 +109,14 @@ static float ultrasonic_read_median(uint8_t echo_pin) {
     }
 
     if (valid_count == 0) {
-        return system_config.bin_depth_cm; // Không có dữ liệu hợp lệ
+        return 100; // Không có dữ liệu hợp lệ
     }
 
     // Sắp xếp mảng (Bubble Sort)
     for (int i = 0; i < valid_count - 1; i++) {
         for (int j = i + 1; j < valid_count; j++) {
             if (readings[i] > readings[j]) {
-                float temp = readings[i];
+                uint32_t temp = readings[i];
                 readings[i] = readings[j];
                 readings[j] = temp;
             }
@@ -133,13 +133,14 @@ TrashBinDistances_t ultrasonic_read_all_bins() {
     
     // Đọc tuần tự từng ngăn để tránh xung đột xung nhịp
     bins.bin1_cm = ultrasonic_read_median(ULTRASONIC_ECHO1_PIN);
-    bins.bin2_cm = ultrasonic_read_median(ULTRASONIC_ECHO2_PIN);
+    // bins.bin2_cm = ultrasonic_read_median(ULTRASONIC_ECHO2_PIN);
     // bins.bin3_cm = ultrasonic_read_median(ULTRASONIC_ECHO3_PIN);
     // bins.bin4_cm = ultrasonic_read_median(ULTRASONIC_ECHO4_PIN);
-    bins.bin3_cm = system_config.bin_depth_cm;
-    bins.bin4_cm = system_config.bin_depth_cm;
+    bins.bin2_cm = 20; // Giả lập ngăn 2
+    bins.bin3_cm = 20; // Giả lập ngăn 3
+    bins.bin4_cm = 20; // Giả lập ngăn 4
 
-    ESP_LOGI(TAG, "K/C: Ngan1=%.1fcm, Ngan2=%.1fcm, Ngan3=%.1fcm, Ngan4=%.1fcm", 
+    ESP_LOGI(TAG, "K/C: Ngan1=%lucm, Ngan2=%lucm, Ngan3=%lucm, Ngan4=%lucm", 
              bins.bin1_cm, bins.bin2_cm, bins.bin3_cm, bins.bin4_cm);
              
     return bins;

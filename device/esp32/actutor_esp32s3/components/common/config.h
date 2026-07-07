@@ -4,7 +4,7 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 
-#if 1
+#if 0
 
 // STEP MOTOR PIN
 #define IN1         GPIO_NUM_15
@@ -36,7 +36,7 @@
 
 #endif
 
-#if 0
+#if 1
 // STEP MOTOR PIN
 #define IN1         GPIO_NUM_25
 #define IN2         GPIO_NUM_26

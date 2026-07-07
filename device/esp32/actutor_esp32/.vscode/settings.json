@@ -1,12 +1,12 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
   "idf.openOcdConfigs": [
-    "board/esp32s3-bridge.cfg"
+    "board/esp32-bridge.cfg"
   ],
   "idf.currentSetup": "d:\\Embedded\\ESP\\esp\\v5.3\\esp-idf",
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32s3"
+    "IDF_TARGET": "esp32"
   },
-  "idf.portWin": "COM8",
+  "idf.portWin": "COM10",
   "idf.flashType": "UART"
 }
