@@ -55,7 +55,7 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
             "AND (:targetUserId IS NULL OR d.userId = :targetUserId) " +
             "AND (:name IS NULL OR LOWER(d.name) LIKE LOWER(CONCAT('%', :name, '%'))) " + // Tối ưu: Search không phân biệt hoa thường
             "AND (:mac IS NULL OR d.mac = :mac) " +
-            "AND (:state IS NULL OR d.state = :state) " +
+            "AND (:status IS NULL OR d.status = :status) " +
             "AND (:groupId IS NULL OR d.deviceGroup.id = :groupId)") // Đã FIX: gọi vào d.deviceGroup.id
     Page<Device> searchDevices(
             @Param("targetTenantId") String targetTenantId,
