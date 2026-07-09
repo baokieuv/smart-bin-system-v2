@@ -30,9 +30,7 @@ public class DeviceController {
     private final DeviceService deviceService;
 
     @PostMapping("/import")
-    @PreAuthorize("hasAnyRole(" +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
-            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> importDevices(
             @Valid @RequestBody ImportDeviceRequest request,
             @AuthenticationPrincipal Jwt jwt
@@ -43,6 +41,7 @@ public class DeviceController {
     }
 
     @PostMapping("/claim")
+    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).USER)")
     public ResponseEntity<ApiResponseFormat<Object>> claimDevice(
             @Valid @RequestBody ClaimDeviceRequest request,
             @AuthenticationPrincipal Jwt jwt

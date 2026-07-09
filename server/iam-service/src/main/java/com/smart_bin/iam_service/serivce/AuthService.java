@@ -81,7 +81,12 @@ public class AuthService {
         String fullName = (firstName != null ? firstName : "") + " " + (lastName != null ? lastName : "");
 
         // Uỷ quyền cho UserService lo việc lưu trữ và khởi tạo DB
-        userService.syncGoogleUser(keycloakId, jwtEmail, fullName.trim(), avatarUrl);
+        boolean isAttributesUpdated = userService.syncGoogleUser(keycloakId, jwtEmail, fullName.trim(), avatarUrl);
+
+        if (isAttributesUpdated) {
+            log.info("First time login or user reactivated via Google. Refreshing token to sync claims for {}", jwtEmail);
+            return keycloakService.refreshAccessToken(keycloakToken.refreshToken());
+        }
 
         return keycloakToken;
     }

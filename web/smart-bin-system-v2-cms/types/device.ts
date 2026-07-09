@@ -57,6 +57,9 @@ export type FirmwareResponse = {
 export type DeviceImportRequestItem = {
   mac: string;
   claimCode: string;
+  name?: string;
+  latitude?: number;
+  longitude?: number;
 };
 
 export type ImportDeviceResponseItem = {

@@ -166,6 +166,7 @@ export default function UsersPage() {
   };
 
   const openPermissionsModal = (user: UserDto) => {
+    if (role === "super_admin") return;
     setSelectedUserForPerms(user);
     // Add VIEW_DEVICE as a baseline if missing
     const currentPerms = user.devicePermissions || ["VIEW_DEVICE"];
@@ -285,13 +286,15 @@ export default function UsersPage() {
                               </option>
                             ))}
                           </select>
-                          <button
-                            type="button"
-                            onClick={() => openPermissionsModal(user)}
-                            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition"
-                          >
-                            {t("manageBtn")}
-                          </button>
+                          {role === "super_admin" ? null : (
+                            <button
+                              type="button"
+                              onClick={() => openPermissionsModal(user)}
+                              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition"
+                            >
+                              {t("manageBtn")}
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>

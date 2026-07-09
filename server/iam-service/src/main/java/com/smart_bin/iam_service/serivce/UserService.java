@@ -94,7 +94,7 @@ public class UserService {
     }
 
     @Transactional
-    public void syncGoogleUser(String keycloakId, String email, String name, String avatarUrl) {
+    public boolean syncGoogleUser(String keycloakId, String email, String name, String avatarUrl) {
         Optional<User> existingUserOpt = userRepository.findByKeycloakId(keycloakId);
 
         if (existingUserOpt.isPresent()) {
@@ -105,8 +105,10 @@ public class UserService {
                 existingUser.setState(UserState.ACTIVE);
                 keycloakService.enableUser(keycloakId);
                 userRepository.save(existingUser);
+
+                return true;
             }
-            return;
+            return false;
         }
 
         Tenant defaultTenant = tenantRepository.findByEmail(defaultTenantEmail)
@@ -140,6 +142,8 @@ public class UserService {
         keycloakService.updateUserAttributes(keycloakId, attributes);
 
         sendEmailToUser(newUser.getEmail(), newUser.getName(), null, EmailType.WELCOME);
+
+        return true;
     }
 
     public Page<UserDto> getUsers(Long page, Long size){

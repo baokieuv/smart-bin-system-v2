@@ -61,8 +61,10 @@ public class UserController {
         return responseFactory.response(SuccessCode.OK, users);
     }
 
-    @PatchMapping("/{userId}/global-status")
-    @PreAuthorize("hasRole(T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
+    @PutMapping("/{userId}/state")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).SUPER_ADMIN)")
     public ResponseEntity<ApiResponseFormat<Object>> updateGlobalStatusById(
             @PathVariable("userId") String userId,
             @Valid @RequestBody UpdateUserStateRequest request
