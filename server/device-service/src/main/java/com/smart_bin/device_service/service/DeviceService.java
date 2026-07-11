@@ -345,11 +345,11 @@ public class DeviceService {
         return mapper.toDto(device);
     }
 
-    @Transactional
-    @Caching(
-            put = { @CachePut(value = "device_detail", key = "#keycloakId + ':' + #id") },
-            evict = { @CacheEvict(value = "device_list", allEntries = true) }
-    )
+//    @Transactional
+//    @Caching(
+//            put = { @CachePut(value = "device_detail", key = "#keycloakId + ':' + #id") },
+//            evict = { @CacheEvict(value = "device_list", allEntries = true) }
+//    )
     public DeviceDto updateDeviceByUser(String id, UpdateDeviceUserRequest request, String keycloakId, String tenantId, String permissions) {
         verifyPermission(keycloakId, tenantId, permissions, DevicePermission.EDIT_DEVICE.name());
 
