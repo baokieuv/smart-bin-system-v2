@@ -59,6 +59,7 @@ class ScreenWelcome(QWidget):
     open_device_link_requested = pyqtSignal()
     open_wifi_config_requested = pyqtSignal()
     activate_requested = pyqtSignal()
+    close_app_requested = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -132,8 +133,12 @@ class ScreenWelcome(QWidget):
         link_action.triggered.connect(self.open_device_link_requested.emit)
         wifi_action = QAction("  ◌ Cấu hình Wi-Fi", self)
         wifi_action.triggered.connect(self.open_wifi_config_requested.emit)
+        close_action = QAction("  ⏻ Thoát ứng dụng", self)
+        close_action.triggered.connect(self.close_app_requested.emit)
         menu.addAction(link_action)
         menu.addAction(wifi_action)
+        menu.addSeparator()
+        menu.addAction(close_action)
         self.btn_settings.setMenu(menu)
         top_bar.addWidget(self.btn_settings)
         main_layout.addLayout(top_bar)

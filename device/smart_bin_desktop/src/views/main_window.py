@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QStackedWidget
+from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QMessageBox
 import logging
 from src.views.screen_welcome import ScreenWelcome
 from src.views.screen_feedback import ScreenFeedback
@@ -45,6 +45,7 @@ class MainWindow(QMainWindow):
         self.screen_welcome.open_device_link_requested.connect(self.show_device_link)
         self.screen_welcome.open_wifi_config_requested.connect(self.show_wifi_config)
         self.screen_welcome.activate_requested.connect(self.viewmodel.activate_device_manually)
+        self.screen_welcome.close_app_requested.connect(self.confirm_close_app)
         self.screen_thanks.close_requested.connect(self.show_welcome)
         self.screen_device_link.back_requested.connect(self.close_device_link)
 
@@ -122,6 +123,20 @@ class MainWindow(QMainWindow):
             dialog.exec()
         finally:
             self.viewmodel.worker.resume_detection()
+
+    def confirm_close_app(self):
+        """Ask for confirmation before quitting, then close via normal close path
+        so closeEvent still runs viewmodel.shutdown()."""
+        reply = QMessageBox.question(
+            self,
+            "Thoát ứng dụng",
+            "Bạn có chắc chắn muốn thoát ứng dụng không?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.logger.info("User confirmed app close from menu")
+            self.close()
 
     def closeEvent(self, event):
         """Ensure background services are stopped before app exits."""
