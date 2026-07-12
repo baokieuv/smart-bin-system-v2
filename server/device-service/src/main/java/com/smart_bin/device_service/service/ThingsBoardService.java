@@ -15,6 +15,7 @@ import com.smart_bin.device_service.repository.DeviceRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -23,9 +24,11 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 @Slf4j
@@ -36,6 +39,8 @@ public class ThingsBoardService {
     private final DeviceRepository repository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final KafkaService kafkaService;
+
+    private final AtomicInteger currentSyncPage = new AtomicInteger(0);
 
     @Value("${things-board.key}")
     private String secretKey;
@@ -386,6 +391,99 @@ public class ThingsBoardService {
                 .body(requestBody)
                 .retrieve()
                 .body(JsonNode.class);
+    }
+
+    @Scheduled(cron = "0 */5 * * * ?")
+    public void syncAllDeviceStatuses() {
+        int page = currentSyncPage.get();
+        int pageSize = 100; // Giới hạn 100 thiết bị mỗi lượt gọi
+
+        try {
+            ObjectNode requestBody = objectMapper.createObjectNode();
+
+            ObjectNode entityFilter = requestBody.putObject("entityFilter");
+            entityFilter.put("type", "tenantEntity");
+            entityFilter.put("entityType", "DEVICE");
+
+            ObjectNode pageLink = requestBody.putObject("pageLink");
+            pageLink.put("pageSize", pageSize);
+            pageLink.put("page", page);
+
+            var entityFields = requestBody.putArray("entityFields");
+            entityFields.addObject().put("type", "ENTITY_FIELD").put("key", "name");
+
+            var latestValues = requestBody.putArray("latestValues");
+            latestValues.addObject().put("type", "SERVER_ATTRIBUTE").put("key", "active");
+
+            JsonNode response = restClient.post()
+                    .uri("/api/entitiesQuery/find")
+                    .body(requestBody)
+                    .retrieve()
+                    .body(JsonNode.class);
+
+            if (response != null && response.has("data")) {
+                JsonNode dataArray = response.get("data");
+
+                Map<String, Boolean> tbStatusMap = new HashMap<>();
+                List<String> tbDeviceIds = new ArrayList<>();
+
+                for (JsonNode node : dataArray) {
+                    String tbDeviceId = node.path("entityId").path("id").asString();
+                    boolean isActive = false;
+
+                    JsonNode latest = node.path("latest").path("SERVER_ATTRIBUTE");
+                    if (latest.has("active")) {
+                        isActive = latest.get("active").path("value").asBoolean(false);
+                    }
+
+                    tbStatusMap.put(tbDeviceId, isActive);
+                    tbDeviceIds.add(tbDeviceId);
+                }
+
+                // Cập nhật page cho LẦN CHẠY TIẾP THEO của Cron Job
+                if (response.has("hasNext") && response.get("hasNext").asBoolean()) {
+                    currentSyncPage.incrementAndGet();
+                    log.debug("Đã xử lý page {}, lần chạy tiếp theo sẽ xử lý page {}", page, currentSyncPage.get());
+                } else {
+                    currentSyncPage.set(0); // Đã hết danh sách trên ThingsBoard, reset về 0 để quét lại từ đầu
+                    log.debug("Đã quét hết toàn bộ thiết bị (kết thúc tại page {}), reset page về 0.", page);
+                }
+
+                if (tbDeviceIds.isEmpty()) {
+                    return;
+                }
+
+                // Vì số lượng tối đa chỉ là 100, ta có thể gọi query DB trực tiếp một lần
+                List<Device> existingDevices = repository.findByDeviceIdInAndActiveTrue(tbDeviceIds);
+                List<Device> devicesToUpdate = new ArrayList<>();
+
+                for (Device device : existingDevices) {
+                    String tbDeviceId = device.getDeviceId();
+
+                    if (tbStatusMap.containsKey(tbDeviceId)) {
+                        boolean isOnlineOnTb = tbStatusMap.get(tbDeviceId);
+                        DeviceStatus currentStatus = device.getStatus();
+                        DeviceStatus newStatus = isOnlineOnTb ? DeviceStatus.ONLINE : DeviceStatus.OFFLINE;
+
+                        if (currentStatus != newStatus) {
+                            device.setStatus(newStatus);
+                            devicesToUpdate.add(device);
+                        }
+                    }
+                }
+
+                if (!devicesToUpdate.isEmpty()) {
+                    repository.saveAll(devicesToUpdate);
+                    log.info("Đã đồng bộ trạng thái thành công cho {} thiết bị ở page {}.", devicesToUpdate.size(), page);
+                }
+
+            } else {
+                // Nếu API không trả về data, reset về 0 để tránh kẹt ở một page bị lỗi
+                currentSyncPage.set(0);
+            }
+        } catch (Exception e) {
+            log.error("Lỗi khi chạy Cron Job đồng bộ trạng thái thiết bị (page {}): {}", page, e.getMessage(), e);
+        }
     }
 
     // Hàm tiện ích để gói dữ liệu và đẩy lên Kafka sạch sẽ hơn

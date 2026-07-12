@@ -63,15 +63,25 @@ export default function NotificationsPage() {
     >
       <div className="space-y-3">
         {items.map((item) => (
-          <article key={String(item.id)} className="rounded-xl border border-slate-200 bg-white p-4">
+          <article
+            key={String(item.id)}
+            className={`rounded-xl border p-4 transition ${item.read ? "border-slate-200 bg-white" : "border-sky-200 bg-sky-50/60"}`}
+          >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.14em] text-slate-600">{item.type}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs uppercase tracking-[0.14em] text-slate-600">{item.type}</p>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${item.read ? "bg-slate-100 text-slate-600" : "bg-sky-100 text-sky-700"}`}
+                  >
+                    {item.read ? t("readStatus") : t("unreadAlerts")}
+                  </span>
+                </div>
                 <h3 className="text-base font-semibold text-foreground">{item.title}</h3>
                 <p className="text-sm text-slate-600">{item.message}</p>
                 <p className="mt-1 text-xs text-slate-600">{formatDateTime(item.createdDate)}</p>
               </div>
-              {!item.isRead ? (
+              {!item.read ? (
                 <button
                   type="button"
                   onClick={() => void mark(item.id)}

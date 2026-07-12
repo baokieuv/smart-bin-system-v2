@@ -66,4 +66,6 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
             @Param("groupId") UUID groupId,
             Pageable pageable
     );
+
+    List<Device> findByDeviceIdInAndActiveTrue(List<String> deviceIds);
 }

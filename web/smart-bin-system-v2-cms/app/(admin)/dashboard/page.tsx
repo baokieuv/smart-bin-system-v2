@@ -16,7 +16,6 @@ import { tenantsAdminApi } from "@/services/api/tenants-admin";
 import { usersApi } from "@/services/api/users";
 import { useLanguage } from "@/lib/language";
 import type { DeviceDto } from "@/types/device";
-import type { NotificationDto } from "@/types/notification";
 import type { BaseResponse, PagedPayload } from "@/types/core";
 import type { UserDto } from "@/types/user";
 
@@ -152,13 +151,18 @@ export default function DashboardPage() {
                     setMapDevices(unwrapListPayload<DeviceDto>(res.data as PagedPayload<DeviceDto>));
                 }).catch(console.error);
 
-            notificationsAdminApi.getNotifications({ page: 1, size: 200 })
+            notificationsAdminApi.getUnreadCount()
                 .then((res) => {
                     if (cancelled || !res?.success) return;
-                    const notificationList = unwrapListPayload<NotificationDto>(res.data as PagedPayload<NotificationDto>);
+
+                    const payload = res.data as number | { unreadCount?: number; count?: number; total?: number } | undefined;
+                    const unreadCount = typeof payload === "number"
+                        ? payload
+                        : payload?.unreadCount ?? payload?.count ?? payload?.total ?? 0;
+
                     setStats((prev) => ({
                         ...prev,
-                        unreadNotifications: notificationList.filter((item) => !item.isRead).length,
+                        unreadNotifications: unreadCount,
                     }));
                 }).catch(console.error);
 

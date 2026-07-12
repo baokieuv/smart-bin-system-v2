@@ -59,16 +59,11 @@ public class DeviceService {
     private final DeviceGroupService deviceGroupService;
     private final FirmwareMappingRepository mappingRepository;
 
-    private static final String CLAIM_CACHE_PREFIX = "claim:mac:";
-
     @Value("${app.media-service.internal-secret:SUPER_MEDIA_SECRET_INTERNAL_KEY}")
     private String mediaSecret;
 
     @Value("${app.device-service.internal-secret:SUPER_DEVICE_SECRET_INTERNAL_KEY}")
     private String deviceSecret;
-
-    @Value("${app.secret-key:DEFAULT_CLAIM_SECRET_KEY}")
-    private String claimSecret;
 
     @Transactional
     public List<ImportDeviceResponse> importDevicesByTenant(ImportDeviceRequest request, String tenantId) {
@@ -202,6 +197,13 @@ public class DeviceService {
             targetDevice.setTenantId(tenantId);
             targetDevice.setDeviceGroup(defaultGroup);
             targetDevice.setName(item.name() != null ? item.name() : "SmartBin-" + mac.replace(":", "").replace("-", ""));
+            targetDevice.setClaimedAt(System.currentTimeMillis());
+
+            if (targetDevice.getPublicKey() != null) {
+                targetDevice.setState(DeviceState.ACTIVE);
+            } else {
+                targetDevice.setState(DeviceState.PENDING);
+            }
 
             validCandidates.add(new DeviceCandidate(targetDevice, successMsg));
         }
@@ -502,7 +504,13 @@ public class DeviceService {
             }
 
             device.setUserId(request.userId());
-            device.setState(DeviceState.ACTIVE);
+
+            if (device.getPublicKey() != null) {
+                device.setState(DeviceState.ACTIVE);
+            } else {
+                device.setState(DeviceState.PENDING);
+            }
+
             device.setClaimedAt(System.currentTimeMillis());
 
             validDevicesToSave.add(device);
@@ -642,7 +650,7 @@ public class DeviceService {
         Device device = new Device();
         device.setMac(request.mac());
         device.setHwMetadata(request.hwMetadata());
-        device.setState(DeviceState.ACTIVE);
+        device.setState(DeviceState.PENDING);
         device.setStatus(DeviceStatus.OFFLINE);
         initializeDefaultFirmwareStates(device);
         return device;
@@ -789,7 +797,13 @@ public class DeviceService {
             throw new ApiException(DeviceErrorCode.DEVICE_ALREADY_ACTIVATED, "Thiết bị này đã được kích hoạt trước đó.");
         }
         device.setHwMetadata(request.hwMetadata());
-        device.setState(DeviceState.ACTIVE);
+
+        if (device.getUserId() != null || device.getTenantId() != null) {
+            device.setState(DeviceState.ACTIVE);
+        } else {
+            device.setState(DeviceState.PENDING);
+        }
+
         device.setStatus(DeviceStatus.OFFLINE);
         initializeDefaultFirmwareStates(device);
         return device;
@@ -966,6 +980,13 @@ public class DeviceService {
         device.setTenantId(tenantId);
         device.setUserId(userId);
         device.setClaimedAt(System.currentTimeMillis());
+
+        if (device.getPublicKey() != null) {
+            device.setState(DeviceState.ACTIVE);
+        } else {
+            device.setState(DeviceState.PENDING);
+        }
+
         initializeDefaultFirmwareStates(device);
 
         Map<String, Object> tbAttributes = new HashMap<>();
@@ -1001,10 +1022,12 @@ public class DeviceService {
             DeviceGroup defaultGroup = deviceGroupService.getOrCreateDefaultGroupForTenant(tenantId);
             device.setDeviceGroup(defaultGroup);
 
+            device.setTenantId(tenantId);
             device.setMac(request.mac());
             device.setUserId(userId);
             device.setState(DeviceState.PENDING);
             device.setStatus(DeviceStatus.OFFLINE);
+            device.setClaimedAt(System.currentTimeMillis());
             initializeDefaultFirmwareStates(device);
 
             if (StringUtils.hasText(request.name())) {

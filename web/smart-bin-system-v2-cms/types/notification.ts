@@ -16,7 +16,7 @@ export interface NotificationDto {
   title: string;
   message: string;
   type: NotificationType;
-  isRead: boolean;
+  read: boolean;
   createdDate: string;
 }
 
