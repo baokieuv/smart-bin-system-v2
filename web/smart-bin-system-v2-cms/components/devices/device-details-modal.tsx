@@ -26,11 +26,13 @@ interface DeviceDetailsModalProps {
   device: DeviceDto | null;
   onClose: () => void;
   onSave: (event: FormEvent) => void;
+  onDelete: () => void;
   editDeviceForm: EditDeviceForm;
   setEditDeviceForm: (updater: (prev: EditDeviceForm) => EditDeviceForm) => void;
   editDeviceLoading: boolean;
   editDeviceMessage: string;
   editLocation: LocationValue | null;
+  canDeleteDevice: boolean;
   telemetryLoading: boolean;
   telemetryMessage: string;
   telemetryHistory: TelemetryHistoryItem[];
@@ -43,11 +45,13 @@ export default function DeviceDetailsModal({
   device,
   onClose,
   onSave,
+  onDelete,
   editDeviceForm,
   setEditDeviceForm,
   editDeviceLoading,
   editDeviceMessage,
   editLocation,
+  canDeleteDevice,
   telemetryLoading,
   telemetryMessage,
   telemetryHistory,
@@ -216,6 +220,16 @@ export default function DeviceDetailsModal({
 
           <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-3">
             {editDeviceMessage ? <p className="text-sm text-slate-600 mr-auto">{editDeviceMessage}</p> : null}
+            {canDeleteDevice ? (
+              <button
+                type="button"
+                className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                onClick={onDelete}
+                disabled={editDeviceLoading}
+              >
+                {editDeviceLoading ? t("removingBtn") : t("removeBtn")}
+              </button>
+            ) : null}
             <button type="button" className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200" onClick={onClose}>
               {t("cancel")}
             </button>

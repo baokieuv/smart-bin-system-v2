@@ -185,6 +185,9 @@ public class DeviceController {
     }
 
     @DeleteMapping("/{deviceId}")
+    @PreAuthorize("hasAnyRole(" +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).ADMIN, " +
+            "T(com.smart_bin.core.common.UserRole.RoleConstants).USER)")
     public ResponseEntity<ApiResponseFormat<Object>> deleteDevice(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable String deviceId

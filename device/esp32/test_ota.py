@@ -311,11 +311,13 @@ def main():
             print("="*45)
             print("1. Xoay Stepper +45 độ")
             print("2. Xoay Stepper -45 độ")
-            print("3. Điều khiển động cơ Servo (Nhập góc)")
-            print("4. Thực hiện Upload OTA (Firmware)")
-            print("5. Yêu cầu đọc dữ liệu mức rác (1 lần)")
-            print("6. Thiết lập Cấu hình (Độ sâu & Ngưỡng báo đầy)")
-            print("7. Xem thông tin phần cứng hệ thống (System Info)")
+            print("3. Xoay Stepper 135 độ")
+            print("4. Xoay Stepper -135 độ")
+            print("5. Điều khiển động cơ Servo (Nhập góc)")
+            print("6. Thực hiện Upload OTA (Firmware)")
+            print("7. Yêu cầu đọc dữ liệu mức rác (1 lần)")
+            print("8. Thiết lập Cấu hình (Độ sâu & Ngưỡng báo đầy)")
+            print("9. Xem thông tin phần cứng hệ thống (System Info)")
             print("0. Thoát")
             print("="*45)
             
@@ -323,19 +325,21 @@ def main():
             
             if choice == '1': send_stepper_cmd(ser, 45)
             elif choice == '2': send_stepper_cmd(ser, -45)
-            elif choice == '3':
+            elif choice == '3': send_stepper_cmd(ser, 135)
+            elif choice == '4': send_stepper_cmd(ser, -135)
+            elif choice == '5':
                 try: send_servo_cmd(ser, int(input("Nhập góc muốn quay Servo (0 - 180): ")))
                 except ValueError: logger.warning("Vui lòng nhập một số nguyên hợp lệ!")
-            elif choice == '4': run_ota(ser)
-            elif choice == '5': request_fill_level(ser)
-            elif choice == '6':
+            elif choice == '6': run_ota(ser)
+            elif choice == '7': request_fill_level(ser)
+            elif choice == '8':
                 try:
                     depth = float(input("Nhập độ sâu thùng rác (cm) [VD: 60.5]: "))
                     threshold = int(input("Nhập ngưỡng báo rác đầy (%) [VD: 90]: "))
                     if 0 <= threshold <= 100: send_set_config_cmd(ser, depth, threshold)
                     else: logger.warning("Ngưỡng phần trăm phải nằm trong khoảng 0 - 100!")
                 except ValueError: logger.warning("Dữ liệu nhập vào không hợp lệ! Vui lòng nhập số.")
-            elif choice == '7': get_system_info(ser)
+            elif choice == '9': get_system_info(ser)
             elif choice == '0':
                 logger.info("Đang đóng cổng Serial và thoát...")
                 break

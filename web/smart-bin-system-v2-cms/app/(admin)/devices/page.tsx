@@ -181,6 +181,7 @@ function DevicesPageContent() {
     const canControlDevice = role === "super_admin" || role === "admin" || role === "user";
     const canQuickAddDevice = role === "admin" || role === "user";
     const canBulkImportDevices = role === "admin";
+    const canDeleteDevice = role === "admin" || role === "user";
 
     const addLocation = parseCoordinatePair(form.latitude, form.longitude);
     const editLocation = parseCoordinatePair(editDeviceForm.latitude, editDeviceForm.longitude);
@@ -720,6 +721,31 @@ function DevicesPageContent() {
         }
     };
 
+    const deleteDeviceDetails = async () => {
+        if (!selectedDeviceDetails || !canDeleteDevice) return;
+
+        const confirmed = window.confirm("Are you sure you want to delete this device?");
+        if (!confirmed) return;
+
+        setEditDeviceLoading(true);
+
+        try {
+            await deviceApi.delete(selectedDeviceDetails.id);
+            emitToast("Device deleted successfully.", "success");
+            setSelectedDeviceDetails(null);
+
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete("deviceId");
+            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+
+            await load();
+        } catch (error) {
+            emitToast(error instanceof Error ? error.message : t("loadDeviceError"), "error");
+        } finally {
+            setEditDeviceLoading(false);
+        }
+    };
+
     const openConfig = async (device: DeviceDto) => {
         setConfigFetchingId(device.id);
         setSelectedDeviceId(device.id);
@@ -1073,6 +1099,8 @@ function DevicesPageContent() {
                 editDeviceLoading={editDeviceLoading}
                 editDeviceMessage={editDeviceMessage}
                 editLocation={editLocation}
+                canDeleteDevice={canDeleteDevice}
+                onDelete={deleteDeviceDetails}
                 telemetryLoading={telemetryLoading}
                 telemetryMessage={telemetryMessage}
                 telemetryHistory={telemetryHistory}
