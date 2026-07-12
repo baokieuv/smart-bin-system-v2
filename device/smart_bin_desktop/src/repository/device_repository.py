@@ -137,7 +137,7 @@ class DeviceClient:
         # mac_num = hex(uuid.getnode()).replace('0x', '').zfill(12).upper()
         # return ':'.join(mac_num[i: i + 2] for i in range(0, 11, 2))
        
-        return "6C:BE:C6:D7:2B:7A"
+        return "26:77:35:9F:7B:DF"
 
     def get_claim_code(self) -> str:
         """Trả về mã claim ngắn (6 ký tự) hiển thị trên màn hình device-link."""

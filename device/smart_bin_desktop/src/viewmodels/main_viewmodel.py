@@ -491,7 +491,7 @@ class MainViewModel(QObject):
             mac_addr = self.get_device_mac_address()
             stream_name = mac_addr.replace(":", "-") # Định dạng map với MediaMTX và Backend
             
-            rtsp_url = f"rtsp://64.177.119.217:8554/{stream_name}"
+            rtsp_url = f"rtsp://42.118.149.144:8554/{stream_name}"
 
             # 2. Bật FFmpeg đẩy luồng
             ok = self.worker.start_stream(rtsp_url)

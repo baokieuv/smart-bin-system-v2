@@ -129,7 +129,7 @@ class _SerialConnectionManager:
                     time.sleep(1.5)
                     ser.reset_input_buffer()
                     
-                    ping_frame = FrameCodec.create_frame(cfg, cfg.cmd_unblock_lid)
+                    ping_frame = FrameCodec.create_frame(cfg, cfg.cmd_close_lid)
                     ser.write(ping_frame)
                     time.sleep(1.0)
  

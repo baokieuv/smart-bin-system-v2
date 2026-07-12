@@ -142,11 +142,11 @@ class RpcMethod:
 
 @dataclass(frozen=True)
 class ViewModelConfig:
-    telemetry_interval_ms: int = _env_int("SMART_BIN_TELEMETRY_INTERVAL_MS", 1 * 60 * 1000)
-    app_version_check_interval_ms: int = _env_int("SMART_BIN_APP_VERSION_CHECK_INTERVAL_MS", 24 * 60 * 60 * 1000)
+    telemetry_interval_ms: int = _env_int("SMART_BIN_TELEMETRY_INTERVAL_MS", 1 * 30 * 1000)
+    app_version_check_interval_ms: int = _env_int("SMART_BIN_APP_VERSION_CHECK_INTERVAL_MS", 1 * 60 * 1000)
     feedback_timeout_ms: int = _env_int("SMART_BIN_FEEDBACK_TIMEOUT_MS", 10_000)
     thanks_timeout_ms: int = _env_int("SMART_BIN_THANKS_TIMEOUT_MS", 5_000)
-    upload_interval_ms: int = _env_int("SMART_BIN_UPLOAD_INTERVAL_MS", 60 * 60 * 1000)
+    upload_interval_ms: int = _env_int("SMART_BIN_UPLOAD_INTERVAL_MS", 1 * 60 * 1000)
     upload_batch_size: int = _env_int("SMART_BIN_UPLOAD_BATCH_SIZE", 10)
 
 

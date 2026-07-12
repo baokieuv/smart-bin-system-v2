@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import logging
 import os
 import sys
@@ -52,6 +53,7 @@ def main() -> None:
     _worker, viewmodel, window = _build_app()
     window.show()
     viewmodel.start_system()
+    window.showFullScreen()
     logger.info("System started")
 
     sys.exit(app.exec())
